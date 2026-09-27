@@ -1,0 +1,351 @@
+{
+  "backend": "laya",
+  "created_utc": "2026-09-27T15:02:00.393386+00:00",
+  "candidate_spec": [
+    {
+      "id": "database_failure",
+      "name": "Database failure",
+      "description": "Database connections fail or time out."
+    },
+    {
+      "id": "authentication_failure",
+      "name": "Authentication failure",
+      "description": "Access fails because credentials are invalid."
+    },
+    {
+      "id": "disk_full",
+      "name": "Disk full",
+      "description": "Storage is exhausted and writes fail."
+    },
+    {
+      "id": "healthy",
+      "name": "Healthy",
+      "description": "The service operates normally without errors."
+    }
+  ],
+  "candidate_order": [
+    "database_failure",
+    "authentication_failure",
+    "disk_full",
+    "healthy"
+  ],
+  "candidate_representation": {
+    "incident": {
+      "type": "choice",
+      "instructions": "Which category best describes the service condition?",
+      "criteria": {
+        "Database failure": "Database connections fail or time out.",
+        "Authentication failure": "Access fails because credentials are invalid.",
+        "Disk full": "Storage is exhausted and writes fail.",
+        "Healthy": "The service operates normally without errors."
+      }
+    }
+  },
+  "backend_settings": {
+    "device": "cpu",
+    "classification_mode": "choice",
+    "pytorch_cpu_threads": 4,
+    "batch_size": 1
+  },
+  "model_repository": "convaiinnovations/laya",
+  "model_revision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+  "model_loading_seconds": 6.005615489993943,
+  "warmup_calls": 1,
+  "inference": {
+    "sample_count": 48,
+    "p50_seconds": 0.5830967414949555,
+    "p95_seconds": 0.6654173776929383
+  },
+  "peak_process_rss_bytes": 3038326784,
+  "peak_rss_label": "Linux worker process high-water mark (not model-only memory)",
+  "metrics_unambiguous": {
+    "count": 32,
+    "correct": 30,
+    "accuracy": 0.9375,
+    "coverage": 1.0,
+    "confusion_matrix": {
+      "database_failure": {
+        "database_failure": 8,
+        "authentication_failure": 0,
+        "disk_full": 0,
+        "healthy": 0,
+        "abstain": 0
+      },
+      "authentication_failure": {
+        "database_failure": 0,
+        "authentication_failure": 7,
+        "disk_full": 0,
+        "healthy": 1,
+        "abstain": 0
+      },
+      "disk_full": {
+        "database_failure": 1,
+        "authentication_failure": 0,
+        "disk_full": 7,
+        "healthy": 0,
+        "abstain": 0
+      },
+      "healthy": {
+        "database_failure": 0,
+        "authentication_failure": 0,
+        "disk_full": 0,
+        "healthy": 8,
+        "abstain": 0
+      }
+    }
+  },
+  "challenge_metrics": {
+    "labeled_challenge": {
+      "count": 7,
+      "correct": 3,
+      "accuracy": 0.42857142857142855
+    },
+    "review_cases": {
+      "count": 9,
+      "abstentions": 0,
+      "forced_predictions": 9,
+      "forced_by_class": {
+        "database_failure": 4,
+        "authentication_failure": 0,
+        "disk_full": 1,
+        "healthy": 4
+      }
+    }
+  },
+  "challenge_cases": [
+    {
+      "case_id": "challenge-01",
+      "tags": [
+        "challenge",
+        "negation"
+      ],
+      "expected_label": "healthy",
+      "needs_review": false,
+      "selected_class": "database_failure",
+      "rationale": "Negation explicitly denies a current database failure."
+    },
+    {
+      "case_id": "challenge-02",
+      "tags": [
+        "challenge",
+        "negation"
+      ],
+      "expected_label": "healthy",
+      "needs_review": false,
+      "selected_class": "healthy",
+      "rationale": "The credential rejection is negated."
+    },
+    {
+      "case_id": "challenge-03",
+      "tags": [
+        "challenge",
+        "negation"
+      ],
+      "expected_label": "healthy",
+      "needs_review": false,
+      "selected_class": "healthy",
+      "rationale": "The disk-full cue is explicitly denied."
+    },
+    {
+      "case_id": "challenge-04",
+      "tags": [
+        "challenge",
+        "negation"
+      ],
+      "expected_label": "database_failure",
+      "needs_review": false,
+      "selected_class": "database_failure",
+      "rationale": "A current database failure is explicit despite the negated health claim."
+    },
+    {
+      "case_id": "challenge-05",
+      "tags": [
+        "challenge",
+        "historical"
+      ],
+      "expected_label": "healthy",
+      "needs_review": false,
+      "selected_class": "database_failure",
+      "rationale": "The failure is historical and explicitly resolved; no current issue is labeled."
+    },
+    {
+      "case_id": "challenge-06",
+      "tags": [
+        "challenge",
+        "historical"
+      ],
+      "expected_label": "healthy",
+      "needs_review": false,
+      "selected_class": "disk_full",
+      "rationale": "The past fault is resolved and current writes succeed."
+    },
+    {
+      "case_id": "challenge-07",
+      "tags": [
+        "challenge",
+        "historical"
+      ],
+      "expected_label": "healthy",
+      "needs_review": false,
+      "selected_class": "authentication_failure",
+      "rationale": "Only historical authentication errors are reported; current state is successful."
+    },
+    {
+      "case_id": "challenge-08",
+      "tags": [
+        "challenge",
+        "ambiguous_evidence"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": "healthy",
+      "rationale": "Slowness alone does not identify a database failure; needs review."
+    },
+    {
+      "case_id": "challenge-09",
+      "tags": [
+        "challenge",
+        "ambiguous_evidence"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": "disk_full",
+      "rationale": "High utilization does not establish exhausted storage."
+    },
+    {
+      "case_id": "challenge-10",
+      "tags": [
+        "challenge",
+        "ambiguous_evidence"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": "healthy",
+      "rationale": "Access trouble has no credential-specific evidence; needs review."
+    },
+    {
+      "case_id": "challenge-11",
+      "tags": [
+        "challenge",
+        "multiple_faults"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": "database_failure",
+      "rationale": "Two simultaneous categories are explicit; needs review."
+    },
+    {
+      "case_id": "challenge-12",
+      "tags": [
+        "challenge",
+        "multiple_faults"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": "database_failure",
+      "rationale": "Two simultaneous categories are explicit; needs review."
+    },
+    {
+      "case_id": "challenge-13",
+      "tags": [
+        "challenge",
+        "unrelated"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": "healthy",
+      "rationale": "Unrelated request provides no service condition; needs review."
+    },
+    {
+      "case_id": "challenge-14",
+      "tags": [
+        "challenge",
+        "unrelated"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": "database_failure",
+      "rationale": "Non-incident input is outside the four labels; needs review."
+    },
+    {
+      "case_id": "challenge-15",
+      "tags": [
+        "challenge",
+        "insufficient_evidence"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": "database_failure",
+      "rationale": "No category or current state can be inferred."
+    },
+    {
+      "case_id": "challenge-16",
+      "tags": [
+        "challenge",
+        "insufficient_evidence"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": "healthy",
+      "rationale": "Subjective vague report lacks classifiable evidence."
+    }
+  ],
+  "dataset": {
+    "path": "/home/richard/projects/decisionops/data/incidents.jsonl",
+    "sha256": "31de62142dba63480d78c4837323aee3063ca6cf6bae836d3cee6c651c40b6cd",
+    "rows": 48
+  },
+  "git": {
+    "head": "bc56acb51110bec8e1bfc92905c041caaf0245d1",
+    "dirty": true,
+    "dirty_paths": [
+      "EADME.md",
+      "data/build_dataset.py",
+      "data/incidents.jsonl",
+      "decisionops/__init__.py",
+      "decisionops/backends.py",
+      "decisionops/metrics.py",
+      "decisionops/rules.py",
+      "decisionops/runner.py",
+      "tests/test_core.py",
+      "reports/README.md",
+      "reports/milestone-20260927/"
+    ]
+  },
+  "implementation_sha256": {
+    "decisionops/__init__.py": "332a002fc4f1a583d06cf3a3096174b7a39502bce106b088f9df41696b91ed81",
+    "decisionops/backends.py": "6dec626cae745bb238d79a4f86bad6e5ebce56b5f9986fdd373343fdaa1e253e",
+    "decisionops/dataset.py": "68b89916808d9a4ec549b2fbc3fca86d29eefe5200e0ddf19b40e5cf67f4d5ad",
+    "decisionops/metrics.py": "157e62dd3c8546a2454aed3eb0cc5c2847d2974cedcf9a962d3fab1f6be0096b",
+    "decisionops/rules.py": "5a69b08ce48963218f83d988dca5c6f587c4a08ebfa6b412d788d303a12862ba",
+    "decisionops/runner.py": "0fea4110d935ad541d1c7cdc5e77d6664e9939b60146a5234404deacbe911cbc",
+    "data/build_dataset.py": "7b367fb7e9e20258a80a143c7bcd70ed15a92365d68a085662f4295076388ef9"
+  },
+  "package_versions": {
+    "decisionops": "0.1.0",
+    "torch": "2.14.0+cpu",
+    "transformers": "5.17.0",
+    "gliclass": "0.1.20",
+    "laya": "0.3.20",
+    "huggingface-hub": "1.33.0"
+  },
+  "runtime": {
+    "python": "3.12.14",
+    "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.39",
+    "threads": {
+      "pytorch_cpu_threads": 4,
+      "batch_size": 1
+    },
+    "hardware": {
+      "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.39",
+      "processor": "x86_64",
+      "cpu_count": 12,
+      "ram_total_bytes": 8157687808,
+      "gpu": [
+        "NVIDIA GeForce GTX 1050 Ti with Max-Q Design, 4096 MiB"
+      ]
+    }
+  },
+  "interpretation": "Small hand-authored development measurements; not a held-out benchmark, production accuracy estimate, or definitive speed/quality comparison.",
+  "score_semantics": "Native class probabilities, confidence, answer_confidence, and action_act_probability are retained separately; the action head is not authorization. Not calibrated validation."
+}

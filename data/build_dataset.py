@@ -47,7 +47,7 @@ CHALLENGE = [
 ("healthy", "negation", "Database connections are not failing; requests are succeeding.", "Negation explicitly denies a current database failure."),
 ("healthy", "negation", "The login service is healthy and is not rejecting credentials.", "The credential rejection is negated."),
 ("healthy", "negation", "There is no disk full alert and writes are completing.", "The disk-full cue is explicitly denied."),
-("healthy", "negation", "The service is not healthy: database connections time out.", "A current database failure is explicit despite the negated health claim."),
+("database_failure", "negation", "The service is not healthy: database connections time out.", "A current database failure is explicit despite the negated health claim."),
 ("healthy", "historical", "Database timeouts occurred yesterday, but connections work now.", "The failure is historical and explicitly resolved; no current issue is labeled."),
 ("healthy", "historical", "The disk was full last week; it has been cleared and writes now succeed.", "The past fault is resolved and current writes succeed."),
 ("healthy", "historical", "An invalid token caused errors earlier; current logins succeed.", "Only historical authentication errors are reported; current state is successful."),
@@ -62,11 +62,29 @@ CHALLENGE = [
 (None, "insufficient_evidence", "Users say the app feels odd, with no error or symptom details.", "Subjective vague report lacks classifiable evidence."),
 ]
 
-rows = []
-for label, examples in CORE.items():
-    for index, (text, rationale) in enumerate(examples, 1):
-        rows.append({"id": f"core-{label}-{index:02d}", "text": text, "tags": ["unambiguous", label], "expected_label": label, "needs_review": False, "rationale": rationale})
-for index, (label, tag, text, rationale) in enumerate(CHALLENGE, 1):
-    rows.append({"id": f"challenge-{index:02d}", "text": text, "tags": ["challenge", tag], "expected_label": None if tag in {"unrelated", "insufficient_evidence", "ambiguous_evidence", "multiple_faults"} else label, "needs_review": tag in {"unrelated", "insufficient_evidence", "ambiguous_evidence", "multiple_faults"}, "rationale": rationale})
-path = Path(__file__).with_name("incidents.jsonl")
-path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
+def build_dataset() -> list[dict]:
+    rows = []
+    for label, examples in CORE.items():
+        for index, (text, rationale) in enumerate(examples, 1):
+            rows.append({"id": f"core-{label}-{index:02d}", "text": text, "tags": ["unambiguous", label], "expected_label": label, "needs_review": False, "rationale": rationale})
+    for index, (label, tag, text, rationale) in enumerate(CHALLENGE, 1):
+        needs_review = tag in {"unrelated", "insufficient_evidence", "ambiguous_evidence", "multiple_faults"}
+        rows.append({
+            "id": f"challenge-{index:02d}", "text": text, "tags": ["challenge", tag],
+            "expected_label": None if needs_review else label, "needs_review": needs_review, "rationale": rationale,
+        })
+    return rows
+
+
+def render_jsonl(rows: list[dict]) -> str:
+    return "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows)
+
+
+def write_dataset(path: Path | None = None) -> Path:
+    target = path or Path(__file__).with_name("incidents.jsonl")
+    target.write_text(render_jsonl(build_dataset()), encoding="utf-8")
+    return target
+
+
+if __name__ == "__main__":
+    write_dataset()

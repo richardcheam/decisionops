@@ -36,3 +36,24 @@ def summarize_classifications(rows: list[dict], labels: tuple[str, ...]) -> dict
         "coverage": covered / total if total else None,
         "confusion_matrix": matrix,
     }
+
+
+def summarize_challenge_and_review(rows: list[dict], labels: tuple[str, ...]) -> dict:
+    """Report labeled challenge quality and review disposition separately."""
+    challenge = [row for row in rows if "challenge" in row.get("tags", [])]
+    labeled = [row for row in challenge if not row.get("needs_review") and row.get("expected_label") in labels]
+    correct = sum(row.get("selected_class") == row["expected_label"] for row in labeled)
+    review = [row for row in challenge if row.get("needs_review")]
+    abstentions = sum(row.get("selected_class") is None for row in review)
+    forced_by_class = {label: sum(row.get("selected_class") == label for row in review) for label in labels}
+    forced = len(review) - abstentions
+    return {
+        "labeled_challenge": {
+            "count": len(labeled), "correct": correct,
+            "accuracy": correct / len(labeled) if labeled else None,
+        },
+        "review_cases": {
+            "count": len(review), "abstentions": abstentions,
+            "forced_predictions": forced, "forced_by_class": forced_by_class,
+        },
+    }

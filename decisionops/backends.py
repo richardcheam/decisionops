@@ -1,12 +1,14 @@
 """Lazy backend adapters and offline model resolution."""
 
+import math
 import os
 import re
 import time
 from pathlib import Path
+from collections.abc import Mapping, Sequence
 from typing import Callable
 
-from . import DESCRIPTIONS, LABELS
+from . import CANDIDATES, CandidateSpec, LABELS
 
 REPOSITORIES = {
     "gliclass": ("knowledgator/gliclass-small-v1.0", "GLICLASS_REV"),
@@ -66,16 +68,18 @@ class Backend:
                 pipeline = ZeroShotClassificationPipeline(model, tokenizer, classification_type="single-label", device="cpu", progress_bar=False)
 
                 def predict(text: str) -> dict:
-                    scores = pipeline(text, list(LABELS), batch_size=1, classification_type="single-label", return_hierarchical=True)[0]
-                    mapped = canonicalize_gliclass_scores(scores)
-                    return {"selected_class": max(mapped, key=mapped.get), "scores": mapped, "confidence": None, "answer_confidence": None}
+                    model_scores = pipeline(text, {"incident": list(build_gliclass_candidate_labels())}, batch_size=1, classification_type="single-label", return_hierarchical=True)[0]
+                    mapped = canonicalize_gliclass_scores(model_scores)
+                    selected = max(mapped, key=mapped.get)
+                    selected, mapped = validate_neural_prediction("gliclass", selected, mapped)
+                    return {"selected_class": selected, "scores": mapped, "confidence": None, "answer_confidence": None}
                 self._predict = predict
             else:
                 import laya
                 agent = laya.load(path, device="cpu")
 
                 def predict(text: str) -> dict:
-                    result = agent.predict(text, {"incident": {"type": "choice", "instructions": "Which category best describes the service condition?", "criteria": DESCRIPTIONS}})
+                    result = agent.predict(text, build_laya_question())
                     return normalize_laya_result(result)
                 self._predict = predict
         self.load_seconds = time.perf_counter() - started
@@ -90,10 +94,58 @@ class Backend:
         return result
 
 
-def canonicalize_gliclass_scores(scores: dict) -> dict[str, float]:
-    if set(scores) != set(LABELS):
-        raise ValueError("GLiClass score labels do not match canonical labels")
-    return {label: float(scores[label]) for label in LABELS}
+def build_gliclass_candidate_labels(candidates: Sequence[CandidateSpec] = CANDIDATES) -> tuple[str, ...]:
+    return tuple(f"{candidate.name}: {candidate.description}" for candidate in candidates)
+
+
+def build_laya_question(candidates: Sequence[CandidateSpec] = CANDIDATES) -> dict:
+    return {"incident": {
+        "type": "choice",
+        "instructions": "Which category best describes the service condition?",
+        "criteria": {candidate.name: candidate.description for candidate in candidates},
+    }}
+
+
+def canonicalize_gliclass_scores(scores: Mapping[str, float], candidates: Sequence[CandidateSpec] = CANDIDATES) -> dict[str, float]:
+    model_labels = build_gliclass_candidate_labels(candidates)
+    if isinstance(scores, Mapping) and set(scores) == {"incident"} and isinstance(scores["incident"], Mapping):
+        scores = scores["incident"]
+    if isinstance(scores, Mapping) and set(scores) == {f"incident.{label}" for label in model_labels}:
+        scores = {label: scores[f"incident.{label}"] for label in model_labels}
+    if set(scores) != set(model_labels):
+        raise InvalidModelOutput("gliclass returned unexpected candidate score keys")
+    return {candidate.id: float(scores[label]) for candidate, label in zip(candidates, model_labels, strict=True)}
+
+
+class InvalidModelOutput(ValueError):
+    """A neural backend returned a malformed class prediction or score map."""
+
+
+def validate_neural_prediction(
+    backend: str,
+    selected_class: str,
+    scores: Mapping[str, float],
+    candidates: Sequence[CandidateSpec] = CANDIDATES,
+) -> tuple[str, dict[str, float]]:
+    expected = tuple(candidate.id for candidate in candidates)
+    if selected_class not in expected:
+        raise InvalidModelOutput(f"{backend} returned unknown selected class {selected_class!r}")
+    if not isinstance(scores, Mapping) or set(scores) != set(expected):
+        raise InvalidModelOutput(f"{backend} must return scores for exactly {expected}")
+    normalized = {}
+    for label in expected:
+        try:
+            score = float(scores[label])
+        except (TypeError, ValueError) as exc:
+            raise InvalidModelOutput(f"{backend} returned a non-numeric score for {label}") from exc
+        if not math.isfinite(score) or not 0.0 <= score <= 1.0:
+            raise InvalidModelOutput(f"{backend} returned an invalid score for {label}: {score!r}")
+        normalized[label] = score
+    if abs(sum(normalized.values()) - 1.0) > 0.01:
+        raise InvalidModelOutput(f"{backend} score probabilities do not sum to one")
+    if normalized[selected_class] + 0.0011 < max(normalized.values()):
+        raise InvalidModelOutput(f"{backend} selected class is inconsistent with its largest score")
+    return selected_class, normalized
 
 
 def _get(value, key, default=None):
@@ -104,29 +156,44 @@ def _as_mapping(value):
     return value if isinstance(value, dict) else vars(value) if hasattr(value, "__dict__") else {}
 
 
-def normalize_laya_result(result) -> dict:
-    """Keep Laya's selected choice and native confidence values distinct."""
+def normalize_laya_result(result, candidates: Sequence[CandidateSpec] = CANDIDATES) -> dict:
+    """Map Laya's named choice to canonical IDs and validate its native distribution."""
     answers = _as_mapping(_get(result, "answers", {}))
     incident = _as_mapping(answers.get("incident", {}))
-    selected = incident.get("choice")
-    if isinstance(selected, int):
-        selected = LABELS[selected] if 0 <= selected < len(LABELS) else None
-    if selected not in LABELS:
-        selected = None
+    raw_choice = incident.get("choice")
+    choice_to_id = {candidate.id: candidate.id for candidate in candidates}
+    choice_to_id.update({candidate.name: candidate.id for candidate in candidates})
+    if isinstance(raw_choice, int) and not isinstance(raw_choice, bool):
+        selected = candidates[raw_choice].id if 0 <= raw_choice < len(candidates) else None
+    else:
+        selected = choice_to_id.get(raw_choice)
+    if selected is None:
+        raise InvalidModelOutput(f"laya returned unknown selected choice {raw_choice!r}")
+
     scores = incident.get("probabilities")
     if scores is None:
         probabilities = _as_mapping(_get(result, "probabilities", {}))
         scores = probabilities.get("incident") if probabilities else None
-    if isinstance(scores, (list, tuple)) and len(scores) == len(LABELS):
-        scores = dict(zip(LABELS, map(float, scores), strict=True))
-    if isinstance(scores, dict) and set(scores) == set(LABELS):
-        scores = {label: float(scores[label]) for label in LABELS}
-    else:
-        scores = None
+    if isinstance(scores, (list, tuple)) and len(scores) == len(candidates):
+        scores = {candidate.id: value for candidate, value in zip(candidates, scores, strict=True)}
+    elif isinstance(scores, Mapping):
+        by_name = {candidate.name: candidate.id for candidate in candidates}
+        if set(scores) == set(by_name):
+            scores = {by_name[name]: value for name, value in scores.items()}
+    selected, scores = validate_neural_prediction("laya", selected, scores, candidates)
+
+    confidence = incident.get("confidence", _get(result, "confidence"))
+    answer_confidence = incident.get("answer_confidence", _get(result, "answer_confidence"))
+    action = _as_mapping(incident.get("action", {})).get("act_probability")
+    for field, value in (("confidence", confidence), ("answer_confidence", answer_confidence), ("action_act_probability", action)):
+        if value is not None:
+            try:
+                number = float(value)
+            except (TypeError, ValueError) as exc:
+                raise InvalidModelOutput(f"laya returned non-numeric {field}") from exc
+            if not math.isfinite(number) or not 0.0 <= number <= 1.0:
+                raise InvalidModelOutput(f"laya returned invalid {field}: {value!r}")
     return {
-        "selected_class": selected,
-        "scores": scores,
-        "confidence": incident.get("confidence", _get(result, "confidence")),
-        "answer_confidence": incident.get("answer_confidence", _get(result, "answer_confidence")),
-        "action_act_probability": _as_mapping(incident.get("action", {})).get("act_probability"),
+        "selected_class": selected, "scores": scores, "confidence": confidence,
+        "answer_confidence": answer_confidence, "action_act_probability": action,
     }

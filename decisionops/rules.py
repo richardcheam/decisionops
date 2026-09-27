@@ -10,6 +10,7 @@ FAILURE_PATTERNS = {
 NEGATION = re.compile(r"\b(?:no|not|never|without|resolved|recovered|cleared|fixed|stopped|did not|doesn't|isn't|aren't)\b", re.I)
 HISTORICAL = re.compile(r"\b(?:yesterday|last (?:week|night|month)|earlier|previously|\d+ days? ago)\b", re.I)
 HEALTHY = re.compile(r"\b(?:all (?:health|readiness) checks? pass|healthy|operating normally|normal operation|no errors|no incidents|service is up|running normally|requests? (?:are )?succeed(?:ing|ful)|endpoints? respond successfully|every readiness check passes|metrics? (?:are )?normal|writes? (?:are )?(?:completing|succeeding))\b", re.I)
+NEGATED_HEALTH = re.compile(r"\b(?:not|never|isn't|aren't|is not|are not|no longer)\s+(?:currently\s+)?healthy\b", re.I)
 
 
 def _active_failure(text: str, pattern: re.Pattern) -> bool:
@@ -34,7 +35,7 @@ def predict_rules(text: str) -> dict:
     elif len(hits) > 1:
         selected = None
         reason = "multiple failure categories have matching cues"
-    elif HEALTHY.search(text) and not any(_active_failure(text, pattern) for pattern in FAILURE_PATTERNS.values()):
+    elif HEALTHY.search(NEGATED_HEALTH.sub("", text)) and not any(_active_failure(text, pattern) for pattern in FAILURE_PATTERNS.values()):
         selected = "healthy"
         reason = "explicit statement of normal operation"
     else:

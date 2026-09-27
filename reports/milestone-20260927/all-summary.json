@@ -1,0 +1,482 @@
+{
+  "sequential": true,
+  "consistent_provenance": true,
+  "workers": [
+    {
+      "backend": "rules",
+      "returncode": 0,
+      "output_dir": "reports/milestone-20260927/rules",
+      "stdout": "rules: accuracy=0.96875 coverage=0.96875\nWrote predictions and summary to /home/richard/projects/decisionops/reports/milestone-20260927/rules\n",
+      "stderr": ""
+    },
+    {
+      "backend": "gliclass",
+      "returncode": 0,
+      "output_dir": "reports/milestone-20260927/gliclass",
+      "stdout": "gliclass: accuracy=0.3125 coverage=1.0\nWrote predictions and summary to /home/richard/projects/decisionops/reports/milestone-20260927/gliclass\n",
+      "stderr": "/home/richard/projects/decisionops/.venv/lib/python3.12/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.\n  warnings.warn(\n\nLoading weights:   0%|          | 0/111 [00:00<?, ?it/s]\nLoading weights: 100%|██████████| 111/111 [00:00<00:00, 4487.18it/s]\n[transformers] You are using a model of type `GLiClass` to instantiate a model of type ``. This may be expected if you are loading a checkpoint that shares a subset of the architecture (e.g., loading a `sam2_video` checkpoint into `Sam2Model`), but is otherwise not supported and can yield errors. Please verify that the checkpoint is compatible with the model you are instantiating.\n[transformers] `use_return_dict` is deprecated! Use `return_dict` instead!\n"
+    },
+    {
+      "backend": "laya",
+      "returncode": 0,
+      "output_dir": "reports/milestone-20260927/laya",
+      "stdout": "laya: accuracy=0.9375 coverage=1.0\nWrote predictions and summary to /home/richard/projects/decisionops/reports/milestone-20260927/laya\n",
+      "stderr": "/home/richard/projects/decisionops/.venv/lib/python3.12/site-packages/laya/agent.py:928: RuntimeWarning: laya: this checkpoint ships invalid temperatures or values outside [0.5, 5]; using choice:11+=0.10058280825614929 -> 0.5. Treat confidence from the affected entries as uncalibrated.\n  return Agent(model_id_or_path, device=device, token=token, subfolder=subfolder, fast=fast,\n"
+    }
+  ],
+  "comparison": [
+    {
+      "backend": "rules",
+      "core_correct": 31,
+      "core_total": 32,
+      "core_accuracy": 0.96875,
+      "core_coverage": 0.96875,
+      "labeled_challenge_correct": 4,
+      "labeled_challenge_total": 7,
+      "review_abstained": 9,
+      "review_total": 9,
+      "inference_n": 48,
+      "inference_p50_seconds": 2.2922002244740725e-05,
+      "inference_p95_seconds": 4.464454759727232e-05,
+      "model_load_seconds": 0.002398091004579328,
+      "peak_rss_bytes": 21618688
+    },
+    {
+      "backend": "gliclass",
+      "core_correct": 10,
+      "core_total": 32,
+      "core_accuracy": 0.3125,
+      "core_coverage": 1.0,
+      "labeled_challenge_correct": 1,
+      "labeled_challenge_total": 7,
+      "review_abstained": 0,
+      "review_total": 9,
+      "inference_n": 48,
+      "inference_p50_seconds": 0.11025760000484297,
+      "inference_p95_seconds": 0.12057516664135619,
+      "model_load_seconds": 6.384000530990306,
+      "peak_rss_bytes": 843587584
+    },
+    {
+      "backend": "laya",
+      "core_correct": 30,
+      "core_total": 32,
+      "core_accuracy": 0.9375,
+      "core_coverage": 1.0,
+      "labeled_challenge_correct": 3,
+      "labeled_challenge_total": 7,
+      "review_abstained": 0,
+      "review_total": 9,
+      "inference_n": 48,
+      "inference_p50_seconds": 0.5830967414949555,
+      "inference_p95_seconds": 0.6654173776929383,
+      "model_load_seconds": 6.005615489993943,
+      "peak_rss_bytes": 3038326784
+    }
+  ],
+  "core_misses": {
+    "rules": [
+      "core-disk_full-05"
+    ],
+    "gliclass": [
+      "core-authentication_failure-01",
+      "core-authentication_failure-02",
+      "core-authentication_failure-04",
+      "core-authentication_failure-05",
+      "core-authentication_failure-06",
+      "core-authentication_failure-08",
+      "core-disk_full-01",
+      "core-disk_full-02",
+      "core-disk_full-03",
+      "core-disk_full-04",
+      "core-disk_full-05",
+      "core-disk_full-06",
+      "core-disk_full-07",
+      "core-disk_full-08",
+      "core-healthy-01",
+      "core-healthy-02",
+      "core-healthy-03",
+      "core-healthy-04",
+      "core-healthy-05",
+      "core-healthy-06",
+      "core-healthy-07",
+      "core-healthy-08"
+    ],
+    "laya": [
+      "core-authentication_failure-02",
+      "core-disk_full-04"
+    ]
+  },
+  "disagreements": [
+    {
+      "case_id": "core-authentication_failure-01",
+      "expected_label": "authentication_failure",
+      "needs_review": false,
+      "predictions": {
+        "rules": "authentication_failure",
+        "gliclass": "database_failure",
+        "laya": "authentication_failure"
+      }
+    },
+    {
+      "case_id": "core-authentication_failure-02",
+      "expected_label": "authentication_failure",
+      "needs_review": false,
+      "predictions": {
+        "rules": "authentication_failure",
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "core-authentication_failure-04",
+      "expected_label": "authentication_failure",
+      "needs_review": false,
+      "predictions": {
+        "rules": "authentication_failure",
+        "gliclass": "database_failure",
+        "laya": "authentication_failure"
+      }
+    },
+    {
+      "case_id": "core-authentication_failure-05",
+      "expected_label": "authentication_failure",
+      "needs_review": false,
+      "predictions": {
+        "rules": "authentication_failure",
+        "gliclass": "database_failure",
+        "laya": "authentication_failure"
+      }
+    },
+    {
+      "case_id": "core-authentication_failure-06",
+      "expected_label": "authentication_failure",
+      "needs_review": false,
+      "predictions": {
+        "rules": "authentication_failure",
+        "gliclass": "database_failure",
+        "laya": "authentication_failure"
+      }
+    },
+    {
+      "case_id": "core-authentication_failure-08",
+      "expected_label": "authentication_failure",
+      "needs_review": false,
+      "predictions": {
+        "rules": "authentication_failure",
+        "gliclass": "database_failure",
+        "laya": "authentication_failure"
+      }
+    },
+    {
+      "case_id": "core-disk_full-01",
+      "expected_label": "disk_full",
+      "needs_review": false,
+      "predictions": {
+        "rules": "disk_full",
+        "gliclass": "database_failure",
+        "laya": "disk_full"
+      }
+    },
+    {
+      "case_id": "core-disk_full-02",
+      "expected_label": "disk_full",
+      "needs_review": false,
+      "predictions": {
+        "rules": "disk_full",
+        "gliclass": "database_failure",
+        "laya": "disk_full"
+      }
+    },
+    {
+      "case_id": "core-disk_full-03",
+      "expected_label": "disk_full",
+      "needs_review": false,
+      "predictions": {
+        "rules": "disk_full",
+        "gliclass": "database_failure",
+        "laya": "disk_full"
+      }
+    },
+    {
+      "case_id": "core-disk_full-04",
+      "expected_label": "disk_full",
+      "needs_review": false,
+      "predictions": {
+        "rules": "disk_full",
+        "gliclass": "database_failure",
+        "laya": "database_failure"
+      }
+    },
+    {
+      "case_id": "core-disk_full-05",
+      "expected_label": "disk_full",
+      "needs_review": false,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "disk_full"
+      }
+    },
+    {
+      "case_id": "core-disk_full-06",
+      "expected_label": "disk_full",
+      "needs_review": false,
+      "predictions": {
+        "rules": "disk_full",
+        "gliclass": "database_failure",
+        "laya": "disk_full"
+      }
+    },
+    {
+      "case_id": "core-disk_full-07",
+      "expected_label": "disk_full",
+      "needs_review": false,
+      "predictions": {
+        "rules": "disk_full",
+        "gliclass": "database_failure",
+        "laya": "disk_full"
+      }
+    },
+    {
+      "case_id": "core-disk_full-08",
+      "expected_label": "disk_full",
+      "needs_review": false,
+      "predictions": {
+        "rules": "disk_full",
+        "gliclass": "database_failure",
+        "laya": "disk_full"
+      }
+    },
+    {
+      "case_id": "core-healthy-01",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": "healthy",
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "core-healthy-02",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": "healthy",
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "core-healthy-03",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": "healthy",
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "core-healthy-04",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": "healthy",
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "core-healthy-05",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": "healthy",
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "core-healthy-06",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": "healthy",
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "core-healthy-07",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": "healthy",
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "core-healthy-08",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": "healthy",
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "challenge-01",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": "healthy",
+        "gliclass": "database_failure",
+        "laya": "database_failure"
+      }
+    },
+    {
+      "case_id": "challenge-02",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": "healthy",
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "challenge-03",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": "healthy",
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "challenge-05",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "database_failure"
+      }
+    },
+    {
+      "case_id": "challenge-06",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "disk_full"
+      }
+    },
+    {
+      "case_id": "challenge-07",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "authentication_failure"
+      }
+    },
+    {
+      "case_id": "challenge-08",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "challenge-09",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "disk_full"
+      }
+    },
+    {
+      "case_id": "challenge-10",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "challenge-11",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "database_failure"
+      }
+    },
+    {
+      "case_id": "challenge-12",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "database_failure"
+      }
+    },
+    {
+      "case_id": "challenge-13",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "challenge-14",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "database_failure"
+      }
+    },
+    {
+      "case_id": "challenge-15",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "database_failure"
+      }
+    },
+    {
+      "case_id": "challenge-16",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    }
+  ]
+}
