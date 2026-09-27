@@ -1,0 +1,275 @@
+{
+  "backend": "rules",
+  "created_utc": "2026-09-27T13:18:26.399824+00:00",
+  "candidate_labels": [
+    "database_failure",
+    "authentication_failure",
+    "disk_full",
+    "healthy"
+  ],
+  "candidate_descriptions": {
+    "database_failure": "Database connections fail or time out.",
+    "authentication_failure": "Access fails because credentials are invalid.",
+    "disk_full": "Storage is exhausted and writes fail.",
+    "healthy": "The service operates normally without errors."
+  },
+  "backend_settings": {
+    "device": null,
+    "classification_mode": "deterministic",
+    "pytorch_cpu_threads": null,
+    "batch_size": 1
+  },
+  "model_repository": null,
+  "model_revision": null,
+  "model_loading_seconds": 0.0050464140076655895,
+  "warmup_calls": 0,
+  "inference": {
+    "sample_count": 48,
+    "p50_seconds": 2.430550375720486e-05,
+    "p95_seconds": 4.627364833140745e-05
+  },
+  "peak_process_rss_bytes": 32317440,
+  "peak_rss_label": "Linux worker process high-water mark (not model-only memory)",
+  "metrics_unambiguous": {
+    "count": 32,
+    "correct": 31,
+    "accuracy": 0.96875,
+    "coverage": 0.96875,
+    "confusion_matrix": {
+      "database_failure": {
+        "database_failure": 8,
+        "authentication_failure": 0,
+        "disk_full": 0,
+        "healthy": 0,
+        "abstain": 0
+      },
+      "authentication_failure": {
+        "database_failure": 0,
+        "authentication_failure": 8,
+        "disk_full": 0,
+        "healthy": 0,
+        "abstain": 0
+      },
+      "disk_full": {
+        "database_failure": 0,
+        "authentication_failure": 0,
+        "disk_full": 7,
+        "healthy": 0,
+        "abstain": 1
+      },
+      "healthy": {
+        "database_failure": 0,
+        "authentication_failure": 0,
+        "disk_full": 0,
+        "healthy": 8,
+        "abstain": 0
+      }
+    }
+  },
+  "challenge_cases": [
+    {
+      "case_id": "challenge-01",
+      "tags": [
+        "challenge",
+        "negation"
+      ],
+      "expected_label": "healthy",
+      "needs_review": false,
+      "selected_class": "healthy",
+      "rationale": "Negation explicitly denies a current database failure."
+    },
+    {
+      "case_id": "challenge-02",
+      "tags": [
+        "challenge",
+        "negation"
+      ],
+      "expected_label": "healthy",
+      "needs_review": false,
+      "selected_class": "healthy",
+      "rationale": "The credential rejection is negated."
+    },
+    {
+      "case_id": "challenge-03",
+      "tags": [
+        "challenge",
+        "negation"
+      ],
+      "expected_label": "healthy",
+      "needs_review": false,
+      "selected_class": "healthy",
+      "rationale": "The disk-full cue is explicitly denied."
+    },
+    {
+      "case_id": "challenge-04",
+      "tags": [
+        "challenge",
+        "negation"
+      ],
+      "expected_label": "healthy",
+      "needs_review": false,
+      "selected_class": "database_failure",
+      "rationale": "A current database failure is explicit despite the negated health claim."
+    },
+    {
+      "case_id": "challenge-05",
+      "tags": [
+        "challenge",
+        "historical"
+      ],
+      "expected_label": "healthy",
+      "needs_review": false,
+      "selected_class": null,
+      "rationale": "The failure is historical and explicitly resolved; no current issue is labeled."
+    },
+    {
+      "case_id": "challenge-06",
+      "tags": [
+        "challenge",
+        "historical"
+      ],
+      "expected_label": "healthy",
+      "needs_review": false,
+      "selected_class": null,
+      "rationale": "The past fault is resolved and current writes succeed."
+    },
+    {
+      "case_id": "challenge-07",
+      "tags": [
+        "challenge",
+        "historical"
+      ],
+      "expected_label": "healthy",
+      "needs_review": false,
+      "selected_class": null,
+      "rationale": "Only historical authentication errors are reported; current state is successful."
+    },
+    {
+      "case_id": "challenge-08",
+      "tags": [
+        "challenge",
+        "ambiguous_evidence"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": null,
+      "rationale": "Slowness alone does not identify a database failure; needs review."
+    },
+    {
+      "case_id": "challenge-09",
+      "tags": [
+        "challenge",
+        "ambiguous_evidence"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": null,
+      "rationale": "High utilization does not establish exhausted storage."
+    },
+    {
+      "case_id": "challenge-10",
+      "tags": [
+        "challenge",
+        "ambiguous_evidence"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": null,
+      "rationale": "Access trouble has no credential-specific evidence; needs review."
+    },
+    {
+      "case_id": "challenge-11",
+      "tags": [
+        "challenge",
+        "multiple_faults"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": null,
+      "rationale": "Two simultaneous categories are explicit; needs review."
+    },
+    {
+      "case_id": "challenge-12",
+      "tags": [
+        "challenge",
+        "multiple_faults"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": null,
+      "rationale": "Two simultaneous categories are explicit; needs review."
+    },
+    {
+      "case_id": "challenge-13",
+      "tags": [
+        "challenge",
+        "unrelated"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": null,
+      "rationale": "Unrelated request provides no service condition; needs review."
+    },
+    {
+      "case_id": "challenge-14",
+      "tags": [
+        "challenge",
+        "unrelated"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": null,
+      "rationale": "Non-incident input is outside the four labels; needs review."
+    },
+    {
+      "case_id": "challenge-15",
+      "tags": [
+        "challenge",
+        "insufficient_evidence"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": null,
+      "rationale": "No category or current state can be inferred."
+    },
+    {
+      "case_id": "challenge-16",
+      "tags": [
+        "challenge",
+        "insufficient_evidence"
+      ],
+      "expected_label": null,
+      "needs_review": true,
+      "selected_class": null,
+      "rationale": "Subjective vague report lacks classifiable evidence."
+    }
+  ],
+  "dataset": {
+    "path": "/home/richard/projects/decisionops/data/incidents.jsonl",
+    "sha256": "9b799964facf378a6487610b382a51b70d7aa41d5b4c71bfa2332ce66106a119",
+    "rows": 48
+  },
+  "package_versions": {
+    "decisionops": "0.1.0",
+    "torch": "2.14.0+cpu",
+    "transformers": "5.17.0",
+    "gliclass": "0.1.20",
+    "laya": "0.3.20",
+    "huggingface-hub": "1.33.0"
+  },
+  "threads": {
+    "pytorch_cpu_threads": null,
+    "batch_size": 1
+  },
+  "hardware": {
+    "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.39",
+    "processor": "x86_64",
+    "cpu_count": 12,
+    "ram_total_bytes": 8157687808,
+    "gpu": [
+      "NVIDIA GeForce GTX 1050 Ti with Max-Q Design, 4096 MiB"
+    ]
+  },
+  "interpretation": "Small hand-authored development measurements; not a held-out benchmark, production accuracy estimate, or definitive speed/quality comparison.",
+  "score_semantics": "No probabilities are produced."
+}
