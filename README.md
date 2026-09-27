@@ -2,6 +2,31 @@
 
 This is a small CPU-only development harness comparing a readable rules baseline with GLiClass and Laya. It classifies recorded text only and never runs operational actions. The 48 hand-authored examples are development data, not a held-out benchmark or evidence of production accuracy.
 
+## Offline workflow portfolio demo
+
+The engineering question is whether a policy can choose useful next actions in a bounded diagnostic workflow while respecting visible evidence and fixed tool/decision budgets. The recorded comparison shows where learned action selection fails, how evidence masking changes those choices, and why fixed order remains the strongest baseline on this inspected synthetic suite. See [FINDINGS.md](FINDINGS.md) for measured outcomes and limitations.
+
+Create a self-contained viewer from the committed report:
+
+```sh
+python3 -m decisionops workflow export-html \
+  --report-dir reports/workflow-model-comparison-20260927 \
+  --output runs/decisionops-workflow-demo.html
+```
+
+Open `runs/decisionops-workflow-demo.html` directly in a browser. Export uses the Python standard library and the existing JSON summaries/traces; it needs no model weights, PyTorch, internet connection, web server, or browser-side fetches. It validates every referenced trace with model-free replay, checks the displayed metrics against each policy summary, and writes the HTML outside the historical report directory. The guided path through the three examples is in [the five-minute walkthrough](docs/WORKFLOW-DEMO-WALKTHROUGH.md). The source [traces](reports/workflow-model-comparison-20260927/traces/) and report [limitations](FINDINGS.md#interpretation-and-limits) remain available for review.
+
+Reproducing the model comparison is a separate, optional step. It uses the pinned local checkpoints and runs each model family in its own sequential worker; it can take several minutes and requires the existing model cache:
+
+```sh
+uv run --locked python -m decisionops workflow evaluate --split development \
+  --output-dir reports/workflow-model-comparison-development-local
+uv run --locked python -m decisionops workflow evaluate --split all \
+  --output-dir reports/workflow-model-comparison-local
+```
+
+Evaluation uses fresh output directories. The HTML demo command above does not run evaluation.
+
 ## Environment and files
 
 Python 3.12.14 is selected by `.python-version`. Install the exact resolved packages with:

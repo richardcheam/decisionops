@@ -418,22 +418,6 @@ def evaluate_suite(scenario_path: Path = SCENARIO_FILE, output_dir: Path = DEFAU
             run_status["evaluation_execution_status"] = "failed"
             _json_write(output_dir / "run-status.json", run_status)
         raise
-    comparison = []
-    for name in POLICY_NAMES:
-        summary = all_summaries[name]
-        for split_name, metrics in summary["metrics_by_split"].items():
-            comparison.append({"policy": name, "split": split_name, **{key: metrics[key] for key in (
-                "episode_count", "run_status", "terminal_status_counts", "terminal_reason_counts", "failed_episodes",
-                "correct_supported_diagnoses", "diagnosable_count", "correct_review_decisions", "review_required_count",
-                "incorrect_diagnoses", "unnecessary_review_on_diagnosable_cases", "unsupported_diagnosis_proposals",
-                "invalid_proposals_rejected", "policy_execution_errors", "budget_exhaustion_episodes", "tool_related_failures",
-                "tool_calls", "end_to_end_latency_seconds",
-            )}, "model_loading_seconds": summary["model_loading_seconds"], "peak_process_rss_bytes": summary["peak_process_rss_bytes"]})
-    result = {"created_utc": datetime.now(timezone.utc).isoformat(), "scenario_sha256": _sha256(scenario_path), "evaluation_scope": split, "provenance": provenance, "policies": all_summaries, "comparison": comparison}
-    _json_write(output_dir / "all-summary.json", result)
-    _write_comparison_markdown(output_dir / "all-summary.md", result)
-    _write_example_trace(output_dir, all_summaries)
-    return result
 
 
 def _write_example_trace(output_dir: Path, summaries: dict[str, Any]) -> None:
