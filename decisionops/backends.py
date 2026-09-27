@@ -94,6 +94,64 @@ class Backend:
         return result
 
 
+def canonicalize_named_scores(scores: Mapping[str, float], candidate_ids: Sequence[str], candidate_names: Sequence[str]) -> dict[str, float]:
+    """Map a flat model-facing name score map back to stable caller IDs."""
+    if len(candidate_ids) != len(candidate_names) or len(set(candidate_ids)) != len(candidate_ids) or len(set(candidate_names)) != len(candidate_names):
+        raise InvalidModelOutput("gliclass action candidates must have unique, paired IDs and names")
+    if not isinstance(scores, Mapping) or set(scores) != set(candidate_names):
+        raise InvalidModelOutput("gliclass returned scores outside the supplied candidate names")
+    normalized = {}
+    for candidate_id, candidate_name in zip(candidate_ids, candidate_names, strict=True):
+        try:
+            value = float(scores[candidate_name])
+        except (TypeError, ValueError) as exc:
+            raise InvalidModelOutput(f"gliclass returned a non-numeric score for {candidate_name!r}") from exc
+        if not math.isfinite(value) or not 0 <= value <= 1:
+            raise InvalidModelOutput(f"gliclass returned an invalid score for {candidate_name!r}: {value!r}")
+        normalized[candidate_id] = value
+    return normalized
+
+
+class GLiClassActionRanker:
+    """Reusable offline GLiClass single-label ranker for arbitrary short candidates."""
+
+    def __init__(self, revision_file: Path):
+        self.revision_file = revision_file
+        self.load_seconds = 0.0
+        self._pipeline = None
+
+    def load(self) -> None:
+        started = time.perf_counter()
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        import torch
+        from huggingface_hub import hf_hub_download
+        from gliclass import GLiClassModel, ZeroShotClassificationPipeline
+        from transformers import AutoTokenizer
+
+        torch.set_num_threads(4)
+        pins = parse_revision_pins(self.revision_file)
+        repository, revision_key = REPOSITORIES["gliclass"]
+        path = offline_model_path(hf_hub_download, repository, pins[revision_key])
+        model = GLiClassModel.from_pretrained(path, local_files_only=True)
+        model.eval()
+        tokenizer = AutoTokenizer.from_pretrained(path, local_files_only=True)
+        self._pipeline = ZeroShotClassificationPipeline(model, tokenizer, classification_type="single-label", device="cpu", progress_bar=False)
+        self.load_seconds = time.perf_counter() - started
+
+    def rank(self, text: str, candidates: Sequence[tuple[str, str]]) -> dict[str, float]:
+        if self._pipeline is None:
+            raise RuntimeError("GLiClass action ranker must be loaded before rank")
+        if not candidates:
+            raise ValueError("at least one action candidate is required")
+        candidate_ids = tuple(item[0] for item in candidates)
+        candidate_names = tuple(item[1] for item in candidates)
+        returned = self._pipeline(text, list(candidate_names), batch_size=1, classification_type="single-label", return_hierarchical=True)[0]
+        scores = canonicalize_named_scores(returned, candidate_ids, candidate_names)
+        selected = max(candidate_ids, key=scores.get)
+        validation_candidates = tuple(CandidateSpec(candidate_id, name, "") for candidate_id, name in candidates)
+        return validate_neural_prediction("gliclass workflow", selected, scores, validation_candidates)[1]
+
+
 def build_gliclass_candidate_labels(candidates: Sequence[CandidateSpec] = CANDIDATES) -> tuple[str, ...]:
     """Return flat short labels, the tested native format for this checkpoint."""
     return tuple(candidate.name for candidate in candidates)

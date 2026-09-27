@@ -61,4 +61,44 @@ The first 32 examples are unambiguous, eight per class. The final 16 are challen
 
 The rules baseline uses a small list of readable category/failure patterns and abstains when it sees multiple current fault categories, weak evidence, negation, or historical evidence. It is intentionally incomplete: English phrasing, clause structure, and unseen terms can cause misses or false matches. The classifiers are also not validated for calibration. No threshold fitting or calibration is done on this dataset. Measurements on 48 short examples are noisy and should not be read as a definitive speed or quality comparison.
 
+## Recorded diagnostic workflow milestone
+
+The workflow is a bounded **offline synthetic simulation**, not live incident response. Its four tools only reveal a checked-in fixture observation when requested. It never executes shell commands, contacts a service, or changes the host. The policy receives only the initial report, observations requested so far, attempted tools, budgets, and visible harness feedback. Scenario IDs, gold outcomes, evaluation evidence annotations, and unrequested fixture observations stay with the evaluator/simulator.
+
+There are four unique tool calls maximum and six decisions maximum per episode. A tool cannot be repeated. The available terminal actions are database failure, authentication failure, disk full, healthy, and review. The harness rejects malformed/unknown/ineligible proposals and unseen evidence references. One rejected diagnosis may be retried; a second unsupported diagnosis ends the episode. A high score cannot bypass action eligibility.
+
+Diagnosis evidence is checked deterministically from current successful observations. Database, authentication, and disk diagnoses require an explicit current failure fact; conflicting current signals or multiple fault categories fail the check. Healthy requires explicit passing current observations from all four tools. Any unresolved timeout/error blocks diagnosis. The harness rejects unsupported diagnoses and reports its reason; it never substitutes the hidden gold diagnosis. Observation IDs on accepted diagnosis proposals are attached by the harness from the structured facts when the policy omits them. These IDs are provenance references, not model explanations or chain of thought.
+
+The fixed-order policy checks database, authentication, storage, then service health before using the evidence check. The rules policy prioritizes tool cues in the visible report, then supported evidence, then the fixed fallback order; a visible tool failure leads to review. GLiClass ranks the currently eligible actions directly from a compact rendering of the current visible episode state, using flat, short action names. Stable action IDs remain separate from those model-facing labels. The workflow ranker reuses one offline GLiClass model during a comparison and keeps the existing one-shot classifier adapter unchanged. Laya is not included in this milestone.
+
+`data/diagnostic_scenarios.jsonl` is the frozen synthetic suite: 12 development and 12 evaluation scenarios. It includes the supported faults, healthy cases, vague and historical reports, multiple and contradictory faults, unavailable tools, insufficient evidence, and unrelated requests. It is not independently validated real-world performance. Policy changes after viewing evaluation results should be recorded and evaluated on development scenarios first.
+
+Run a single scenario (available IDs are in the JSONL file) and save its replay trace:
+
+```sh
+uv run --locked python -m decisionops workflow episode \
+  --scenario-id dev-database-clear --policy rules \
+  --trace-file runs/workflow-database-example.jsonl
+```
+
+Run the complete comparison sequentially with the pinned local GLiClass checkpoint, then replay the saved trace without invoking a policy/model:
+
+```sh
+uv run --locked python -m decisionops workflow evaluate \
+  --output-dir reports/diagnostic-workflow-20260927
+uv run --locked python -m decisionops workflow replay \
+  --trace-file runs/workflow-database-example.jsonl
+```
+
+The comparison creates per-policy JSON summaries, one JSONL trace per scenario, an example trace, `all-summary.json`, a Markdown comparison, and `provenance.json`. Diagnosable and review-required scenarios use separate denominators, so review-everything scores no supported diagnoses and its unnecessary reviews remain visible. Reports separate unsupported diagnosis proposals, invalid proposals, budget exhaustion, tool-related failures, simulator failures, tool calls, per-episode end-to-end latency, model load time, and peak process RSS. Tool fixture timeouts/errors are recorded observations; they are not simulator failures. Provenance captures code and scenario hashes, package versions, checkpoint revision, candidate names/order, and runtime settings.
+
+The tests for the workflow are model-free and run with the existing suite. The explicit cached-checkpoint workflow smoke test is separate:
+
+```sh
+uv run --locked python -m unittest discover -s tests
+uv run --locked python scripts/workflow_smoke.py
+```
+
+The smoke test makes one bounded GLiClass episode; its selected outcome is diagnostic smoke evidence, not an accuracy claim. The full comparison command above is the reproducible synthetic evaluation.
+
 Model loading can emit upstream PyTorch/Transformers/GLiClass warnings, including TorchScript deprecation and model-type warnings. They are not globally suppressed. Laya can warn that a checkpoint choice-head temperature is clamped; that warning is retained and does not establish calibration for this four-choice task.

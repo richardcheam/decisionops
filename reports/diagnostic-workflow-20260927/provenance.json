@@ -1,0 +1,96 @@
+{
+  "git_head": "475ac42918844f90c26c518debcee72e031543fe",
+  "git_dirty": true,
+  "git_dirty_paths": [
+    "README.md",
+    "decisionops/backends.py",
+    "decisionops/cli.py",
+    "data/build_workflow_scenarios.py",
+    "data/diagnostic_scenarios.jsonl",
+    "decisionops/workflow.py",
+    "decisionops/workflow_eval.py",
+    "decisionops/workflow_policies.py",
+    "decisionops/workflow_scenarios.py",
+    "reports/diagnostic-workflow-20260927/",
+    "scripts/workflow_smoke.py",
+    "tests/test_workflow.py"
+  ],
+  "implementation_sha256": {
+    "decisionops/workflow.py": "ed452853108a3c893d15c8052fea8f940a5c7487ba5ea9ad41ce260cbc24ceeb",
+    "decisionops/workflow_eval.py": "6b3fbf851cae49b6f269626fb7e63aac9e5990911107db38a7787f102c38db38",
+    "decisionops/workflow_policies.py": "5b27621259c6f3f354ef1a2b4bb5cbbc4fd61c8e97730fa38599a71b4dbb8b5f",
+    "decisionops/workflow_scenarios.py": "657075ab3cac82207fe3effdb7f42197e80f1530495d049c4845a957ca1d940a",
+    "decisionops/backends.py": "176e7089a58b2ff5e0fca3aa263a4dd7653e7b8df9d145a58d334109004a6e68",
+    "decisionops/cli.py": "a936feb1f40d788c82079f70dce4f314e3b271dde2ea98d85226c666208ee15b",
+    "data/build_workflow_scenarios.py": "11e5cd5cb7fbef26fba21d1c555e2b19c1decc6b36279f50a98cdb3fc2ae254b"
+  },
+  "scenario_file": "/home/richard/projects/decisionops/data/diagnostic_scenarios.jsonl",
+  "scenario_sha256": "087c6e243c5df89c56e22ef0d081b0a1667ef44dc160d66058ab6ef571db2bc0",
+  "package_versions": {
+    "decisionops": "0.1.0",
+    "torch": "2.14.0+cpu",
+    "transformers": "5.17.0",
+    "gliclass": "0.1.20",
+    "huggingface-hub": "1.33.0"
+  },
+  "runtime": {
+    "python": "3.12.14",
+    "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.39",
+    "pytorch_threads": 4,
+    "batch_size": 1,
+    "device": "cpu",
+    "offline": "1"
+  },
+  "model_repository": "knowledgator/gliclass-small-v1.0",
+  "model_revision": "21edefaf7951f68c68c505f9139ba536d3b448f7",
+  "action_candidate_representation": [
+    {
+      "id": "check_database",
+      "model_name": "Check database"
+    },
+    {
+      "id": "check_authentication",
+      "model_name": "Check authentication"
+    },
+    {
+      "id": "check_storage",
+      "model_name": "Check storage"
+    },
+    {
+      "id": "check_service_health",
+      "model_name": "Check service health"
+    },
+    {
+      "id": "diagnose_database_failure",
+      "model_name": "Database failure"
+    },
+    {
+      "id": "diagnose_authentication_failure",
+      "model_name": "Authentication failure"
+    },
+    {
+      "id": "diagnose_disk_full",
+      "model_name": "Disk full"
+    },
+    {
+      "id": "diagnose_healthy",
+      "model_name": "Healthy"
+    },
+    {
+      "id": "request_review",
+      "model_name": "Request review"
+    }
+  ],
+  "policy_order": [
+    "fixed_order",
+    "rules",
+    "gliclass"
+  ],
+  "max_tool_calls": 4,
+  "max_decisions": 6,
+  "split_counts": {
+    "development": 12,
+    "evaluation": 12
+  },
+  "model_loading_seconds": 6.1799408579972805
+}
