@@ -81,7 +81,7 @@ def _git_provenance() -> dict:
 
 def _candidate_representation(backend_name: str) -> dict:
     if backend_name == "gliclass":
-        return {"format": "hierarchical single-label categories; leaf text is name: description", "input": {"incident": list(build_gliclass_candidate_labels())}}
+        return {"format": "flat single-label candidates; each value is the shared human-readable name", "ordered_values": list(build_gliclass_candidate_labels())}
     if backend_name == "laya":
         return build_laya_question()
     return {"format": "canonical candidate specifications", "ordered_values": [asdict(candidate) for candidate in CANDIDATES]}

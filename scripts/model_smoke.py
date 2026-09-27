@@ -32,7 +32,8 @@ def main() -> int:
     for text, expected in CASES:
         result = backend.predict(text)
         results.append({"expected": expected, "selected_class": result["selected_class"], "inference_seconds": result["inference_seconds"], "scores": result.get("scores"), "confidence": result.get("confidence"), "answer_confidence": result.get("answer_confidence"), "action_act_probability": result.get("action_act_probability")})
-    print(json.dumps({"backend": args.backend, "model_loading_seconds": backend.load_seconds, "warmup_calls_excluded": 1, "results": results}, indent=2))
+    correct = sum(row["selected_class"] == row["expected"] for row in results)
+    print(json.dumps({"backend": args.backend, "api_status": "passed", "model_loading_seconds": backend.load_seconds, "warmup_calls_excluded": 1, "semantic_expectations": {"correct": correct, "total": len(results), "all_correct": correct == len(results)}, "results": results}, indent=2))
     return 0
 
 

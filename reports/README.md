@@ -12,3 +12,5 @@ uv run --locked python -m decisionops evaluate --backend all --output-dir report
 ```
 
 The model commands set Hugging Face offline mode and require the pinned weights to already be cached. The aggregate report marks failed workers and omits its comparison table unless all three workers complete with matching dataset, candidate specification, Git HEAD, and implementation hashes. Predictions contain evaluation annotations for audit after inference; adapters receive only incident text.
+
+`gliclass-format-diagnostic-20260927/` records a controlled investigation of GLiClass’s input format and candidate order. Its findings and exact reproduction commands are in [FINDINGS.md](gliclass-format-diagnostic-20260927/FINDINGS.md), with raw per-call logits and scores in `diagnostic.json`. The adapter update is evaluated separately in `milestone-20260927-flat-short-gliclass/`; it preserves the earlier report unchanged.

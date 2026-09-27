@@ -1,0 +1,261 @@
+{
+  "sequential": true,
+  "consistent_provenance": true,
+  "workers": [
+    {
+      "backend": "rules",
+      "returncode": 0,
+      "output_dir": "reports/milestone-20260927-flat-short-gliclass/rules",
+      "stdout": "rules: accuracy=0.96875 coverage=0.96875\nWrote predictions and summary to /home/richard/projects/decisionops/reports/milestone-20260927-flat-short-gliclass/rules\n",
+      "stderr": ""
+    },
+    {
+      "backend": "gliclass",
+      "returncode": 0,
+      "output_dir": "reports/milestone-20260927-flat-short-gliclass/gliclass",
+      "stdout": "gliclass: accuracy=0.96875 coverage=1.0\nWrote predictions and summary to /home/richard/projects/decisionops/reports/milestone-20260927-flat-short-gliclass/gliclass\n",
+      "stderr": "/home/richard/projects/decisionops/.venv/lib/python3.12/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.\n  warnings.warn(\n\nLoading weights:   0%|          | 0/111 [00:00<?, ?it/s]\nLoading weights: 100%|██████████| 111/111 [00:00<00:00, 5528.26it/s]\n[transformers] You are using a model of type `GLiClass` to instantiate a model of type ``. This may be expected if you are loading a checkpoint that shares a subset of the architecture (e.g., loading a `sam2_video` checkpoint into `Sam2Model`), but is otherwise not supported and can yield errors. Please verify that the checkpoint is compatible with the model you are instantiating.\n[transformers] `use_return_dict` is deprecated! Use `return_dict` instead!\n"
+    },
+    {
+      "backend": "laya",
+      "returncode": 0,
+      "output_dir": "reports/milestone-20260927-flat-short-gliclass/laya",
+      "stdout": "laya: accuracy=0.9375 coverage=1.0\nWrote predictions and summary to /home/richard/projects/decisionops/reports/milestone-20260927-flat-short-gliclass/laya\n",
+      "stderr": "/home/richard/projects/decisionops/.venv/lib/python3.12/site-packages/laya/agent.py:928: RuntimeWarning: laya: this checkpoint ships invalid temperatures or values outside [0.5, 5]; using choice:11+=0.10058280825614929 -> 0.5. Treat confidence from the affected entries as uncalibrated.\n  return Agent(model_id_or_path, device=device, token=token, subfolder=subfolder, fast=fast,\n"
+    }
+  ],
+  "comparison": [
+    {
+      "backend": "rules",
+      "core_correct": 31,
+      "core_total": 32,
+      "core_accuracy": 0.96875,
+      "core_coverage": 0.96875,
+      "labeled_challenge_correct": 4,
+      "labeled_challenge_total": 7,
+      "review_abstained": 9,
+      "review_total": 9,
+      "inference_n": 48,
+      "inference_p50_seconds": 2.1821499103680253e-05,
+      "inference_p95_seconds": 3.866070401272736e-05,
+      "model_load_seconds": 0.0023909139999886975,
+      "peak_rss_bytes": 21647360
+    },
+    {
+      "backend": "gliclass",
+      "core_correct": 31,
+      "core_total": 32,
+      "core_accuracy": 0.96875,
+      "core_coverage": 1.0,
+      "labeled_challenge_correct": 3,
+      "labeled_challenge_total": 7,
+      "review_abstained": 0,
+      "review_total": 9,
+      "inference_n": 48,
+      "inference_p50_seconds": 0.08530659149982966,
+      "inference_p95_seconds": 0.0907448093930725,
+      "model_load_seconds": 6.287128825992113,
+      "peak_rss_bytes": 828891136
+    },
+    {
+      "backend": "laya",
+      "core_correct": 30,
+      "core_total": 32,
+      "core_accuracy": 0.9375,
+      "core_coverage": 1.0,
+      "labeled_challenge_correct": 3,
+      "labeled_challenge_total": 7,
+      "review_abstained": 0,
+      "review_total": 9,
+      "inference_n": 48,
+      "inference_p50_seconds": 0.5984742224973161,
+      "inference_p95_seconds": 0.7072681870988162,
+      "model_load_seconds": 6.435827738008811,
+      "peak_rss_bytes": 3039322112
+    }
+  ],
+  "core_misses": {
+    "rules": [
+      "core-disk_full-05"
+    ],
+    "gliclass": [
+      "core-disk_full-04"
+    ],
+    "laya": [
+      "core-authentication_failure-02",
+      "core-disk_full-04"
+    ]
+  },
+  "disagreements": [
+    {
+      "case_id": "core-authentication_failure-02",
+      "expected_label": "authentication_failure",
+      "needs_review": false,
+      "predictions": {
+        "rules": "authentication_failure",
+        "gliclass": "authentication_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "core-disk_full-04",
+      "expected_label": "disk_full",
+      "needs_review": false,
+      "predictions": {
+        "rules": "disk_full",
+        "gliclass": "database_failure",
+        "laya": "database_failure"
+      }
+    },
+    {
+      "case_id": "core-disk_full-05",
+      "expected_label": "disk_full",
+      "needs_review": false,
+      "predictions": {
+        "rules": null,
+        "gliclass": "disk_full",
+        "laya": "disk_full"
+      }
+    },
+    {
+      "case_id": "challenge-01",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": "healthy",
+        "gliclass": "healthy",
+        "laya": "database_failure"
+      }
+    },
+    {
+      "case_id": "challenge-03",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": "healthy",
+        "gliclass": "database_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "challenge-05",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "database_failure"
+      }
+    },
+    {
+      "case_id": "challenge-06",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": null,
+        "gliclass": "disk_full",
+        "laya": "disk_full"
+      }
+    },
+    {
+      "case_id": "challenge-07",
+      "expected_label": "healthy",
+      "needs_review": false,
+      "predictions": {
+        "rules": null,
+        "gliclass": "authentication_failure",
+        "laya": "authentication_failure"
+      }
+    },
+    {
+      "case_id": "challenge-08",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "healthy",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "challenge-09",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "healthy",
+        "laya": "disk_full"
+      }
+    },
+    {
+      "case_id": "challenge-10",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "authentication_failure",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "challenge-11",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "database_failure"
+      }
+    },
+    {
+      "case_id": "challenge-12",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "database_failure"
+      }
+    },
+    {
+      "case_id": "challenge-13",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "healthy",
+        "laya": "healthy"
+      }
+    },
+    {
+      "case_id": "challenge-14",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "healthy",
+        "laya": "database_failure"
+      }
+    },
+    {
+      "case_id": "challenge-15",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "database_failure",
+        "laya": "database_failure"
+      }
+    },
+    {
+      "case_id": "challenge-16",
+      "expected_label": null,
+      "needs_review": true,
+      "predictions": {
+        "rules": null,
+        "gliclass": "healthy",
+        "laya": "healthy"
+      }
+    }
+  ]
+}

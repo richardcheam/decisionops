@@ -29,7 +29,7 @@ uv run --locked python scripts/model_smoke.py gliclass
 uv run --locked python scripts/model_smoke.py laya
 ```
 
-Each smoke run loads one model, performs one excluded warm-up call, then predicts a database-timeout, healthy, and disk-full example. Loading and per-example inference times are printed separately. It is only a load/API smoke test, not a quality evaluation.
+Each smoke run loads one model, performs one excluded warm-up call, then predicts a database-timeout, healthy, and disk-full example. Output separates API/load success from semantic expectation results: exit status reports that calls completed, while `semantic_expectations` reports label matches. These three examples are a smoke check, not a quality evaluation.
 
 ## Evaluations
 
@@ -54,7 +54,7 @@ The first 32 examples are unambiguous, eight per class. The final 16 are challen
 ## Scores and measurements
 
 - Rules return a selected class or abstain and never invent probabilities.
-- GLiClass uses its pinned pipeline's single-label softmax and complete `return_hierarchical` score map. These values are model scores, not calibrated confidence.
+- GLiClass uses the pinned pipeline's single-label softmax and complete `return_hierarchical` score map, with flat short human-readable candidate names. The controlled format diagnostic found that the tested checkpoint performed better and more consistently with these native short names than with descriptive or hierarchical strings; see `reports/gliclass-format-diagnostic-20260927/`. GLiClass names and Laya's description-bearing criteria are deliberately different representations. Scores are model probabilities, not calibrated confidence.
 - Laya's native probability output, `confidence` (one minus normalized entropy), and `answer_confidence` are retained under separate names when returned. `action_act_probability` records the separate action head and is not a class score or authorization to act.
 - One explicit warm-up prediction per model is omitted from inference latency statistics. Sample count, linearly interpolated p50/p95, model loading time, and Linux worker-process high-water RSS are recorded separately. RSS includes the whole process, not only model weights.
 - Reports record Git HEAD and dirty paths, hashes of the implementation files and dataset, candidate IDs/names/descriptions and exact backend input representation/order, package versions, checkpoint revisions, Python/platform/hardware details, four PyTorch CPU threads, and batch size one.

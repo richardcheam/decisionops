@@ -62,6 +62,9 @@ class DatasetTests(unittest.TestCase):
 
 
 class CandidateTests(unittest.TestCase):
+    def test_gliclass_primary_labels_use_flat_human_readable_names(self):
+        self.assertEqual(build_gliclass_candidate_labels(), tuple(candidate.name for candidate in CANDIDATES))
+
     def test_gliclass_mapping_supports_non_default_candidate_order(self):
         reordered = (CANDIDATES[3], CANDIDATES[2], CANDIDATES[0], CANDIDATES[1])
         model_labels = build_gliclass_candidate_labels(reordered)

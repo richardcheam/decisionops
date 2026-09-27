@@ -68,7 +68,7 @@ class Backend:
                 pipeline = ZeroShotClassificationPipeline(model, tokenizer, classification_type="single-label", device="cpu", progress_bar=False)
 
                 def predict(text: str) -> dict:
-                    model_scores = pipeline(text, {"incident": list(build_gliclass_candidate_labels())}, batch_size=1, classification_type="single-label", return_hierarchical=True)[0]
+                    model_scores = pipeline(text, list(build_gliclass_candidate_labels()), batch_size=1, classification_type="single-label", return_hierarchical=True)[0]
                     mapped = canonicalize_gliclass_scores(model_scores)
                     selected = max(mapped, key=mapped.get)
                     selected, mapped = validate_neural_prediction("gliclass", selected, mapped)
@@ -95,7 +95,8 @@ class Backend:
 
 
 def build_gliclass_candidate_labels(candidates: Sequence[CandidateSpec] = CANDIDATES) -> tuple[str, ...]:
-    return tuple(f"{candidate.name}: {candidate.description}" for candidate in candidates)
+    """Return flat short labels, the tested native format for this checkpoint."""
+    return tuple(candidate.name for candidate in candidates)
 
 
 def build_laya_question(candidates: Sequence[CandidateSpec] = CANDIDATES) -> dict:
