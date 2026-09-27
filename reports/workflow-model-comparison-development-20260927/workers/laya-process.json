@@ -1,0 +1,9 @@
+{
+  "model_family": "laya",
+  "status": "completed",
+  "returncode": 0,
+  "model_loading_seconds": 6.233492398998351,
+  "peak_process_rss_bytes": 3041005568,
+  "stdout": "Completed isolated laya workflow worker\n",
+  "stderr": "/home/richard/projects/decisionops/.venv/lib/python3.12/site-packages/laya/agent.py:928: RuntimeWarning: laya: this checkpoint ships invalid temperatures or values outside [0.5, 5]; using choice:11+=0.10058280825614929 -> 0.5. Treat confidence from the affected entries as uncalibrated.\n  return Agent(model_id_or_path, device=device, token=token, subfolder=subfolder, fast=fast,\n"
+}

@@ -255,7 +255,7 @@ class WorkflowFixtureTests(unittest.TestCase):
         policy = FakePolicy([Proposal("request_review")])
         result = run_episode(self.scenarios["dev-database-clear"], policy)
         event = result.trace[0]
-        self.assertEqual(event["trace_version"], 2)
+        self.assertEqual(event["trace_version"], 3)
         self.assertEqual(event["policy_input"]["visible_state"], policy.visible_states[0][0].as_dict())
         self.assertEqual(event["policy_input"]["eligible_action_ids"], list(policy.visible_states[0][1]))
         self.assertEqual(event["visible_state_before"]["remaining_decisions"], 6)
@@ -270,6 +270,15 @@ class WorkflowFixtureTests(unittest.TestCase):
             event.pop("scored_candidate_ids")
             event.pop("excluded_candidates")
         replayed = replay_trace(old_events)
+        self.assertEqual(replayed["terminal_reason"], "review")
+
+    def test_trace_replay_still_accepts_version_two_events(self):
+        result = run_episode(self.scenarios["dev-database-clear"], FakePolicy([Proposal("request_review")]))
+        version_two = json.loads(json.dumps(result.trace))
+        for event in version_two:
+            event["trace_version"] = 2
+            event["policy_input"] = {key: event["policy_input"][key] for key in ("visible_state", "eligible_action_ids")}
+        replayed = replay_trace(version_two)
         self.assertEqual(replayed["terminal_reason"], "review")
 
     def test_masked_trace_replays_without_loading_or_invoking_a_model(self):

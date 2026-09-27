@@ -20,7 +20,7 @@ def main(argv=None) -> int:
     workflow_commands = workflow.add_subparsers(dest="workflow_command", required=True)
     episode = workflow_commands.add_parser("episode", help="run one bounded synthetic episode")
     episode.add_argument("--scenario-id", required=True)
-    episode.add_argument("--policy", choices=("fixed_order", "rules", "gliclass", "gliclass_evidence_masked"), default="rules")
+    episode.add_argument("--policy", choices=("fixed_order", "rules", "gliclass", "gliclass_evidence_masked", "laya", "laya_evidence_masked"), default="rules")
     episode.add_argument("--trace-file", type=Path, default=Path("runs/workflow-episode.jsonl"))
     episode.add_argument("--scenario-file", type=Path)
     episode.add_argument("--revision-file", type=Path)
@@ -33,8 +33,20 @@ def main(argv=None) -> int:
     workflow_eval.add_argument("--split", choices=("development", "all"), default="all", help="run development only or both development and evaluation splits")
     replay = workflow_commands.add_parser("replay", help="validate and reconstruct a JSONL workflow trace")
     replay.add_argument("--trace-file", type=Path, required=True)
+    html_report = workflow_commands.add_parser("export-html", help="export an existing workflow report as a standalone offline HTML viewer")
+    html_report.add_argument("--report-dir", type=Path, required=True, help="completed report directory containing summaries and traces")
+    html_report.add_argument("--output", type=Path, required=True, help="HTML output path outside the report directory")
     args = parser.parse_args(argv)
     if args.command == "workflow":
+        if args.workflow_command == "export-html":
+            from .workflow_report import ReportLoadError, export_report
+
+            try:
+                output = export_report(args.report_dir, args.output)
+            except (OSError, ReportLoadError) as exc:
+                parser.error(str(exc))
+            print(f"Wrote standalone offline workflow viewer to {output}")
+            return 0
         from .workflow import replay_trace
         from .workflow_eval import DEFAULT_OUTPUT_DIR, DEFAULT_PINS as WORKFLOW_PINS, run_one_episode, evaluate_suite
         from .workflow_scenarios import SCENARIO_FILE

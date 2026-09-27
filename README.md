@@ -2,6 +2,31 @@
 
 This is a small CPU-only development harness comparing a readable rules baseline with GLiClass and Laya. It classifies recorded text only and never runs operational actions. The 48 hand-authored examples are development data, not a held-out benchmark or evidence of production accuracy.
 
+## Offline workflow portfolio demo
+
+The engineering question is whether a policy can choose useful next actions in a bounded diagnostic workflow while respecting visible evidence and fixed tool/decision budgets. The recorded comparison shows where learned action selection fails, how evidence masking changes those choices, and why fixed order remains the strongest baseline on this inspected synthetic suite. See [FINDINGS.md](FINDINGS.md) for measured outcomes and limitations.
+
+Create a self-contained viewer from the committed report:
+
+```sh
+python3 -m decisionops workflow export-html \
+  --report-dir reports/workflow-model-comparison-20260927 \
+  --output runs/decisionops-workflow-demo.html
+```
+
+Open `runs/decisionops-workflow-demo.html` directly in a browser. Export uses the Python standard library and the existing JSON summaries/traces; it needs no model weights, PyTorch, internet connection, web server, or browser-side fetches. It validates every referenced trace with model-free replay, checks the displayed metrics against each policy summary, and writes the HTML outside the historical report directory. The guided path through the three examples is in [the five-minute walkthrough](docs/WORKFLOW-DEMO-WALKTHROUGH.md). The source [traces](reports/workflow-model-comparison-20260927/traces/) and report [limitations](FINDINGS.md#interpretation-and-limits) remain available for review.
+
+Reproducing the model comparison is a separate, optional step. It uses the pinned local checkpoints and runs each model family in its own sequential worker; it can take several minutes and requires the existing model cache:
+
+```sh
+uv run --locked python -m decisionops workflow evaluate --split development \
+  --output-dir reports/workflow-model-comparison-development-local
+uv run --locked python -m decisionops workflow evaluate --split all \
+  --output-dir reports/workflow-model-comparison-local
+```
+
+Evaluation uses fresh output directories. The HTML demo command above does not run evaluation.
+
 ## Environment and files
 
 Python 3.12.14 is selected by `.python-version`. Install the exact resolved packages with:
@@ -69,9 +94,11 @@ There are four unique tool calls maximum and six decisions maximum per episode. 
 
 Diagnosis evidence is checked deterministically from current successful observations. Database, authentication, and disk diagnoses require an explicit current failure fact; conflicting current signals or multiple fault categories fail the check. Healthy requires explicit passing current observations from all four tools. Any unresolved timeout/error blocks diagnosis. The harness rejects unsupported diagnoses and reports its reason; it never substitutes the hidden gold diagnosis. Observation IDs on accepted diagnosis proposals are attached by the harness from the structured facts when the policy omits them. These IDs are provenance references, not model explanations or chain of thought.
 
-The fixed-order policy checks database, authentication, storage, then service health before using the evidence check. The rules policy prioritizes tool cues in the visible report, then supported evidence, then the fixed fallback order; a visible tool failure leads to review. `gliclass` ranks every harness-eligible action directly from a compact rendering of the current visible episode state, using flat, short action names. `gliclass_evidence_masked` uses the same model, rendering, names, and harness validation, but removes diagnosis actions that fail the existing visible-state evidence check before scoring. Both variants always retain `request_review`; neither uses hidden scenario data. Stable action IDs remain separate from model-facing labels. The workflow ranker reuses one offline GLiClass model during a comparison and keeps the existing one-shot classifier adapter unchanged. Laya is not included in this milestone.
+The fixed-order policy checks database, authentication, storage, then service health before using the evidence check. The rules policy prioritizes tool cues in the visible report, then supported evidence, then the fixed fallback order; a visible tool failure leads to review. `gliclass` and `laya` choose among all harness-eligible actions. Their `*_evidence_masked` variants use the same policies and models but remove diagnoses that fail the existing visible-state evidence check before scoring. Both variants always retain `request_review`; neither uses hidden scenario data. The policies share deterministic candidate selection, and the harness validates every proposal after selection.
 
-Each v2 trace records both the harness-eligible actions and the model-scored candidate IDs, deterministic exclusion reasons, and the exact post-budget-decrement state passed to the policy. Replay accepts both v1 and v2 traces without loading a model. Reports list every terminal status and reason, count failed episodes, and separate unsupported diagnosis attempts from invalid proposals; see [FINDINGS.md](FINDINGS.md) for definitions and results.
+GLiClass receives the rendered visible-state text plus an ordered list of stable action IDs and readable names. Laya receives the same visible-state text through its native choice API, with stable action IDs mapped to readable choice names and fixed concise descriptions. Laya's question and descriptions are fixed before evaluation and recorded in provenance. Since the model families receive different native input formats, this comparison does not isolate architecture. Laya's native choice probabilities are retained separately from its optional `confidence`, `answer_confidence`, and `act_probability` metadata; none is calibrated for this workflow or authorizes action execution. One-choice Laya questions still go through model inference; the installed API supports a single criterion.
+
+Each v3 trace records both the harness-eligible actions and model-scored candidate IDs, deterministic exclusion reasons, exact model inputs, and Laya's native output metadata. Replay accepts v1, v2, and v3 traces without loading a model. Reports list every terminal status and reason, count failed episodes, and separate unsupported diagnosis attempts from invalid proposals; see [FINDINGS.md](FINDINGS.md) for definitions and results.
 
 `data/diagnostic_scenarios.jsonl` is the frozen synthetic suite: 12 development and 12 evaluation scenarios. It includes the supported faults, healthy cases, vague and historical reports, multiple and contradictory faults, unavailable tools, insufficient evidence, and unrelated requests. It is not independently validated real-world performance. Policy changes after viewing evaluation results should be recorded and evaluated on development scenarios first.
 
@@ -83,18 +110,18 @@ uv run --locked python -m decisionops workflow episode \
   --trace-file runs/workflow-database-example.jsonl
 ```
 
-Run the development-only comparison first, then the full two-split comparison sequentially with the pinned local GLiClass checkpoint. Both commands use fresh output directories. Replay the saved trace without invoking a policy/model:
+Run the development-only comparison first, then the full two-split comparison with both pinned local checkpoints. GLiClass and Laya each run in a separate sequential worker process; each process reuses its model for the two variants and exits before the next family loads. Use fresh output directories. Replay a saved trace without invoking a policy/model:
 
 ```sh
 uv run --locked python -m decisionops workflow evaluate --split development \
-  --output-dir reports/gliclass-evidence-mask-development-20260927
+  --output-dir reports/workflow-model-comparison-development-final-20260927
 uv run --locked python -m decisionops workflow evaluate --split all \
-  --output-dir reports/gliclass-evidence-mask-20260927
+  --output-dir reports/workflow-model-comparison-20260927
 uv run --locked python -m decisionops workflow replay \
-  --trace-file reports/gliclass-evidence-mask-20260927/examples/fixed-order-database-example.jsonl
+  --trace-file reports/workflow-model-comparison-20260927/examples/fixed-order-database-example.jsonl
 ```
 
-The prior milestone report at `reports/diagnostic-workflow-20260927/` remains historical evidence and is not overwritten. This scenario suite has been inspected; the evaluation split is a synthetic regression comparison, not untouched held-out evidence. The full report includes all four policies and terminal outcomes. GLiClass loading time is shared by its baseline and masked variant because they reuse one loaded ranker; per-episode latency measures the offline fixture workflow and does not represent live tool latency.
+Each invocation requires a new output directory. `run-status.json` distinguishes evaluation execution and worker completion from policy outcomes; an incomplete worker leaves no `all-summary.json` and cannot publish staged results as a complete run. The prior reports at `reports/diagnostic-workflow-20260927/` and `reports/gliclass-evidence-mask-20260927/` remain historical and are not overwritten. This scenario suite has been inspected; the evaluation split is a synthetic regression comparison, not untouched held-out evidence. The full report compares six policies and all terminal outcomes. Each model's load time and worker-process peak RSS are recorded independently. The two variants share their model family's load time and worker high-water RSS. Fixture latency does not represent live tool latency.
 
 The comparison creates per-policy JSON summaries, one JSONL trace per scenario, an example trace, `all-summary.json`, a Markdown comparison, and `provenance.json`. Diagnosable and review-required scenarios use separate denominators, so review-everything scores no supported diagnoses and its unnecessary reviews remain visible. Reports separate unsupported diagnosis proposals, invalid proposals rejected by the harness, terminal reasons, failed episodes, budget exhaustion, tool-related failures, simulator failures, tool calls, per-episode end-to-end latency, model load time, and peak process RSS. For every policy/split, terminal-reason counts sum to episode count; any failed terminal episode marks that policy run failed. Tool fixture timeouts/errors are recorded observations; they are not simulator failures. Provenance captures code and scenario hashes, package versions, checkpoint revision, candidate names/order, and runtime settings.
 

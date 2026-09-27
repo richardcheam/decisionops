@@ -1,0 +1,169 @@
+{
+  "git_head": "8980c8eca7481a8e4061f8c648929761fb9b013d",
+  "git_dirty": true,
+  "git_dirty_paths": [
+    "README.md",
+    "decisionops/backends.py",
+    "decisionops/cli.py",
+    "decisionops/workflow.py",
+    "decisionops/workflow_eval.py",
+    "decisionops/workflow_policies.py",
+    "tests/test_workflow.py",
+    "decisionops/workflow_worker.py",
+    "reports/workflow-model-comparison-20260927/",
+    "reports/workflow-model-comparison-development-20260927/",
+    "reports/workflow-model-comparison-development-final-20260927/",
+    "tests/test_laya_workflow.py"
+  ],
+  "implementation_sha256": {
+    "decisionops/workflow.py": "177daad5eec6c0ae3acd056521e5de145c0e977068961eadf83c055b0ee4bd95",
+    "decisionops/workflow_eval.py": "f5ec41c67b648092034cf5cb81e754d26f3aa782cd759d89b613c3d729bdd182",
+    "decisionops/workflow_policies.py": "07087dc5ae2b711bee2b7561f2a46802900cd10a0e8e846a7a3924e8a261a7a4",
+    "decisionops/workflow_scenarios.py": "657075ab3cac82207fe3effdb7f42197e80f1530495d049c4845a957ca1d940a",
+    "decisionops/backends.py": "81ce65ad82ccea5c8df72ff0fd8e81d624fab537b0eb0aa56516e229d16b789b",
+    "decisionops/cli.py": "5098f0be9b94677cc4c51f94b0a024d5bddcd4b3c2620557e16afe25984dde86",
+    "decisionops/workflow_worker.py": "76047e6032b589deb4b73f15e20b32c82f304cb44a44cc93ed38620f39bde94d",
+    "data/build_workflow_scenarios.py": "11e5cd5cb7fbef26fba21d1c555e2b19c1decc6b36279f50a98cdb3fc2ae254b"
+  },
+  "scenario_file": "/home/richard/projects/decisionops-laya-workflow/data/diagnostic_scenarios.jsonl",
+  "scenario_sha256": "087c6e243c5df89c56e22ef0d081b0a1667ef44dc160d66058ab6ef571db2bc0",
+  "package_versions": {
+    "decisionops": "0.1.0",
+    "torch": "2.14.0+cpu",
+    "transformers": "5.17.0",
+    "gliclass": "0.1.20",
+    "huggingface-hub": "1.33.0"
+  },
+  "runtime": {
+    "python": "3.12.14",
+    "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.39",
+    "pytorch_threads": 4,
+    "batch_size": 1,
+    "device": "cpu",
+    "offline": "1"
+  },
+  "models": {
+    "gliclass": {
+      "repository": "knowledgator/gliclass-small-v1.0",
+      "revision": "21edefaf7951f68c68c505f9139ba536d3b448f7",
+      "device": "cpu"
+    },
+    "laya": {
+      "repository": "convaiinnovations/laya",
+      "revision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+      "device": "cpu"
+    }
+  },
+  "action_candidate_representation": [
+    {
+      "id": "check_database",
+      "model_name": "Check database"
+    },
+    {
+      "id": "check_authentication",
+      "model_name": "Check authentication"
+    },
+    {
+      "id": "check_storage",
+      "model_name": "Check storage"
+    },
+    {
+      "id": "check_service_health",
+      "model_name": "Check service health"
+    },
+    {
+      "id": "diagnose_database_failure",
+      "model_name": "Database failure"
+    },
+    {
+      "id": "diagnose_authentication_failure",
+      "model_name": "Authentication failure"
+    },
+    {
+      "id": "diagnose_disk_full",
+      "model_name": "Disk full"
+    },
+    {
+      "id": "diagnose_healthy",
+      "model_name": "Healthy"
+    },
+    {
+      "id": "request_review",
+      "model_name": "Request review"
+    }
+  ],
+  "policy_order": [
+    "fixed_order",
+    "rules",
+    "gliclass",
+    "gliclass_evidence_masked",
+    "laya",
+    "laya_evidence_masked"
+  ],
+  "max_tool_calls": 4,
+  "max_decisions": 6,
+  "evaluation_scope": "all",
+  "split_counts": {
+    "development": 12,
+    "evaluation": 12
+  },
+  "evidence_masking": "Both evidence-masked model policies remove diagnoses rejected by check_terminal_evidence on visible state only",
+  "laya_action_question": {
+    "question_id": "next_action",
+    "type": "choice",
+    "instructions": "Choose exactly one next workflow action using the report and observations available so far.",
+    "choices": [
+      {
+        "id": "check_database",
+        "name": "Check database",
+        "description": "Run the database connectivity check."
+      },
+      {
+        "id": "check_authentication",
+        "name": "Check authentication",
+        "description": "Run the authentication check."
+      },
+      {
+        "id": "check_storage",
+        "name": "Check storage",
+        "description": "Run the storage capacity and write check."
+      },
+      {
+        "id": "check_service_health",
+        "name": "Check service health",
+        "description": "Run the service health check."
+      },
+      {
+        "id": "diagnose_database_failure",
+        "name": "Database failure",
+        "description": "Conclude that current evidence supports a database failure."
+      },
+      {
+        "id": "diagnose_authentication_failure",
+        "name": "Authentication failure",
+        "description": "Conclude that current evidence supports an authentication failure."
+      },
+      {
+        "id": "diagnose_disk_full",
+        "name": "Disk full",
+        "description": "Conclude that current evidence supports exhausted storage."
+      },
+      {
+        "id": "diagnose_healthy",
+        "name": "Healthy",
+        "description": "Conclude that all required current checks support healthy operation."
+      },
+      {
+        "id": "request_review",
+        "name": "Request review",
+        "description": "Request human review when the available evidence is insufficient or ambiguous."
+      }
+    ],
+    "input_format_note": "Laya receives its native named-choice question; GLiClass receives an ordered candidate-name list. The model-family comparison does not isolate architecture from native input format."
+  },
+  "worker_isolation": {
+    "model_families_sequential": true,
+    "one_family_per_process": true,
+    "each_family_reuses_one_model_for_its_two_variants": true
+  }
+}

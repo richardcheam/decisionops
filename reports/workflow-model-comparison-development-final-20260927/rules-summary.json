@@ -1,0 +1,210 @@
+{
+  "policy": "rules",
+  "model_loading_seconds": 0.0,
+  "peak_process_rss_bytes": 29970432,
+  "run_status": "passed",
+  "metrics_by_split": {
+    "development": {
+      "episode_count": 12,
+      "scenario_count": 12,
+      "run_status": "passed",
+      "terminal_status_counts": {
+        "completed": 8,
+        "review": 4,
+        "failed": 0
+      },
+      "terminal_reason_counts": {
+        "completed": 8,
+        "review": 4,
+        "exhausted_budget": 0,
+        "invalid_proposal": 0,
+        "tool_failure": 0
+      },
+      "failed_episodes": 0,
+      "diagnosable_count": 7,
+      "review_required_count": 5,
+      "correct_supported_diagnoses": 7,
+      "correct_supported_diagnosis_rate": 1.0,
+      "correct_review_decisions": 4,
+      "correct_review_decision_rate": 0.8,
+      "incorrect_diagnoses": 1,
+      "unnecessary_review_on_diagnosable_cases": 0,
+      "unsupported_diagnosis_proposals": 0,
+      "invalid_proposals_rejected": 0,
+      "policy_execution_errors": 0,
+      "budget_exhaustion_episodes": 0,
+      "tool_related_failures": 0,
+      "simulator_failures": 0,
+      "tool_calls": {
+        "total": 28,
+        "per_episode_mean": 2.3333333333333335
+      },
+      "end_to_end_latency_seconds": {
+        "sample_count": 12,
+        "mean": 0.0006692840009539699,
+        "p50": 0.00041696450352901593,
+        "p95": 0.0014311074919532982
+      },
+      "model_loading_seconds": 0.0,
+      "peak_process_rss_bytes": 29970432
+    }
+  },
+  "episodes": [
+    {
+      "episode_id": "dev-001",
+      "scenario_id": "dev-database-clear",
+      "split": "development",
+      "gold_terminal_action": "diagnose_database_failure",
+      "terminal_action": "diagnose_database_failure",
+      "terminal_reason": "completed",
+      "gold_evidence_supported": true,
+      "tool_call_count": 1,
+      "decision_count": 2,
+      "end_to_end_seconds": 0.00027754399343393743,
+      "trace": "traces/rules/dev-001.jsonl"
+    },
+    {
+      "episode_id": "dev-002",
+      "scenario_id": "dev-authentication-clear",
+      "split": "development",
+      "gold_terminal_action": "diagnose_authentication_failure",
+      "terminal_action": "diagnose_authentication_failure",
+      "terminal_reason": "completed",
+      "gold_evidence_supported": true,
+      "tool_call_count": 1,
+      "decision_count": 2,
+      "end_to_end_seconds": 0.00026720100140664726,
+      "trace": "traces/rules/dev-002.jsonl"
+    },
+    {
+      "episode_id": "dev-003",
+      "scenario_id": "dev-storage-clear",
+      "split": "development",
+      "gold_terminal_action": "diagnose_disk_full",
+      "terminal_action": "diagnose_disk_full",
+      "terminal_reason": "completed",
+      "gold_evidence_supported": true,
+      "tool_call_count": 1,
+      "decision_count": 2,
+      "end_to_end_seconds": 0.00027111099916510284,
+      "trace": "traces/rules/dev-003.jsonl"
+    },
+    {
+      "episode_id": "dev-004",
+      "scenario_id": "dev-healthy-clear",
+      "split": "development",
+      "gold_terminal_action": "diagnose_healthy",
+      "terminal_action": "diagnose_healthy",
+      "terminal_reason": "completed",
+      "gold_evidence_supported": true,
+      "tool_call_count": 4,
+      "decision_count": 5,
+      "end_to_end_seconds": 0.0009771299955900759,
+      "trace": "traces/rules/dev-004.jsonl"
+    },
+    {
+      "episode_id": "dev-005",
+      "scenario_id": "dev-vague-to-database",
+      "split": "development",
+      "gold_terminal_action": "diagnose_database_failure",
+      "terminal_action": "diagnose_database_failure",
+      "terminal_reason": "completed",
+      "gold_evidence_supported": true,
+      "tool_call_count": 1,
+      "decision_count": 2,
+      "end_to_end_seconds": 0.0003660600050352514,
+      "trace": "traces/rules/dev-005.jsonl"
+    },
+    {
+      "episode_id": "dev-006",
+      "scenario_id": "dev-historical-resolved",
+      "split": "development",
+      "gold_terminal_action": "diagnose_healthy",
+      "terminal_action": "diagnose_healthy",
+      "terminal_reason": "completed",
+      "gold_evidence_supported": true,
+      "tool_call_count": 4,
+      "decision_count": 5,
+      "end_to_end_seconds": 0.0012492129899328575,
+      "trace": "traces/rules/dev-006.jsonl"
+    },
+    {
+      "episode_id": "dev-007",
+      "scenario_id": "dev-multiple-current-faults",
+      "split": "development",
+      "gold_terminal_action": "request_review",
+      "terminal_action": "request_review",
+      "terminal_reason": "review",
+      "gold_evidence_supported": true,
+      "tool_call_count": 4,
+      "decision_count": 5,
+      "end_to_end_seconds": 0.0016534229944227263,
+      "trace": "traces/rules/dev-007.jsonl"
+    },
+    {
+      "episode_id": "dev-008",
+      "scenario_id": "dev-contradictory-evidence",
+      "split": "development",
+      "gold_terminal_action": "request_review",
+      "terminal_action": "diagnose_database_failure",
+      "terminal_reason": "completed",
+      "gold_evidence_supported": false,
+      "tool_call_count": 1,
+      "decision_count": 2,
+      "end_to_end_seconds": 0.0002951950009446591,
+      "trace": "traces/rules/dev-008.jsonl"
+    },
+    {
+      "episode_id": "dev-009",
+      "scenario_id": "dev-database-timeout",
+      "split": "development",
+      "gold_terminal_action": "request_review",
+      "terminal_action": "request_review",
+      "terminal_reason": "review",
+      "gold_evidence_supported": true,
+      "tool_call_count": 1,
+      "decision_count": 2,
+      "end_to_end_seconds": 0.0002219480084022507,
+      "trace": "traces/rules/dev-009.jsonl"
+    },
+    {
+      "episode_id": "dev-010",
+      "scenario_id": "dev-vague-insufficient",
+      "split": "development",
+      "gold_terminal_action": "request_review",
+      "terminal_action": "request_review",
+      "terminal_reason": "review",
+      "gold_evidence_supported": true,
+      "tool_call_count": 4,
+      "decision_count": 5,
+      "end_to_end_seconds": 0.0010338990105083212,
+      "trace": "traces/rules/dev-010.jsonl"
+    },
+    {
+      "episode_id": "dev-011",
+      "scenario_id": "dev-next-tool-changes",
+      "split": "development",
+      "gold_terminal_action": "diagnose_authentication_failure",
+      "terminal_action": "diagnose_authentication_failure",
+      "terminal_reason": "completed",
+      "gold_evidence_supported": true,
+      "tool_call_count": 2,
+      "decision_count": 3,
+      "end_to_end_seconds": 0.0004678690020227805,
+      "trace": "traces/rules/dev-011.jsonl"
+    },
+    {
+      "episode_id": "dev-012",
+      "scenario_id": "dev-unrelated",
+      "split": "development",
+      "gold_terminal_action": "request_review",
+      "terminal_action": "request_review",
+      "terminal_reason": "review",
+      "gold_evidence_supported": true,
+      "tool_call_count": 4,
+      "decision_count": 5,
+      "end_to_end_seconds": 0.0009508150105830282,
+      "trace": "traces/rules/dev-012.jsonl"
+    }
+  ]
+}
