@@ -1,0 +1,92 @@
+{
+  "git_head": "c04f13b225afc2876c10808e1baf6f5d5602a4fa",
+  "git_dirty": true,
+  "git_dirty_paths": [
+    "decisionops/cli.py",
+    "decisionops/workflow.py",
+    "decisionops/workflow_eval.py",
+    "decisionops/workflow_policies.py",
+    "tests/test_workflow.py",
+    "reports/gliclass-evidence-mask-development-20260927/"
+  ],
+  "implementation_sha256": {
+    "decisionops/workflow.py": "fa2bef3fd3a0229a52e8d4ddea8cf43c1a1613e100a13c195e1c4fa5a10f419f",
+    "decisionops/workflow_eval.py": "8a2d56e57978a5efd1bcf73fd4e76a9bd146267e3ee5c93d21764ec85888cff6",
+    "decisionops/workflow_policies.py": "191428fffc33540663ac80802c8cd5a167aefa3c2d4ba15b39168a90540adc58",
+    "decisionops/workflow_scenarios.py": "657075ab3cac82207fe3effdb7f42197e80f1530495d049c4845a957ca1d940a",
+    "decisionops/backends.py": "176e7089a58b2ff5e0fca3aa263a4dd7653e7b8df9d145a58d334109004a6e68",
+    "decisionops/cli.py": "300b19c63edda0fe33ee7b27e95ecf4ccb7f7f36373908e0dfd27f8e174aedfd",
+    "data/build_workflow_scenarios.py": "11e5cd5cb7fbef26fba21d1c555e2b19c1decc6b36279f50a98cdb3fc2ae254b"
+  },
+  "scenario_file": "/home/richard/projects/decisionops/data/diagnostic_scenarios.jsonl",
+  "scenario_sha256": "087c6e243c5df89c56e22ef0d081b0a1667ef44dc160d66058ab6ef571db2bc0",
+  "package_versions": {
+    "decisionops": "0.1.0",
+    "torch": "2.14.0+cpu",
+    "transformers": "5.17.0",
+    "gliclass": "0.1.20",
+    "huggingface-hub": "1.33.0"
+  },
+  "runtime": {
+    "python": "3.12.14",
+    "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.39",
+    "pytorch_threads": 4,
+    "batch_size": 1,
+    "device": "cpu",
+    "offline": "1"
+  },
+  "model_repository": "knowledgator/gliclass-small-v1.0",
+  "model_revision": "21edefaf7951f68c68c505f9139ba536d3b448f7",
+  "action_candidate_representation": [
+    {
+      "id": "check_database",
+      "model_name": "Check database"
+    },
+    {
+      "id": "check_authentication",
+      "model_name": "Check authentication"
+    },
+    {
+      "id": "check_storage",
+      "model_name": "Check storage"
+    },
+    {
+      "id": "check_service_health",
+      "model_name": "Check service health"
+    },
+    {
+      "id": "diagnose_database_failure",
+      "model_name": "Database failure"
+    },
+    {
+      "id": "diagnose_authentication_failure",
+      "model_name": "Authentication failure"
+    },
+    {
+      "id": "diagnose_disk_full",
+      "model_name": "Disk full"
+    },
+    {
+      "id": "diagnose_healthy",
+      "model_name": "Healthy"
+    },
+    {
+      "id": "request_review",
+      "model_name": "Request review"
+    }
+  ],
+  "policy_order": [
+    "fixed_order",
+    "rules",
+    "gliclass",
+    "gliclass_evidence_masked"
+  ],
+  "max_tool_calls": 4,
+  "max_decisions": 6,
+  "evaluation_scope": "development",
+  "split_counts": {
+    "development": 12
+  },
+  "evidence_masking": "gliclass_evidence_masked removes diagnosis candidates rejected by check_terminal_evidence on visible state only",
+  "model_loading_seconds": 5.844416806998197
+}

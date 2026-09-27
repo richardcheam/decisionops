@@ -36,6 +36,8 @@ class Proposal:
     action_id: Any
     evidence_ids: tuple[str, ...] = ()
     scores: dict[str, float] | None = None
+    scored_candidate_ids: tuple[str, ...] | None = None
+    excluded_candidates: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -261,7 +263,13 @@ def check_terminal_evidence(state: EpisodeState | VisibleState, action_id: str) 
 
 def _proposal_dict(proposal: Any) -> dict[str, Any] | Any:
     if isinstance(proposal, Proposal):
-        return {"action_id": proposal.action_id, "evidence_ids": list(proposal.evidence_ids), "scores": proposal.scores}
+        return {
+            "action_id": proposal.action_id,
+            "evidence_ids": list(proposal.evidence_ids),
+            "scores": proposal.scores,
+            "scored_candidate_ids": None if proposal.scored_candidate_ids is None else list(proposal.scored_candidate_ids),
+            "excluded_candidates": copy.deepcopy(proposal.excluded_candidates),
+        }
     if isinstance(proposal, dict):
         return copy.deepcopy(proposal)
     if isinstance(proposal, (str, int, float, bool)) or proposal is None:
@@ -272,14 +280,20 @@ def _proposal_dict(proposal: Any) -> dict[str, Any] | Any:
 def _decode_proposal(raw: Any) -> tuple[Proposal | None, str | None]:
     if isinstance(raw, Proposal):
         proposal = raw
-    elif isinstance(raw, dict) and set(raw) <= {"action_id", "evidence_ids", "scores"} and "action_id" in raw:
+    elif isinstance(raw, dict) and set(raw) <= {"action_id", "evidence_ids", "scores", "scored_candidate_ids", "excluded_candidates"} and "action_id" in raw:
         evidence = raw.get("evidence_ids", ())
         if not isinstance(evidence, (tuple, list)) or not all(isinstance(value, str) for value in evidence):
             return None, "malformed_evidence_references"
         scores = raw.get("scores")
         if scores is not None and not isinstance(scores, dict):
             return None, "malformed_scores"
-        proposal = Proposal(raw["action_id"], tuple(evidence), scores)
+        scored_ids = raw.get("scored_candidate_ids")
+        if scored_ids is not None and (not isinstance(scored_ids, (tuple, list)) or not all(isinstance(value, str) for value in scored_ids)):
+            return None, "malformed_scored_candidate_ids"
+        excluded = raw.get("excluded_candidates", {})
+        if not isinstance(excluded, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in excluded.items()):
+            return None, "malformed_excluded_candidates"
+        proposal = Proposal(raw["action_id"], tuple(evidence), scores, None if scored_ids is None else tuple(scored_ids), excluded)
     else:
         return None, "malformed_proposal"
     if not isinstance(proposal.action_id, str):
@@ -295,15 +309,29 @@ def _decode_proposal(raw: Any) -> tuple[Proposal | None, str | None]:
             return None, "malformed_scores"
         if any(not math.isfinite(value) or not 0 <= value <= 1 for value in values.values()):
             return None, "malformed_scores"
-        proposal = Proposal(proposal.action_id, tuple(proposal.evidence_ids), values)
+        proposal = Proposal(proposal.action_id, tuple(proposal.evidence_ids), values, proposal.scored_candidate_ids, proposal.excluded_candidates)
+    if proposal.scored_candidate_ids is not None and (not all(isinstance(value, str) for value in proposal.scored_candidate_ids) or len(set(proposal.scored_candidate_ids)) != len(proposal.scored_candidate_ids)):
+        return None, "malformed_scored_candidate_ids"
+    if not isinstance(proposal.excluded_candidates, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in proposal.excluded_candidates.items()):
+        return None, "malformed_excluded_candidates"
     return proposal, None
 
 
-def _validate_scores(proposal: Proposal, eligible: tuple[str, ...]) -> str | None:
+def _validate_scores(proposal: Proposal, eligible: tuple[str, ...], require_complete_metadata: bool = True) -> str | None:
     if proposal.scores is None:
         return None
-    if set(proposal.scores) != set(eligible):
-        return "model_scores_must_cover_exactly_eligible_actions"
+    scored = tuple(proposal.scored_candidate_ids) if proposal.scored_candidate_ids is not None else tuple(proposal.scores)
+    if not set(scored) <= set(eligible):
+        return "scored_candidates_include_harness_disallowed_actions"
+    if proposal.action_id not in scored:
+        return "selected_action_not_scored"
+    if set(proposal.scores) != set(scored):
+        return "model_scores_must_cover_exactly_scored_candidates"
+    if require_complete_metadata:
+        if set(scored) & set(proposal.excluded_candidates):
+            return "scored_candidates_cannot_also_be_excluded"
+        if set(scored) | set(proposal.excluded_candidates) != set(ACTION_IDS):
+            return "candidate_exclusions_must_account_for_every_action"
     if abs(sum(proposal.scores.values()) - 1.0) > 0.01:
         return "model_action_scores_do_not_sum_to_one"
     if proposal.scores[proposal.action_id] + 0.0011 < max(proposal.scores.values()):
@@ -336,11 +364,24 @@ def _make_event(
     observation: dict[str, Any] | None,
     state: EpisodeState,
     event_type: str = "decision",
+    policy_input: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    proposal_data = _proposal_dict(proposal)
+    if isinstance(proposal_data, dict):
+        scored_candidate_ids = proposal_data.get("scored_candidate_ids")
+        if scored_candidate_ids is None:
+            scores = proposal_data.get("scores")
+            scored_candidate_ids = list(scores) if isinstance(scores, dict) else []
+        excluded_candidates = proposal_data.get("excluded_candidates") or {}
+    else:
+        scored_candidate_ids, excluded_candidates = [], {}
     return {
-        "event_type": event_type, "episode_id": episode_id, "step_id": step_id,
+        "trace_version": 2, "event_type": event_type, "episode_id": episode_id, "step_id": step_id,
         "visible_state_before": before, "eligible_actions": list(eligible),
-        "proposal": _proposal_dict(proposal), "acceptance": acceptance,
+        "policy_input": copy.deepcopy(policy_input),
+        "scored_candidate_ids": scored_candidate_ids,
+        "excluded_candidates": copy.deepcopy(excluded_candidates),
+        "proposal": proposal_data, "acceptance": acceptance,
         "tool_observation": copy.deepcopy(observation), "visible_state_after": state.as_dict(),
         "remaining_budgets": {"tool_calls": state.remaining_tool_calls, "decisions": state.remaining_decisions},
         "terminal_decision": None if state.terminal_reason is None else {"action_id": state.terminal_action, "reason": state.terminal_reason, "status": state.terminal_status, "cited_evidence_ids": list(state.cited_evidence_ids)},
@@ -379,8 +420,10 @@ def run_episode(
             break
         state.remaining_decisions -= 1
         state.decision_count += 1
+        policy_state = state.visible()
+        policy_input = {"visible_state": policy_state.as_dict(), "eligible_action_ids": list(eligible)}
         try:
-            raw = policy.propose(state.visible(), eligible)
+            raw = policy.propose(policy_state, eligible)
         except Exception as exc:
             raw = {"policy_error": f"{type(exc).__name__}: {exc}"}
             proposal, malformed_reason = None, "policy_execution_error"
@@ -452,7 +495,7 @@ def run_episode(
                         _finish(state, "invalid_proposal")
                     else:
                         state.recovery_attempts += 1
-        trace.append(_make_event(episode_id, state.decision_count, before, eligible, raw, acceptance, observation, state))
+        trace.append(_make_event(episode_id, state.decision_count, before, eligible, raw, acceptance, observation, state, policy_input=policy_input))
 
     return EpisodeResult(
         episode_id=episode_id, terminal_status=state.terminal_status, terminal_reason=state.terminal_reason or "tool_failure",
@@ -489,6 +532,10 @@ def replay_trace(events: list[dict[str, Any]]) -> dict[str, Any]:
     if not events:
         raise ValueError("trace is empty")
     events = json.loads(json.dumps(events, ensure_ascii=False))
+    versions = {event.get("trace_version", 1) for event in events}
+    if not versions <= {1, 2} or len(versions) != 1:
+        raise ValueError("trace contains an unsupported or mixed format version")
+    trace_version = next(iter(versions))
     episode_id = events[0].get("episode_id")
     initial = _restore_state(events[0]["visible_state_before"])
     if initial.observations or initial.actions_attempted or initial.decision_count:
@@ -518,12 +565,34 @@ def replay_trace(events: list[dict[str, Any]]) -> dict[str, Any]:
                 raise ValueError("trace eligible actions do not match visible state")
             state.remaining_decisions -= 1
             state.decision_count += 1
+            if trace_version == 2:
+                expected_policy_input = {"visible_state": _json_state(state), "eligible_action_ids": list(eligible)}
+                if event.get("policy_input") != expected_policy_input:
+                    raise ValueError("trace policy input does not match the actual decision state")
+                scored_ids = event.get("scored_candidate_ids")
+                excluded = event.get("excluded_candidates")
+                if not isinstance(scored_ids, list) or len(set(scored_ids)) != len(scored_ids) or not set(scored_ids) <= set(eligible):
+                    raise ValueError("trace scored candidates are malformed or harness-disallowed")
+                if not isinstance(excluded, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in excluded.items()):
+                    raise ValueError("trace candidate exclusions are malformed")
+                if set(scored_ids) & set(excluded):
+                    raise ValueError("trace candidates are both scored and excluded")
             acceptance = event["acceptance"]
             proposal, malformed = _decode_proposal(event.get("proposal"))
+            if trace_version == 2 and proposal is not None:
+                proposal_scores = list(proposal.scored_candidate_ids) if proposal.scored_candidate_ids is not None else list(proposal.scores or {})
+                if proposal_scores != event["scored_candidate_ids"] or proposal.excluded_candidates != event["excluded_candidates"]:
+                    raise ValueError("trace candidate metadata differs from the recorded proposal")
+            if proposal is not None and proposal.scores is not None and proposal.action_id in eligible:
+                score_error = _validate_scores(proposal, eligible, require_complete_metadata=trace_version == 2)
+                if acceptance.get("accepted") and score_error:
+                    raise ValueError("trace accepted invalid scores or candidate membership")
+                if acceptance.get("reason") == "malformed_scores" and not score_error:
+                    raise ValueError("trace incorrectly rejected valid model scores")
             if acceptance.get("accepted"):
                 if malformed or proposal is None or proposal.action_id not in eligible:
                     raise ValueError("trace accepted a malformed or ineligible proposal")
-                if proposal.scores and _validate_scores(proposal, eligible):
+                if proposal.scores and _validate_scores(proposal, eligible, require_complete_metadata=trace_version == 2):
                     raise ValueError("trace accepted malformed model scores")
                 if proposal.action_id in TOOL_ACTIONS:
                     if proposal.evidence_ids or state.remaining_tool_calls <= 0:

@@ -3,7 +3,7 @@
 import re
 from typing import Any
 
-from .workflow import ACTION_NAMES, TOOL_ACTIONS, VisibleState, Proposal, check_terminal_evidence
+from .workflow import ACTION_IDS, ACTION_NAMES, TERMINAL_ACTIONS, TOOL_ACTIONS, VisibleState, Proposal, check_terminal_evidence
 
 TOOL_ORDER = ("check_database", "check_authentication", "check_storage", "check_service_health")
 SYMPTOM_PATTERNS = (
@@ -83,18 +83,42 @@ def render_visible_state(state: VisibleState) -> str:
 
 
 class GLiClassPolicy:
-    """Rank action candidates directly using the visible episode state."""
+    """Rank eligible actions; optionally mask diagnoses unsupported by visible evidence."""
 
-    name = "gliclass"
-
-    def __init__(self, ranker: Any):
+    def __init__(self, ranker: Any, evidence_masked: bool = False):
         self.ranker = ranker
+        self.evidence_masked = evidence_masked
+        self.name = "gliclass_evidence_masked" if evidence_masked else "gliclass"
         self.load_seconds = float(getattr(ranker, "load_seconds", 0.0))
 
+    def candidate_set(self, state: VisibleState, eligible_action_ids: tuple[str, ...]) -> tuple[tuple[str, ...], dict[str, str]]:
+        eligible = set(eligible_action_ids)
+        scored = []
+        excluded = {}
+        diagnoses = set(TERMINAL_ACTIONS[:-1])
+        for action_id in ACTION_IDS:
+            if action_id not in eligible:
+                if action_id in TOOL_ACTIONS and action_id in state.actions_attempted:
+                    excluded[action_id] = "tool_already_attempted"
+                elif action_id in TOOL_ACTIONS and state.remaining_tool_calls <= 0:
+                    excluded[action_id] = "tool_call_budget_exhausted"
+                else:
+                    excluded[action_id] = "not_harness_eligible"
+            elif self.evidence_masked and action_id in diagnoses:
+                supported, reason, _evidence_ids = check_terminal_evidence(state, action_id)
+                if not supported:
+                    excluded[action_id] = f"diagnosis_not_supported:{reason}"
+                else:
+                    scored.append(action_id)
+            else:
+                scored.append(action_id)
+        return tuple(scored), excluded
+
     def propose(self, state: VisibleState, eligible_action_ids: tuple[str, ...]) -> Proposal:
-        candidates = [(action_id, ACTION_NAMES[action_id]) for action_id in eligible_action_ids]
+        scored_candidate_ids, excluded_candidates = self.candidate_set(state, eligible_action_ids)
+        candidates = [(action_id, ACTION_NAMES[action_id]) for action_id in scored_candidate_ids]
         scores = self.ranker.rank(render_visible_state(state), candidates)
-        if set(scores) != set(eligible_action_ids):
-            raise ValueError("GLiClass action ranker returned scores outside eligible actions")
-        selected = max(eligible_action_ids, key=scores.get)
-        return Proposal(selected, scores=scores)
+        if set(scores) != set(scored_candidate_ids):
+            raise ValueError("GLiClass action ranker must return scores for exactly its scored candidate IDs")
+        selected = max(scored_candidate_ids, key=scores.get)
+        return Proposal(selected, scores=scores, scored_candidate_ids=scored_candidate_ids, excluded_candidates=excluded_candidates)

@@ -1,0 +1,1109 @@
+{
+  "created_utc": "2026-09-27T16:44:22.980214+00:00",
+  "scenario_sha256": "087c6e243c5df89c56e22ef0d081b0a1667ef44dc160d66058ab6ef571db2bc0",
+  "evaluation_scope": "development",
+  "provenance": {
+    "git_head": "c04f13b225afc2876c10808e1baf6f5d5602a4fa",
+    "git_dirty": true,
+    "git_dirty_paths": [
+      "decisionops/cli.py",
+      "decisionops/workflow.py",
+      "decisionops/workflow_eval.py",
+      "decisionops/workflow_policies.py",
+      "tests/test_workflow.py",
+      "reports/gliclass-evidence-mask-development-20260927/"
+    ],
+    "implementation_sha256": {
+      "decisionops/workflow.py": "fa2bef3fd3a0229a52e8d4ddea8cf43c1a1613e100a13c195e1c4fa5a10f419f",
+      "decisionops/workflow_eval.py": "8a2d56e57978a5efd1bcf73fd4e76a9bd146267e3ee5c93d21764ec85888cff6",
+      "decisionops/workflow_policies.py": "191428fffc33540663ac80802c8cd5a167aefa3c2d4ba15b39168a90540adc58",
+      "decisionops/workflow_scenarios.py": "657075ab3cac82207fe3effdb7f42197e80f1530495d049c4845a957ca1d940a",
+      "decisionops/backends.py": "176e7089a58b2ff5e0fca3aa263a4dd7653e7b8df9d145a58d334109004a6e68",
+      "decisionops/cli.py": "300b19c63edda0fe33ee7b27e95ecf4ccb7f7f36373908e0dfd27f8e174aedfd",
+      "data/build_workflow_scenarios.py": "11e5cd5cb7fbef26fba21d1c555e2b19c1decc6b36279f50a98cdb3fc2ae254b"
+    },
+    "scenario_file": "/home/richard/projects/decisionops/data/diagnostic_scenarios.jsonl",
+    "scenario_sha256": "087c6e243c5df89c56e22ef0d081b0a1667ef44dc160d66058ab6ef571db2bc0",
+    "package_versions": {
+      "decisionops": "0.1.0",
+      "torch": "2.14.0+cpu",
+      "transformers": "5.17.0",
+      "gliclass": "0.1.20",
+      "huggingface-hub": "1.33.0"
+    },
+    "runtime": {
+      "python": "3.12.14",
+      "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.39",
+      "pytorch_threads": 4,
+      "batch_size": 1,
+      "device": "cpu",
+      "offline": "1"
+    },
+    "model_repository": "knowledgator/gliclass-small-v1.0",
+    "model_revision": "21edefaf7951f68c68c505f9139ba536d3b448f7",
+    "action_candidate_representation": [
+      {
+        "id": "check_database",
+        "model_name": "Check database"
+      },
+      {
+        "id": "check_authentication",
+        "model_name": "Check authentication"
+      },
+      {
+        "id": "check_storage",
+        "model_name": "Check storage"
+      },
+      {
+        "id": "check_service_health",
+        "model_name": "Check service health"
+      },
+      {
+        "id": "diagnose_database_failure",
+        "model_name": "Database failure"
+      },
+      {
+        "id": "diagnose_authentication_failure",
+        "model_name": "Authentication failure"
+      },
+      {
+        "id": "diagnose_disk_full",
+        "model_name": "Disk full"
+      },
+      {
+        "id": "diagnose_healthy",
+        "model_name": "Healthy"
+      },
+      {
+        "id": "request_review",
+        "model_name": "Request review"
+      }
+    ],
+    "policy_order": [
+      "fixed_order",
+      "rules",
+      "gliclass",
+      "gliclass_evidence_masked"
+    ],
+    "max_tool_calls": 4,
+    "max_decisions": 6,
+    "evaluation_scope": "development",
+    "split_counts": {
+      "development": 12
+    },
+    "evidence_masking": "gliclass_evidence_masked removes diagnosis candidates rejected by check_terminal_evidence on visible state only",
+    "model_loading_seconds": 5.844416806998197
+  },
+  "policies": {
+    "fixed_order": {
+      "policy": "fixed_order",
+      "model_loading_seconds": 0.0,
+      "peak_process_rss_bytes": 32464896,
+      "run_status": "passed",
+      "metrics_by_split": {
+        "development": {
+          "episode_count": 12,
+          "scenario_count": 12,
+          "run_status": "passed",
+          "terminal_status_counts": {
+            "completed": 7,
+            "review": 5,
+            "failed": 0
+          },
+          "terminal_reason_counts": {
+            "completed": 7,
+            "review": 5,
+            "exhausted_budget": 0,
+            "invalid_proposal": 0,
+            "tool_failure": 0
+          },
+          "failed_episodes": 0,
+          "diagnosable_count": 7,
+          "review_required_count": 5,
+          "correct_supported_diagnoses": 7,
+          "correct_supported_diagnosis_rate": 1.0,
+          "correct_review_decisions": 5,
+          "correct_review_decision_rate": 1.0,
+          "incorrect_diagnoses": 0,
+          "unnecessary_review_on_diagnosable_cases": 0,
+          "unsupported_diagnosis_proposals": 0,
+          "invalid_proposals_rejected": 0,
+          "policy_execution_errors": 0,
+          "budget_exhaustion_episodes": 0,
+          "tool_related_failures": 0,
+          "simulator_failures": 0,
+          "tool_calls": {
+            "total": 48,
+            "per_episode_mean": 4.0
+          },
+          "end_to_end_latency_seconds": {
+            "sample_count": 12,
+            "mean": 0.0009157284997248402,
+            "p50": 0.0008682275001774542,
+            "p95": 0.0012038726454193234
+          },
+          "model_loading_seconds": 0.0,
+          "peak_process_rss_bytes": 32464896
+        }
+      },
+      "episodes": [
+        {
+          "episode_id": "dev-001",
+          "scenario_id": "dev-database-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_database_failure",
+          "terminal_action": "diagnose_database_failure",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0008536209934391081,
+          "trace": "traces/fixed_order/dev-001.jsonl"
+        },
+        {
+          "episode_id": "dev-002",
+          "scenario_id": "dev-authentication-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_authentication_failure",
+          "terminal_action": "diagnose_authentication_failure",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0008757439936744049,
+          "trace": "traces/fixed_order/dev-002.jsonl"
+        },
+        {
+          "episode_id": "dev-003",
+          "scenario_id": "dev-storage-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_disk_full",
+          "terminal_action": "diagnose_disk_full",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0009299000084865838,
+          "trace": "traces/fixed_order/dev-003.jsonl"
+        },
+        {
+          "episode_id": "dev-004",
+          "scenario_id": "dev-healthy-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_healthy",
+          "terminal_action": "diagnose_healthy",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0008898619998944923,
+          "trace": "traces/fixed_order/dev-004.jsonl"
+        },
+        {
+          "episode_id": "dev-005",
+          "scenario_id": "dev-vague-to-database",
+          "split": "development",
+          "gold_terminal_action": "diagnose_database_failure",
+          "terminal_action": "diagnose_database_failure",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0014801799989072606,
+          "trace": "traces/fixed_order/dev-005.jsonl"
+        },
+        {
+          "episode_id": "dev-006",
+          "scenario_id": "dev-historical-resolved",
+          "split": "development",
+          "gold_terminal_action": "diagnose_healthy",
+          "terminal_action": "diagnose_healthy",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0008933589997468516,
+          "trace": "traces/fixed_order/dev-006.jsonl"
+        },
+        {
+          "episode_id": "dev-007",
+          "scenario_id": "dev-multiple-current-faults",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0008420999947702512,
+          "trace": "traces/fixed_order/dev-007.jsonl"
+        },
+        {
+          "episode_id": "dev-008",
+          "scenario_id": "dev-contradictory-evidence",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0009778029925655574,
+          "trace": "traces/fixed_order/dev-008.jsonl"
+        },
+        {
+          "episode_id": "dev-009",
+          "scenario_id": "dev-database-timeout",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.000777237000875175,
+          "trace": "traces/fixed_order/dev-009.jsonl"
+        },
+        {
+          "episode_id": "dev-010",
+          "scenario_id": "dev-vague-insufficient",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0008038820087676868,
+          "trace": "traces/fixed_order/dev-010.jsonl"
+        },
+        {
+          "episode_id": "dev-011",
+          "scenario_id": "dev-next-tool-changes",
+          "split": "development",
+          "gold_terminal_action": "diagnose_authentication_failure",
+          "terminal_action": "diagnose_authentication_failure",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0008043429988902062,
+          "trace": "traces/fixed_order/dev-011.jsonl"
+        },
+        {
+          "episode_id": "dev-012",
+          "scenario_id": "dev-unrelated",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0008607110066805035,
+          "trace": "traces/fixed_order/dev-012.jsonl"
+        }
+      ]
+    },
+    "rules": {
+      "policy": "rules",
+      "model_loading_seconds": 0.0,
+      "peak_process_rss_bytes": 32464896,
+      "run_status": "passed",
+      "metrics_by_split": {
+        "development": {
+          "episode_count": 12,
+          "scenario_count": 12,
+          "run_status": "passed",
+          "terminal_status_counts": {
+            "completed": 8,
+            "review": 4,
+            "failed": 0
+          },
+          "terminal_reason_counts": {
+            "completed": 8,
+            "review": 4,
+            "exhausted_budget": 0,
+            "invalid_proposal": 0,
+            "tool_failure": 0
+          },
+          "failed_episodes": 0,
+          "diagnosable_count": 7,
+          "review_required_count": 5,
+          "correct_supported_diagnoses": 7,
+          "correct_supported_diagnosis_rate": 1.0,
+          "correct_review_decisions": 4,
+          "correct_review_decision_rate": 0.8,
+          "incorrect_diagnoses": 1,
+          "unnecessary_review_on_diagnosable_cases": 0,
+          "unsupported_diagnosis_proposals": 0,
+          "invalid_proposals_rejected": 0,
+          "policy_execution_errors": 0,
+          "budget_exhaustion_episodes": 0,
+          "tool_related_failures": 0,
+          "simulator_failures": 0,
+          "tool_calls": {
+            "total": 28,
+            "per_episode_mean": 2.3333333333333335
+          },
+          "end_to_end_latency_seconds": {
+            "sample_count": 12,
+            "mean": 0.0006821348360972479,
+            "p50": 0.0005102615032228641,
+            "p95": 0.0012748118555464315
+          },
+          "model_loading_seconds": 0.0,
+          "peak_process_rss_bytes": 32464896
+        }
+      },
+      "episodes": [
+        {
+          "episode_id": "dev-001",
+          "scenario_id": "dev-database-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_database_failure",
+          "terminal_action": "diagnose_database_failure",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 1,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.00027670599229168147,
+          "trace": "traces/rules/dev-001.jsonl"
+        },
+        {
+          "episode_id": "dev-002",
+          "scenario_id": "dev-authentication-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_authentication_failure",
+          "terminal_action": "diagnose_authentication_failure",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 1,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.00026105700817424804,
+          "trace": "traces/rules/dev-002.jsonl"
+        },
+        {
+          "episode_id": "dev-003",
+          "scenario_id": "dev-storage-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_disk_full",
+          "terminal_action": "diagnose_disk_full",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 1,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.00028664599813055247,
+          "trace": "traces/rules/dev-003.jsonl"
+        },
+        {
+          "episode_id": "dev-004",
+          "scenario_id": "dev-healthy-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_healthy",
+          "terminal_action": "diagnose_healthy",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0009810600022319704,
+          "trace": "traces/rules/dev-004.jsonl"
+        },
+        {
+          "episode_id": "dev-005",
+          "scenario_id": "dev-vague-to-database",
+          "split": "development",
+          "gold_terminal_action": "diagnose_database_failure",
+          "terminal_action": "diagnose_database_failure",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 1,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.0003178120095981285,
+          "trace": "traces/rules/dev-005.jsonl"
+        },
+        {
+          "episode_id": "dev-006",
+          "scenario_id": "dev-historical-resolved",
+          "split": "development",
+          "gold_terminal_action": "diagnose_healthy",
+          "terminal_action": "diagnose_healthy",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0011448459990788251,
+          "trace": "traces/rules/dev-006.jsonl"
+        },
+        {
+          "episode_id": "dev-007",
+          "scenario_id": "dev-multiple-current-faults",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0012200140045024455,
+          "trace": "traces/rules/dev-007.jsonl"
+        },
+        {
+          "episode_id": "dev-008",
+          "scenario_id": "dev-contradictory-evidence",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "diagnose_database_failure",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": false,
+          "tool_call_count": 1,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.00045055701048113406,
+          "trace": "traces/rules/dev-008.jsonl"
+        },
+        {
+          "episode_id": "dev-009",
+          "scenario_id": "dev-database-timeout",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": true,
+          "tool_call_count": 1,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.0002494189975550398,
+          "trace": "traces/rules/dev-009.jsonl"
+        },
+        {
+          "episode_id": "dev-010",
+          "scenario_id": "dev-vague-insufficient",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0010857480083359405,
+          "trace": "traces/rules/dev-010.jsonl"
+        },
+        {
+          "episode_id": "dev-011",
+          "scenario_id": "dev-next-tool-changes",
+          "split": "development",
+          "gold_terminal_action": "diagnose_authentication_failure",
+          "terminal_action": "diagnose_authentication_failure",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 2,
+          "decision_count": 3,
+          "end_to_end_seconds": 0.0005699659959645942,
+          "trace": "traces/rules/dev-011.jsonl"
+        },
+        {
+          "episode_id": "dev-012",
+          "scenario_id": "dev-unrelated",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 0.0013417870068224147,
+          "trace": "traces/rules/dev-012.jsonl"
+        }
+      ]
+    },
+    "gliclass": {
+      "policy": "gliclass",
+      "model_loading_seconds": 5.844416806998197,
+      "peak_process_rss_bytes": 867004416,
+      "run_status": "failed",
+      "metrics_by_split": {
+        "development": {
+          "episode_count": 12,
+          "scenario_count": 12,
+          "run_status": "failed",
+          "terminal_status_counts": {
+            "completed": 0,
+            "review": 2,
+            "failed": 10
+          },
+          "terminal_reason_counts": {
+            "completed": 0,
+            "review": 2,
+            "exhausted_budget": 0,
+            "invalid_proposal": 10,
+            "tool_failure": 0
+          },
+          "failed_episodes": 10,
+          "diagnosable_count": 7,
+          "review_required_count": 5,
+          "correct_supported_diagnoses": 0,
+          "correct_supported_diagnosis_rate": 0.0,
+          "correct_review_decisions": 1,
+          "correct_review_decision_rate": 0.2,
+          "incorrect_diagnoses": 0,
+          "unnecessary_review_on_diagnosable_cases": 1,
+          "unsupported_diagnosis_proposals": 20,
+          "invalid_proposals_rejected": 0,
+          "policy_execution_errors": 0,
+          "budget_exhaustion_episodes": 0,
+          "tool_related_failures": 0,
+          "simulator_failures": 0,
+          "tool_calls": {
+            "total": 7,
+            "per_episode_mean": 0.5833333333333334
+          },
+          "end_to_end_latency_seconds": {
+            "sample_count": 12,
+            "mean": 0.3286369440005122,
+            "p50": 0.23400487449544016,
+            "p95": 0.6439762360467285
+          },
+          "model_loading_seconds": 5.844416806998197,
+          "peak_process_rss_bytes": 867004416
+        }
+      },
+      "episodes": [
+        {
+          "episode_id": "dev-001",
+          "scenario_id": "dev-database-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_database_failure",
+          "terminal_action": null,
+          "terminal_reason": "invalid_proposal",
+          "gold_evidence_supported": false,
+          "tool_call_count": 0,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.27966792600636836,
+          "trace": "traces/gliclass/dev-001.jsonl"
+        },
+        {
+          "episode_id": "dev-002",
+          "scenario_id": "dev-authentication-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_authentication_failure",
+          "terminal_action": null,
+          "terminal_reason": "invalid_proposal",
+          "gold_evidence_supported": false,
+          "tool_call_count": 0,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.22464030800620094,
+          "trace": "traces/gliclass/dev-002.jsonl"
+        },
+        {
+          "episode_id": "dev-003",
+          "scenario_id": "dev-storage-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_disk_full",
+          "terminal_action": null,
+          "terminal_reason": "invalid_proposal",
+          "gold_evidence_supported": false,
+          "tool_call_count": 0,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.22619883599691093,
+          "trace": "traces/gliclass/dev-003.jsonl"
+        },
+        {
+          "episode_id": "dev-004",
+          "scenario_id": "dev-healthy-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_healthy",
+          "terminal_action": null,
+          "terminal_reason": "invalid_proposal",
+          "gold_evidence_supported": false,
+          "tool_call_count": 0,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.22879192599793896,
+          "trace": "traces/gliclass/dev-004.jsonl"
+        },
+        {
+          "episode_id": "dev-005",
+          "scenario_id": "dev-vague-to-database",
+          "split": "development",
+          "gold_terminal_action": "diagnose_database_failure",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": false,
+          "tool_call_count": 0,
+          "decision_count": 1,
+          "end_to_end_seconds": 0.10370757900818717,
+          "trace": "traces/gliclass/dev-005.jsonl"
+        },
+        {
+          "episode_id": "dev-006",
+          "scenario_id": "dev-historical-resolved",
+          "split": "development",
+          "gold_terminal_action": "diagnose_healthy",
+          "terminal_action": null,
+          "terminal_reason": "invalid_proposal",
+          "gold_evidence_supported": false,
+          "tool_call_count": 1,
+          "decision_count": 3,
+          "end_to_end_seconds": 0.40956296400690917,
+          "trace": "traces/gliclass/dev-006.jsonl"
+        },
+        {
+          "episode_id": "dev-007",
+          "scenario_id": "dev-multiple-current-faults",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": null,
+          "terminal_reason": "invalid_proposal",
+          "gold_evidence_supported": false,
+          "tool_call_count": 2,
+          "decision_count": 4,
+          "end_to_end_seconds": 0.6080562470015138,
+          "trace": "traces/gliclass/dev-007.jsonl"
+        },
+        {
+          "episode_id": "dev-008",
+          "scenario_id": "dev-contradictory-evidence",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": null,
+          "terminal_reason": "invalid_proposal",
+          "gold_evidence_supported": false,
+          "tool_call_count": 2,
+          "decision_count": 4,
+          "end_to_end_seconds": 0.650096597004449,
+          "trace": "traces/gliclass/dev-008.jsonl"
+        },
+        {
+          "episode_id": "dev-009",
+          "scenario_id": "dev-database-timeout",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": null,
+          "terminal_reason": "invalid_proposal",
+          "gold_evidence_supported": false,
+          "tool_call_count": 0,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.23356013299780898,
+          "trace": "traces/gliclass/dev-009.jsonl"
+        },
+        {
+          "episode_id": "dev-010",
+          "scenario_id": "dev-vague-insufficient",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": null,
+          "terminal_reason": "invalid_proposal",
+          "gold_evidence_supported": false,
+          "tool_call_count": 0,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.23444961599307135,
+          "trace": "traces/gliclass/dev-010.jsonl"
+        },
+        {
+          "episode_id": "dev-011",
+          "scenario_id": "dev-next-tool-changes",
+          "split": "development",
+          "gold_terminal_action": "diagnose_authentication_failure",
+          "terminal_action": null,
+          "terminal_reason": "invalid_proposal",
+          "gold_evidence_supported": false,
+          "tool_call_count": 2,
+          "decision_count": 4,
+          "end_to_end_seconds": 0.6389686679904116,
+          "trace": "traces/gliclass/dev-011.jsonl"
+        },
+        {
+          "episode_id": "dev-012",
+          "scenario_id": "dev-unrelated",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": true,
+          "tool_call_count": 0,
+          "decision_count": 1,
+          "end_to_end_seconds": 0.10594252799637616,
+          "trace": "traces/gliclass/dev-012.jsonl"
+        }
+      ]
+    },
+    "gliclass_evidence_masked": {
+      "policy": "gliclass_evidence_masked",
+      "model_loading_seconds": 5.844416806998197,
+      "peak_process_rss_bytes": 880500736,
+      "run_status": "passed",
+      "metrics_by_split": {
+        "development": {
+          "episode_count": 12,
+          "scenario_count": 12,
+          "run_status": "passed",
+          "terminal_status_counts": {
+            "completed": 4,
+            "review": 8,
+            "failed": 0
+          },
+          "terminal_reason_counts": {
+            "completed": 4,
+            "review": 8,
+            "exhausted_budget": 0,
+            "invalid_proposal": 0,
+            "tool_failure": 0
+          },
+          "failed_episodes": 0,
+          "diagnosable_count": 7,
+          "review_required_count": 5,
+          "correct_supported_diagnoses": 4,
+          "correct_supported_diagnosis_rate": 0.5714285714285714,
+          "correct_review_decisions": 5,
+          "correct_review_decision_rate": 1.0,
+          "incorrect_diagnoses": 0,
+          "unnecessary_review_on_diagnosable_cases": 3,
+          "unsupported_diagnosis_proposals": 0,
+          "invalid_proposals_rejected": 0,
+          "policy_execution_errors": 0,
+          "budget_exhaustion_episodes": 0,
+          "tool_related_failures": 0,
+          "simulator_failures": 0,
+          "tool_calls": {
+            "total": 21,
+            "per_episode_mean": 1.75
+          },
+          "end_to_end_latency_seconds": {
+            "sample_count": 12,
+            "mean": 0.4045228343347844,
+            "p50": 0.40643363700655755,
+            "p95": 0.8214785156531431
+          },
+          "model_loading_seconds": 5.844416806998197,
+          "peak_process_rss_bytes": 880500736
+        }
+      },
+      "episodes": [
+        {
+          "episode_id": "dev-001",
+          "scenario_id": "dev-database-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_database_failure",
+          "terminal_action": "diagnose_database_failure",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 1,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.23705827099911403,
+          "trace": "traces/gliclass_evidence_masked/dev-001.jsonl"
+        },
+        {
+          "episode_id": "dev-002",
+          "scenario_id": "dev-authentication-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_authentication_failure",
+          "terminal_action": "diagnose_authentication_failure",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 1,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.24112697099917568,
+          "trace": "traces/gliclass_evidence_masked/dev-002.jsonl"
+        },
+        {
+          "episode_id": "dev-003",
+          "scenario_id": "dev-storage-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_disk_full",
+          "terminal_action": "diagnose_disk_full",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 1,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.24319395699421875,
+          "trace": "traces/gliclass_evidence_masked/dev-003.jsonl"
+        },
+        {
+          "episode_id": "dev-004",
+          "scenario_id": "dev-healthy-clear",
+          "split": "development",
+          "gold_terminal_action": "diagnose_healthy",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": false,
+          "tool_call_count": 2,
+          "decision_count": 3,
+          "end_to_end_seconds": 0.41423641800065525,
+          "trace": "traces/gliclass_evidence_masked/dev-004.jsonl"
+        },
+        {
+          "episode_id": "dev-005",
+          "scenario_id": "dev-vague-to-database",
+          "split": "development",
+          "gold_terminal_action": "diagnose_database_failure",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": false,
+          "tool_call_count": 1,
+          "decision_count": 2,
+          "end_to_end_seconds": 0.23910568399878684,
+          "trace": "traces/gliclass_evidence_masked/dev-005.jsonl"
+        },
+        {
+          "episode_id": "dev-006",
+          "scenario_id": "dev-historical-resolved",
+          "split": "development",
+          "gold_terminal_action": "diagnose_healthy",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": false,
+          "tool_call_count": 2,
+          "decision_count": 3,
+          "end_to_end_seconds": 0.44162367199896835,
+          "trace": "traces/gliclass_evidence_masked/dev-006.jsonl"
+        },
+        {
+          "episode_id": "dev-007",
+          "scenario_id": "dev-multiple-current-faults",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": true,
+          "tool_call_count": 4,
+          "decision_count": 5,
+          "end_to_end_seconds": 1.0240964460099349,
+          "trace": "traces/gliclass_evidence_masked/dev-007.jsonl"
+        },
+        {
+          "episode_id": "dev-008",
+          "scenario_id": "dev-contradictory-evidence",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": true,
+          "tool_call_count": 2,
+          "decision_count": 3,
+          "end_to_end_seconds": 0.4321973589976551,
+          "trace": "traces/gliclass_evidence_masked/dev-008.jsonl"
+        },
+        {
+          "episode_id": "dev-009",
+          "scenario_id": "dev-database-timeout",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": true,
+          "tool_call_count": 2,
+          "decision_count": 3,
+          "end_to_end_seconds": 0.39863085601245984,
+          "trace": "traces/gliclass_evidence_masked/dev-009.jsonl"
+        },
+        {
+          "episode_id": "dev-010",
+          "scenario_id": "dev-vague-insufficient",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": true,
+          "tool_call_count": 2,
+          "decision_count": 3,
+          "end_to_end_seconds": 0.422141716000624,
+          "trace": "traces/gliclass_evidence_masked/dev-010.jsonl"
+        },
+        {
+          "episode_id": "dev-011",
+          "scenario_id": "dev-next-tool-changes",
+          "split": "development",
+          "gold_terminal_action": "diagnose_authentication_failure",
+          "terminal_action": "diagnose_authentication_failure",
+          "terminal_reason": "completed",
+          "gold_evidence_supported": true,
+          "tool_call_count": 3,
+          "decision_count": 4,
+          "end_to_end_seconds": 0.6557002089975867,
+          "trace": "traces/gliclass_evidence_masked/dev-011.jsonl"
+        },
+        {
+          "episode_id": "dev-012",
+          "scenario_id": "dev-unrelated",
+          "split": "development",
+          "gold_terminal_action": "request_review",
+          "terminal_action": "request_review",
+          "terminal_reason": "review",
+          "gold_evidence_supported": true,
+          "tool_call_count": 0,
+          "decision_count": 1,
+          "end_to_end_seconds": 0.10516245300823357,
+          "trace": "traces/gliclass_evidence_masked/dev-012.jsonl"
+        }
+      ]
+    }
+  },
+  "comparison": [
+    {
+      "policy": "fixed_order",
+      "split": "development",
+      "episode_count": 12,
+      "run_status": "passed",
+      "terminal_status_counts": {
+        "completed": 7,
+        "review": 5,
+        "failed": 0
+      },
+      "terminal_reason_counts": {
+        "completed": 7,
+        "review": 5,
+        "exhausted_budget": 0,
+        "invalid_proposal": 0,
+        "tool_failure": 0
+      },
+      "failed_episodes": 0,
+      "correct_supported_diagnoses": 7,
+      "diagnosable_count": 7,
+      "correct_review_decisions": 5,
+      "review_required_count": 5,
+      "incorrect_diagnoses": 0,
+      "unnecessary_review_on_diagnosable_cases": 0,
+      "unsupported_diagnosis_proposals": 0,
+      "invalid_proposals_rejected": 0,
+      "policy_execution_errors": 0,
+      "budget_exhaustion_episodes": 0,
+      "tool_related_failures": 0,
+      "tool_calls": {
+        "total": 48,
+        "per_episode_mean": 4.0
+      },
+      "end_to_end_latency_seconds": {
+        "sample_count": 12,
+        "mean": 0.0009157284997248402,
+        "p50": 0.0008682275001774542,
+        "p95": 0.0012038726454193234
+      },
+      "model_loading_seconds": 0.0,
+      "peak_process_rss_bytes": 32464896
+    },
+    {
+      "policy": "rules",
+      "split": "development",
+      "episode_count": 12,
+      "run_status": "passed",
+      "terminal_status_counts": {
+        "completed": 8,
+        "review": 4,
+        "failed": 0
+      },
+      "terminal_reason_counts": {
+        "completed": 8,
+        "review": 4,
+        "exhausted_budget": 0,
+        "invalid_proposal": 0,
+        "tool_failure": 0
+      },
+      "failed_episodes": 0,
+      "correct_supported_diagnoses": 7,
+      "diagnosable_count": 7,
+      "correct_review_decisions": 4,
+      "review_required_count": 5,
+      "incorrect_diagnoses": 1,
+      "unnecessary_review_on_diagnosable_cases": 0,
+      "unsupported_diagnosis_proposals": 0,
+      "invalid_proposals_rejected": 0,
+      "policy_execution_errors": 0,
+      "budget_exhaustion_episodes": 0,
+      "tool_related_failures": 0,
+      "tool_calls": {
+        "total": 28,
+        "per_episode_mean": 2.3333333333333335
+      },
+      "end_to_end_latency_seconds": {
+        "sample_count": 12,
+        "mean": 0.0006821348360972479,
+        "p50": 0.0005102615032228641,
+        "p95": 0.0012748118555464315
+      },
+      "model_loading_seconds": 0.0,
+      "peak_process_rss_bytes": 32464896
+    },
+    {
+      "policy": "gliclass",
+      "split": "development",
+      "episode_count": 12,
+      "run_status": "failed",
+      "terminal_status_counts": {
+        "completed": 0,
+        "review": 2,
+        "failed": 10
+      },
+      "terminal_reason_counts": {
+        "completed": 0,
+        "review": 2,
+        "exhausted_budget": 0,
+        "invalid_proposal": 10,
+        "tool_failure": 0
+      },
+      "failed_episodes": 10,
+      "correct_supported_diagnoses": 0,
+      "diagnosable_count": 7,
+      "correct_review_decisions": 1,
+      "review_required_count": 5,
+      "incorrect_diagnoses": 0,
+      "unnecessary_review_on_diagnosable_cases": 1,
+      "unsupported_diagnosis_proposals": 20,
+      "invalid_proposals_rejected": 0,
+      "policy_execution_errors": 0,
+      "budget_exhaustion_episodes": 0,
+      "tool_related_failures": 0,
+      "tool_calls": {
+        "total": 7,
+        "per_episode_mean": 0.5833333333333334
+      },
+      "end_to_end_latency_seconds": {
+        "sample_count": 12,
+        "mean": 0.3286369440005122,
+        "p50": 0.23400487449544016,
+        "p95": 0.6439762360467285
+      },
+      "model_loading_seconds": 5.844416806998197,
+      "peak_process_rss_bytes": 867004416
+    },
+    {
+      "policy": "gliclass_evidence_masked",
+      "split": "development",
+      "episode_count": 12,
+      "run_status": "passed",
+      "terminal_status_counts": {
+        "completed": 4,
+        "review": 8,
+        "failed": 0
+      },
+      "terminal_reason_counts": {
+        "completed": 4,
+        "review": 8,
+        "exhausted_budget": 0,
+        "invalid_proposal": 0,
+        "tool_failure": 0
+      },
+      "failed_episodes": 0,
+      "correct_supported_diagnoses": 4,
+      "diagnosable_count": 7,
+      "correct_review_decisions": 5,
+      "review_required_count": 5,
+      "incorrect_diagnoses": 0,
+      "unnecessary_review_on_diagnosable_cases": 3,
+      "unsupported_diagnosis_proposals": 0,
+      "invalid_proposals_rejected": 0,
+      "policy_execution_errors": 0,
+      "budget_exhaustion_episodes": 0,
+      "tool_related_failures": 0,
+      "tool_calls": {
+        "total": 21,
+        "per_episode_mean": 1.75
+      },
+      "end_to_end_latency_seconds": {
+        "sample_count": 12,
+        "mean": 0.4045228343347844,
+        "p50": 0.40643363700655755,
+        "p95": 0.8214785156531431
+      },
+      "model_loading_seconds": 5.844416806998197,
+      "peak_process_rss_bytes": 880500736
+    }
+  ]
+}

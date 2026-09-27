@@ -9,6 +9,7 @@ import resource
 import subprocess
 import sys
 import tomllib
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -19,9 +20,9 @@ from .workflow_policies import FixedOrderPolicy, GLiClassPolicy, RulesPolicy
 from .workflow_scenarios import SCENARIO_FILE, Scenario, load_scenarios
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT_DIR = ROOT / "reports" / "diagnostic-workflow-20260927"
+DEFAULT_OUTPUT_DIR = ROOT / "reports" / "gliclass-evidence-mask-20260927"
 DEFAULT_PINS = ROOT / "model-revisions.env"
-POLICY_NAMES = ("fixed_order", "rules", "gliclass")
+POLICY_NAMES = ("fixed_order", "rules", "gliclass", "gliclass_evidence_masked")
 WORKFLOW_CODE_FILES = (
     ROOT / "decisionops" / "workflow.py", ROOT / "decisionops" / "workflow_eval.py",
     ROOT / "decisionops" / "workflow_policies.py", ROOT / "decisionops" / "workflow_scenarios.py",
@@ -107,8 +108,19 @@ def summarize_results(scenarios: list[Scenario], results: list[EpisodeResult]) -
     )
     latencies = [result.end_to_end_seconds for result in results]
     calls = [result.tool_call_count for result in results]
+    status_counts = Counter(result.terminal_status for result in results)
+    reason_counts = Counter(result.terminal_reason for result in results)
+    terminal_status_counts = {key: status_counts.get(key, 0) for key in ("completed", "review", "failed")}
+    terminal_reason_counts = {key: reason_counts.get(key, 0) for key in ("completed", "review", "exhausted_budget", "invalid_proposal", "tool_failure")}
+    for key, value in reason_counts.items():
+        terminal_reason_counts.setdefault(key, value)
+    failed_episodes = terminal_status_counts["failed"]
     return {
-        "scenario_count": len(scenarios), "diagnosable_count": len(diagnosable), "review_required_count": len(review_required),
+        "episode_count": len(results), "scenario_count": len(scenarios),
+        "run_status": "failed" if failed_episodes else "passed",
+        "terminal_status_counts": terminal_status_counts, "terminal_reason_counts": terminal_reason_counts,
+        "failed_episodes": failed_episodes,
+        "diagnosable_count": len(diagnosable), "review_required_count": len(review_required),
         "correct_supported_diagnoses": supported_correct,
         "correct_supported_diagnosis_rate": supported_correct / len(diagnosable) if diagnosable else None,
         "correct_review_decisions": correct_review,
@@ -160,19 +172,24 @@ def _evaluate_policy(name: str, scenarios: list[Scenario], policy, output_dir: P
             "end_to_end_seconds": result.end_to_end_seconds, "trace": str(trace_path.relative_to(output_dir)),
         })
     grouped = {}
-    for split in ("development", "evaluation"):
+    observed_splits = tuple(split for split in ("development", "evaluation") if any(item.split == split for item in scenarios))
+    for split in observed_splits:
         indexes = [index for index, scenario in enumerate(scenarios) if scenario.split == split]
         grouped[split] = summarize_results([scenarios[index] for index in indexes], [results[index] for index in indexes])
+        grouped[split]["model_loading_seconds"] = float(getattr(policy, "load_seconds", 0.0))
+        grouped[split]["peak_process_rss_bytes"] = _peak_rss_bytes()
     summary = {
         "policy": name, "model_loading_seconds": float(getattr(policy, "load_seconds", 0.0)),
-        "peak_process_rss_bytes": _peak_rss_bytes(), "metrics_by_split": grouped,
+        "peak_process_rss_bytes": _peak_rss_bytes(),
+        "run_status": "failed" if any(metrics["failed_episodes"] for metrics in grouped.values()) else "passed",
+        "metrics_by_split": grouped,
         "episodes": episode_rows,
     }
     _json_write(output_dir / f"{name}-summary.json", summary)
     return summary, results, episode_rows
 
 
-def _provenance(scenario_path: Path, pin_path: Path) -> dict[str, Any]:
+def _provenance(scenario_path: Path, pin_path: Path, split: str) -> dict[str, Any]:
     revisions = parse_revision_pins(pin_path)
     implementation = {str(path.relative_to(ROOT)): _sha256(path) for path in WORKFLOW_CODE_FILES}
     status = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, text=True, capture_output=True, check=False)
@@ -188,13 +205,17 @@ def _provenance(scenario_path: Path, pin_path: Path) -> dict[str, Any]:
         "model_repository": REPOSITORIES["gliclass"][0], "model_revision": revisions[REPOSITORIES["gliclass"][1]],
         "action_candidate_representation": [{"id": action_id, "model_name": name} for action_id, name in __import__("decisionops.workflow", fromlist=["ACTION_NAMES"]).ACTION_NAMES.items()],
         "policy_order": list(POLICY_NAMES), "max_tool_calls": 4, "max_decisions": 6,
-        "split_counts": {split: 12 for split in ("development", "evaluation")},
+        "evaluation_scope": split,
+        "split_counts": {split_name: 12 for split_name in (("development", "evaluation") if split == "all" else ("development",))},
+        "evidence_masking": "gliclass_evidence_masked removes diagnosis candidates rejected by check_terminal_evidence on visible state only",
     }
 
 
-def evaluate_suite(scenario_path: Path = SCENARIO_FILE, output_dir: Path = DEFAULT_OUTPUT_DIR, pin_path: Path = DEFAULT_PINS) -> dict[str, Any]:
+def evaluate_suite(scenario_path: Path = SCENARIO_FILE, output_dir: Path = DEFAULT_OUTPUT_DIR, pin_path: Path = DEFAULT_PINS, split: str = "all") -> dict[str, Any]:
+    if split not in {"development", "all"}:
+        raise ValueError("workflow evaluation split must be 'development' or 'all'")
     os.environ["HF_HUB_OFFLINE"] = "1"
-    scenarios = load_scenarios(scenario_path)
+    scenarios = [scenario for scenario in load_scenarios(scenario_path) if split == "all" or scenario.split == "development"]
     output_dir.mkdir(parents=True, exist_ok=True)
     for name in ("all-summary.json", "all-summary.md", "provenance.json"):
         (output_dir / name).unlink(missing_ok=True)
@@ -206,20 +227,23 @@ def evaluate_suite(scenario_path: Path = SCENARIO_FILE, output_dir: Path = DEFAU
     ranker.load()
     gliclass_policy = GLiClassPolicy(ranker)
     all_summaries["gliclass"], _results, _episodes = _evaluate_policy("gliclass", scenarios, gliclass_policy, output_dir)
-    provenance = _provenance(scenario_path, pin_path)
+    masked_policy = GLiClassPolicy(ranker, evidence_masked=True)
+    all_summaries["gliclass_evidence_masked"], _results, _episodes = _evaluate_policy("gliclass_evidence_masked", scenarios, masked_policy, output_dir)
+    provenance = _provenance(scenario_path, pin_path, split)
     provenance["model_loading_seconds"] = ranker.load_seconds
     _json_write(output_dir / "provenance.json", provenance)
     comparison = []
     for name in POLICY_NAMES:
         summary = all_summaries[name]
-        for split, metrics in summary["metrics_by_split"].items():
-            comparison.append({"policy": name, "split": split, **{key: metrics[key] for key in (
+        for split_name, metrics in summary["metrics_by_split"].items():
+            comparison.append({"policy": name, "split": split_name, **{key: metrics[key] for key in (
+                "episode_count", "run_status", "terminal_status_counts", "terminal_reason_counts", "failed_episodes",
                 "correct_supported_diagnoses", "diagnosable_count", "correct_review_decisions", "review_required_count",
                 "incorrect_diagnoses", "unnecessary_review_on_diagnosable_cases", "unsupported_diagnosis_proposals",
                 "invalid_proposals_rejected", "policy_execution_errors", "budget_exhaustion_episodes", "tool_related_failures",
                 "tool_calls", "end_to_end_latency_seconds",
             )}, "model_loading_seconds": summary["model_loading_seconds"], "peak_process_rss_bytes": summary["peak_process_rss_bytes"]})
-    result = {"created_utc": datetime.now(timezone.utc).isoformat(), "scenario_sha256": _sha256(scenario_path), "provenance": provenance, "policies": all_summaries, "comparison": comparison}
+    result = {"created_utc": datetime.now(timezone.utc).isoformat(), "scenario_sha256": _sha256(scenario_path), "evaluation_scope": split, "provenance": provenance, "policies": all_summaries, "comparison": comparison}
     _json_write(output_dir / "all-summary.json", result)
     _write_comparison_markdown(output_dir / "all-summary.md", result)
     _write_example_trace(output_dir, all_summaries)
@@ -239,20 +263,24 @@ def _write_comparison_markdown(path: Path, report: dict[str, Any]) -> None:
     lines = [
         "# Recorded diagnostic workflow evaluation", "",
         "> Offline synthetic simulation. Fixture tools return recorded observations; no shell command, live service, or host action is executed.", "",
-        "| Policy | Split | Supported diagnoses | Correct reviews | Incorrect diagnoses | Unnecessary review | Unsupported diagnosis proposals | Invalid proposals | Policy errors | Budget exhausted | Tool failures | Tool calls mean | Latency p50 / p95 | Model load | Peak RSS |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Policy | Split | Episodes | Run | Terminal statuses (completed/review/failed) | Terminal reasons | Failed | Supported diagnoses | Correct reviews | Incorrect diagnoses | Unnecessary review | Unsupported proposals | Invalid proposals | Policy errors | Budget exhausted | Tool failures | Tool calls mean | Latency p50 / p95 | Model load | Peak RSS |",
+        "|---|---|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in report["comparison"]:
         latency = row["end_to_end_latency_seconds"]
+        statuses = row["terminal_status_counts"]
+        reasons = ", ".join(f"{key}={value}" for key, value in row["terminal_reason_counts"].items())
         lines.append(
-            f"| {row['policy']} | {row['split']} | {row['correct_supported_diagnoses']}/{row['diagnosable_count']} | "
+            f"| {row['policy']} | {row['split']} | {row['episode_count']} | {row['run_status']} | "
+            f"{statuses['completed']}/{statuses['review']}/{statuses['failed']} | {reasons} | {row['failed_episodes']} | "
+            f"{row['correct_supported_diagnoses']}/{row['diagnosable_count']} | "
             f"{row['correct_review_decisions']}/{row['review_required_count']} | {row['incorrect_diagnoses']} | "
             f"{row['unnecessary_review_on_diagnosable_cases']} | {row['unsupported_diagnosis_proposals']} | "
             f"{row['invalid_proposals_rejected']} | {row['policy_execution_errors']} | {row['budget_exhaustion_episodes']} | {row['tool_related_failures']} | "
             f"{row['tool_calls']['per_episode_mean']:.2f} | {latency['p50'] * 1000:.1f} / {latency['p95'] * 1000:.1f} ms | "
             f"{row['model_loading_seconds']:.2f} s | {row['peak_process_rss_bytes']} bytes |"
         )
-    lines += ["", "Diagnosable and review-required cases use separate denominators. Review-everything is therefore visible as unnecessary review and zero supported diagnoses. Policies received the same initial reports and could request only tools or terminal choices allowed by the harness. Tool fixture timeouts/errors are observations, not simulator failures.", "", "See `provenance.json` for code/scenario hashes, package versions, model pin, runtime, candidate order, and budgets. Each policy summary has episode outcomes; `traces/` contains one JSONL replay trace per episode. `examples/fixed-order-database-example.jsonl` is a compact example.", ""]
+    lines += ["", "`correct_supported_diagnoses` requires the terminal action to match the gold diagnosis, the harness to accept it, and cited visible evidence to match a gold evidence alternative. `correct_review_decisions` counts review outcomes for review-required scenarios. `incorrect_diagnoses` counts any terminal diagnosis different from the gold terminal action; `unnecessary_review_on_diagnosable_cases` counts review choices on diagnosable scenarios. Terminal-status counts and terminal-reason counts each sum to episode count. `failed_episodes` counts terminal status `failed`; `unsupported_diagnosis_proposals` counts evidence-check rejections, while `invalid_proposals_rejected` counts malformed, out-of-candidate, or otherwise harness-invalid outputs. `run_status` is failed whenever any episode fails. Policy execution errors and simulator failures are reported separately. Review-everything therefore has zero supported diagnoses and its unnecessary reviews remain visible. Tool fixture timeouts/errors are observations, not simulator failures.", "", "Policies receive the same scenario reports and harness action eligibility. The evidence-masked variant removes diagnoses unsupported by observations collected so far; this does not prove that unrequested tools contain no additional faults. Fixture execution latency is not live tool latency.", "", "See `provenance.json` for code/scenario hashes, package versions, model pin, runtime, candidate order, and budgets. Each policy summary has episode outcomes; `traces/` contains one JSONL replay trace per episode. `examples/fixed-order-database-example.jsonl` is a compact example.", ""]
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -266,10 +294,10 @@ def run_one_episode(scenario_id: str, policy_name: str, scenario_path: Path = SC
         policy = FixedOrderPolicy()
     elif policy_name == "rules":
         policy = RulesPolicy()
-    elif policy_name == "gliclass":
+    elif policy_name in {"gliclass", "gliclass_evidence_masked"}:
         ranker = GLiClassActionRanker(pin_path)
         ranker.load()
-        policy = GLiClassPolicy(ranker)
+        policy = GLiClassPolicy(ranker, evidence_masked=policy_name == "gliclass_evidence_masked")
     else:
         raise ValueError(f"unknown policy {policy_name!r}")
     result = run_episode(scenario, policy, episode_id=f"{scenario.split[:3]}-one", max_tool_calls=max_tool_calls, max_decisions=max_decisions)

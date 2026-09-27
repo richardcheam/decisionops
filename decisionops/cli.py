@@ -20,7 +20,7 @@ def main(argv=None) -> int:
     workflow_commands = workflow.add_subparsers(dest="workflow_command", required=True)
     episode = workflow_commands.add_parser("episode", help="run one bounded synthetic episode")
     episode.add_argument("--scenario-id", required=True)
-    episode.add_argument("--policy", choices=("fixed_order", "rules", "gliclass"), default="rules")
+    episode.add_argument("--policy", choices=("fixed_order", "rules", "gliclass", "gliclass_evidence_masked"), default="rules")
     episode.add_argument("--trace-file", type=Path, default=Path("runs/workflow-episode.jsonl"))
     episode.add_argument("--scenario-file", type=Path)
     episode.add_argument("--revision-file", type=Path)
@@ -30,6 +30,7 @@ def main(argv=None) -> int:
     workflow_eval.add_argument("--scenario-file", type=Path)
     workflow_eval.add_argument("--output-dir", type=Path)
     workflow_eval.add_argument("--revision-file", type=Path)
+    workflow_eval.add_argument("--split", choices=("development", "all"), default="all", help="run development only or both development and evaluation splits")
     replay = workflow_commands.add_parser("replay", help="validate and reconstruct a JSONL workflow trace")
     replay.add_argument("--trace-file", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -58,9 +59,9 @@ def main(argv=None) -> int:
             return 0
         if args.workflow_command == "evaluate":
             report = evaluate_suite(args.scenario_file or SCENARIO_FILE, args.output_dir or DEFAULT_OUTPUT_DIR,
-                                    args.revision_file or WORKFLOW_PINS)
+                                    args.revision_file or WORKFLOW_PINS, split=args.split)
             print(f"Wrote workflow comparison to {args.output_dir or DEFAULT_OUTPUT_DIR}")
-            print(json.dumps({name: policies["metrics_by_split"]["evaluation"] for name, policies in report["policies"].items()}, indent=2))
+            print(json.dumps({name: policies["metrics_by_split"] for name, policies in report["policies"].items()}, indent=2))
             return 0
         events = [json.loads(line) for line in args.trace_file.read_text(encoding="utf-8").splitlines() if line.strip()]
         print(json.dumps(replay_trace(events), indent=2))

@@ -7,12 +7,13 @@ from decisionops.workflow import (
     DEFAULT_MAX_DECISIONS,
     DEFAULT_MAX_TOOL_CALLS,
     Proposal,
+    VisibleState,
     eligible_actions,
     replay_trace,
     run_episode,
 )
 from decisionops.workflow_eval import summarize_results
-from decisionops.workflow_policies import FixedOrderPolicy
+from decisionops.workflow_policies import FixedOrderPolicy, GLiClassPolicy
 from decisionops.workflow_scenarios import load_scenarios
 from decisionops.backends import canonicalize_named_scores
 
@@ -31,6 +32,37 @@ class FakePolicy:
         if isinstance(proposal, Exception):
             raise proposal
         return proposal
+
+
+class FakeRanker:
+    load_seconds = 0.0
+
+    def __init__(self, preferred_actions=()):
+        self.preferred_actions = list(preferred_actions)
+        self.inputs = []
+        self.candidate_ids = []
+
+    def rank(self, text, candidates):
+        ids = tuple(candidate_id for candidate_id, _name in candidates)
+        self.inputs.append(text)
+        self.candidate_ids.append(ids)
+        preferred = self.preferred_actions[len(self.inputs) - 1] if len(self.inputs) <= len(self.preferred_actions) else None
+        selected = preferred if preferred in ids else ids[0]
+        return {candidate_id: (1.0 if len(ids) == 1 else 0.9 if candidate_id == selected else 0.1 / (len(ids) - 1)) for candidate_id in ids}
+
+
+def empty_visible_state(**overrides):
+    state = {
+        "initial_report": "a service request failed",
+        "observations": (),
+        "actions_attempted": (),
+        "remaining_tool_calls": 4,
+        "max_tool_calls": 4,
+        "remaining_decisions": 6,
+        "max_decisions": 6,
+    }
+    state.update(overrides)
+    return VisibleState(**state)
 
 
 class WorkflowFixtureTests(unittest.TestCase):
@@ -166,6 +198,98 @@ class WorkflowFixtureTests(unittest.TestCase):
         self.assertEqual(metrics["correct_supported_diagnoses"], 0)
         self.assertEqual(metrics["correct_review_decisions"], 1)
         self.assertEqual(metrics["unnecessary_review_on_diagnosable_cases"], 1)
+
+    def test_masked_gliclass_initially_scores_tools_and_review_only(self):
+        ranker = FakeRanker(["check_database"])
+        policy = GLiClassPolicy(ranker, evidence_masked=True)
+        proposal = policy.propose(empty_visible_state(), tuple(ACTION_IDS))
+        self.assertEqual(proposal.scored_candidate_ids, tuple(ACTION_IDS[:4]) + ("request_review",))
+        self.assertTrue(all(action.startswith("check_") or action == "request_review" for action in proposal.scored_candidate_ids))
+        self.assertEqual(set(proposal.excluded_candidates), set(ACTION_IDS) - set(proposal.scored_candidate_ids))
+        self.assertIn("diagnosis_not_supported", proposal.excluded_candidates["diagnose_database_failure"])
+
+    def test_masked_gliclass_enables_diagnosis_after_visible_support(self):
+        ranker = FakeRanker(["check_database", "diagnose_database_failure"])
+        result = run_episode(self.scenarios["dev-database-clear"], GLiClassPolicy(ranker, evidence_masked=True))
+        self.assertEqual(result.terminal_action, "diagnose_database_failure")
+        self.assertNotIn("diagnose_database_failure", ranker.candidate_ids[0])
+        self.assertIn("diagnose_database_failure", ranker.candidate_ids[1])
+
+    def test_masked_gliclass_disables_diagnosis_after_contradiction(self):
+        ranker = FakeRanker(["check_database", "check_service_health", "request_review"])
+        result = run_episode(self.scenarios["dev-contradictory-evidence"], GLiClassPolicy(ranker, evidence_masked=True))
+        self.assertEqual(result.terminal_action, "request_review")
+        self.assertNotIn("diagnose_database_failure", ranker.candidate_ids[2])
+        self.assertIn("contradictory_current_evidence", result.trace[2]["excluded_candidates"]["diagnose_database_failure"])
+
+    def test_masked_gliclass_healthy_requires_all_four_current_successes(self):
+        ranker = FakeRanker(["check_database", "check_authentication", "check_storage", "check_service_health", "diagnose_healthy"])
+        result = run_episode(self.scenarios["dev-healthy-clear"], GLiClassPolicy(ranker, evidence_masked=True))
+        self.assertEqual(result.terminal_action, "diagnose_healthy")
+        self.assertNotIn("diagnose_healthy", ranker.candidate_ids[3])
+        self.assertIn("diagnose_healthy", ranker.candidate_ids[4])
+
+    def test_masked_gliclass_preserves_tool_budget_repeat_and_review_constraints(self):
+        state = empty_visible_state(actions_attempted=("check_database",), remaining_tool_calls=0)
+        ranker = FakeRanker(["request_review"])
+        proposal = GLiClassPolicy(ranker, evidence_masked=True).propose(state, eligible_actions(state))
+        self.assertEqual(proposal.scored_candidate_ids, ("request_review",))
+        self.assertEqual(proposal.excluded_candidates["check_database"], "tool_already_attempted")
+        self.assertEqual(proposal.excluded_candidates["check_authentication"], "tool_call_budget_exhausted")
+        self.assertEqual(proposal.action_id, "request_review")
+
+    def test_harness_rejects_out_of_candidate_scores_and_selected_action(self):
+        candidates = tuple(ACTION_IDS)
+        bad_scores = {action: 1 / len(candidates) for action in candidates}
+        bad_scores["not_a_candidate"] = 0.0
+        for proposal in (
+            Proposal("request_review", scores=bad_scores, scored_candidate_ids=candidates),
+            Proposal("diagnose_database_failure", scores={"request_review": 1.0}, scored_candidate_ids=("request_review",)),
+            Proposal("request_review", scores={**{action: 1 / len(candidates) for action in candidates}, "check_database": float("nan")}, scored_candidate_ids=candidates),
+        ):
+            result = run_episode(self.scenarios["dev-database-clear"], FakePolicy([proposal]))
+            self.assertEqual(result.terminal_status, "failed")
+            self.assertEqual(result.invalid_proposals_rejected, 1)
+
+    def test_trace_records_exact_post_decrement_policy_input(self):
+        policy = FakePolicy([Proposal("request_review")])
+        result = run_episode(self.scenarios["dev-database-clear"], policy)
+        event = result.trace[0]
+        self.assertEqual(event["trace_version"], 2)
+        self.assertEqual(event["policy_input"]["visible_state"], policy.visible_states[0][0].as_dict())
+        self.assertEqual(event["policy_input"]["eligible_action_ids"], list(policy.visible_states[0][1]))
+        self.assertEqual(event["visible_state_before"]["remaining_decisions"], 6)
+        self.assertEqual(event["policy_input"]["visible_state"]["remaining_decisions"], 5)
+
+    def test_trace_replay_still_accepts_version_one_events(self):
+        result = run_episode(self.scenarios["dev-database-clear"], FakePolicy([Proposal("request_review")]))
+        old_events = json.loads(json.dumps(result.trace))
+        for event in old_events:
+            event.pop("trace_version")
+            event.pop("policy_input")
+            event.pop("scored_candidate_ids")
+            event.pop("excluded_candidates")
+        replayed = replay_trace(old_events)
+        self.assertEqual(replayed["terminal_reason"], "review")
+
+    def test_masked_trace_replays_without_loading_or_invoking_a_model(self):
+        ranker = FakeRanker(["check_database", "diagnose_database_failure"])
+        result = run_episode(self.scenarios["dev-database-clear"], GLiClassPolicy(ranker, evidence_masked=True))
+        saved = json.loads(json.dumps(result.trace))
+        replayed = replay_trace(saved)
+        self.assertEqual(replayed["terminal_action"], "diagnose_database_failure")
+        self.assertEqual(replayed["terminal_reason"], "completed")
+
+    def test_metrics_count_every_terminal_outcome_and_surface_failed_run(self):
+        scenario = self.scenarios["dev-database-clear"]
+        result = run_episode(scenario, FakePolicy([Proposal("diagnose_disk_full"), Proposal("diagnose_disk_full")]))
+        self.assertEqual(result.invalid_proposals_rejected, 0)
+        metrics = summarize_results([scenario], [result])
+        self.assertEqual(metrics["run_status"], "failed")
+        self.assertEqual(metrics["episode_count"], 1)
+        self.assertEqual(metrics["failed_episodes"], 1)
+        self.assertEqual(sum(metrics["terminal_status_counts"].values()), metrics["episode_count"])
+        self.assertEqual(sum(metrics["terminal_reason_counts"].values()), metrics["episode_count"])
 
 
 if __name__ == "__main__":
