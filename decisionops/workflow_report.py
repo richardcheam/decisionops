@@ -35,7 +35,7 @@ _GUIDED_EXAMPLES = (
     {
         "id": "premature",
         "title": "Supported by one observation, premature for two faults",
-        "description": "On eval-multiple-current-faults, masked Laya records database and authentication failures, then chooses Database failure. The visible database fact passes the harness check, while the evaluator labels this multiple-fault case for review. Fixed order requests review on the same scenario.",
+        "description": "On eval-multiple-current-faults, masked Laya checks the database and then chooses Database failure. Only the database observation is visible; authentication has not been checked. The harness accepts the supported diagnosis, but the evaluator requires review because the full scenario has multiple faults. Fixed order gathers more evidence and requests review.",
         "split": "evaluation", "scenario": "eval-multiple-current-faults", "policy": "laya_evidence_masked",
         "compare_fixed_order": True,
     },
@@ -44,6 +44,22 @@ _GUIDED_EXAMPLES = (
 
 class ReportLoadError(ValueError):
     """A report is incomplete, inconsistent, malformed, or unsafe to export."""
+
+
+def _available_guided_examples(policies: dict[str, Any]) -> list[dict[str, Any]]:
+    """Keep only guides whose primary and required comparison traces are loaded."""
+    available = []
+    for example in _GUIDED_EXAMPLES:
+        split, scenario, policy = example["split"], example["scenario"], example["policy"]
+        policy_episodes = policies.get(policy, {}).get("episodes", {}).get(split, {})
+        if scenario not in policy_episodes:
+            continue
+        if example["compare_fixed_order"]:
+            comparison = policies.get("fixed_order", {}).get("episodes", {}).get(split, {})
+            if scenario not in comparison:
+                continue
+        available.append(example)
+    return available
 
 
 def _read_json(path: Path) -> Any:
@@ -196,7 +212,7 @@ def load_report(report_dir: Path | str) -> dict[str, Any]:
         "policies": policies,
         "provenance": provenance,
         "evaluator": evaluator,
-        "guided_examples": list(_GUIDED_EXAMPLES),
+        "guided_examples": _available_guided_examples(policies),
     }
 
 
@@ -308,7 +324,7 @@ const DATA=JSON.parse(document.getElementById("viewer-data").textContent);
 const EVALUATOR=JSON.parse(document.getElementById("evaluator-data").textContent);
 const LABELS={fixed_order:"Fixed order",rules:"Rules",gliclass:"GLiClass",gliclass_evidence_masked:"GLiClass · evidence masked",laya:"Laya",laya_evidence_masked:"Laya · evidence masked"};
 const ACTIONS={check_database:"Check database",check_authentication:"Check authentication",check_storage:"Check storage",check_service_health:"Check service health",diagnose_database_failure:"Database failure",diagnose_authentication_failure:"Authentication failure",diagnose_disk_full:"Disk full",diagnose_healthy:"Healthy",request_review:"Request review"};
-let selectedSplit="development";
+let selectedSplit=DATA.comparison.some(x=>x.split==="development")?"development":(DATA.comparison[0]?.split||"");
 let selectedScenario="dev-database-clear",selectedPolicy="laya";
 const byId=id=>document.getElementById(id);
 function node(tag,text,cls){const e=document.createElement(tag);if(text!==undefined&&text!==null)e.textContent=String(text);if(cls)e.className=cls;return e}
@@ -326,7 +342,7 @@ function renderComparison(){const tabs=byId("split-tabs");tabs.replaceChildren()
  const rss=DATA.policies[policy].peak_process_rss_bytes;metricLine(dl,"Worker peak RSS",rss?Math.round(rss/1048576)+" MiB":"not recorded");details(card,"Terminal reasons",m.terminal_reason_counts);
  details(card,"Latency p50 / p95",lat);
  }}
-function renderScenarioOptions(){const select=byId("scenario-select"),scenarios=EVALUATOR[selectedSplit]||{};select.replaceChildren();for(const id of Object.keys(scenarios).sort()){const o=node("option",id);o.value=id;select.append(o)}if(!scenarios[selectedScenario])selectedScenario=Object.keys(scenarios).sort()[0]||"";select.value=selectedScenario}
+function renderScenarioOptions(){const select=byId("scenario-select"),scenarios=EVALUATOR[selectedSplit]||{};select.replaceChildren();for(const id of Object.keys(scenarios).sort()){const o=node("option",id);o.value=id;select.append(o)}if(!scenarios[selectedScenario])selectedScenario=Object.keys(scenarios).sort()[0]||"";select.value=selectedScenario;select.disabled=!selectedScenario}
 function details(parent,label,value){const d=add(parent,"details",undefined,"raw"),s=add(d,"summary",label),pre=add(d,"pre");pre.textContent=JSON.stringify(value,null,2);return d}
 function renderObservation(parent,obs){const box=add(parent,"div",undefined,"observation");add(box,"strong",(obs.observation_id||"Observation")+" · "+(obs.tool_name||"tool"));add(box,"p",(obs.status||"")+" · "+(obs.time_scope||"")+" · "+(obs.observed_at||""));if(obs.message)add(box,"p",obs.message);add(box,"pre",JSON.stringify(obs.facts||{},null,2),"fact")}
 function renderTrack(container,policy){const ep=DATA.policies[policy]?.episodes?.[selectedSplit]?.[selectedScenario];const track=add(container,"section",undefined,"track");add(track,"h3",LABELS[policy]||policy);if(!ep){add(track,"p","No trace was recorded for this policy and scenario.","muted");return}
@@ -348,13 +364,13 @@ function renderTrack(container,policy){const ep=DATA.policies[policy]?.episodes?
  details(step,"Expand raw event, scores, policy input, and native metadata",event);
  }
 }
-function renderInvestigation(){const heading=byId("trace-heading");heading.replaceChildren();const badge=add(heading,"span",selectedSplit,"status");add(heading,"span",selectedScenario,"mono");const timeline=byId("timeline");timeline.replaceChildren();renderTrack(timeline,selectedPolicy);const compare=byId("compare-fixed").checked&&selectedPolicy!=="fixed_order";if(compare)renderTrack(timeline,"fixed_order");
- const item=EVALUATOR[selectedSplit]?.[selectedScenario];const out=byId("evaluator-outcome");out.replaceChildren();if(!item){add(out,"p","No evaluator annotation is available.");return}add(out,"p","Gold terminal action: "+(ACTIONS[item.gold.gold_terminal_action]||item.gold.gold_terminal_action));for(const policy of (compare?[selectedPolicy,"fixed_order"]:[selectedPolicy])){const v=item.policy_outcomes[policy];if(v){add(out,"p",(LABELS[policy]||policy)+": terminal action "+(ACTIONS[v.terminal_action]||v.terminal_action||"none")+" · termination "+v.terminal_reason);add(out,"p",(LABELS[policy]||policy)+" · gold evidence supported for recorded result: "+String(v.gold_evidence_supported))}}
+function renderInvestigation(){const heading=byId("trace-heading");heading.replaceChildren();const badge=add(heading,"span",selectedSplit||"Report","status");add(heading,"span",selectedScenario,"mono");const timeline=byId("timeline");timeline.replaceChildren();const out=byId("evaluator-outcome");out.replaceChildren();if(!selectedScenario){add(timeline,"p","No scenario trace is available for this split.","muted");add(out,"p","No evaluator annotation is available.");return}renderTrack(timeline,selectedPolicy);const compare=byId("compare-fixed").checked&&selectedPolicy!=="fixed_order";if(compare)renderTrack(timeline,"fixed_order");
+ const item=EVALUATOR[selectedSplit]?.[selectedScenario];if(!item){add(out,"p","No evaluator annotation is available.");return}add(out,"p","Gold terminal action: "+(ACTIONS[item.gold.gold_terminal_action]||item.gold.gold_terminal_action));for(const policy of (compare?[selectedPolicy,"fixed_order"]:[selectedPolicy])){const v=item.policy_outcomes[policy];if(v){add(out,"p",(LABELS[policy]||policy)+": terminal action "+(ACTIONS[v.terminal_action]||v.terminal_action||"none")+" · termination "+v.terminal_reason);add(out,"p",(LABELS[policy]||policy)+" · gold evidence supported for recorded result: "+String(v.gold_evidence_supported))}}
 }
 function setExample(id){const ex=DATA.guided_examples.find(x=>x.id===id);if(!ex)return;selectedSplit=ex.split;selectedScenario=ex.scenario;selectedPolicy=ex.policy;byId("compare-fixed").checked=ex.compare_fixed_order;byId("policy-select").value=selectedPolicy;renderComparison();renderScenarioOptions();renderInvestigation()}
 function init(){renderExecution();for(const [split,label] of [["development","Development"],["evaluation","Evaluation"]])if(DATA.comparison.some(x=>x.split===split)){/* tabs filled by renderer */}
  renderComparison();const policy=byId("policy-select");for(const p of Object.keys(LABELS)){const o=node("option",LABELS[p]);o.value=p;policy.append(o)}policy.value=selectedPolicy;
- const guides=byId("guided-examples");for(const ex of DATA.guided_examples){const b=node("button");b.type="button";b.append(node("strong",ex.title),node("span",ex.description));b.addEventListener("click",()=>setExample(ex.id));guides.append(b)}
+ const guides=byId("guided-examples");for(const ex of DATA.guided_examples){const b=node("button");b.type="button";b.append(node("strong",ex.title),node("span",ex.description));b.addEventListener("click",()=>setExample(ex.id));guides.append(b)}if(!DATA.guided_examples.length)add(guides,"p","No guided examples are available for the traces in this report.","muted");
  byId("scenario-select").addEventListener("change",e=>{selectedScenario=e.target.value;renderInvestigation()});policy.addEventListener("change",e=>{selectedPolicy=e.target.value;renderInvestigation()});byId("compare-fixed").addEventListener("change",renderInvestigation);
  renderScenarioOptions();renderInvestigation();
  const prov=DATA.provenance||{};byId("provenance").textContent="Report created "+(DATA.created_utc||"unknown")+" · source commit "+(prov.git_head||"not recorded")+".";

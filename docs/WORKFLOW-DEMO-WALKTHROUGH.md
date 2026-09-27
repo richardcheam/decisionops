@@ -34,9 +34,9 @@ Trace: [evidence-masked Laya, dev-database-clear](../reports/workflow-model-comp
 
 ## 2:45–4:15 · A supported diagnosis can still be premature
 
-Choose **Supported by one observation, premature for two faults**. Turn on **Compare with fixed order**. Both timelines now show eval-multiple-current-faults. Masked Laya requests the database and authentication checks; both return current failure observations. It then selects Database failure. The harness accepts that diagnosis because the visible database observation supports it. The evaluator label for the scenario is review because the fixture contains multiple current faults.
+Choose **Supported by one observation, premature for two faults**. Turn on **Compare with fixed order**. Both timelines now show eval-multiple-current-faults. Masked Laya checks the database, receives a current database timeout, then selects Database failure. Only the database observation is visible when the harness accepts the diagnosis; authentication has not been checked. The evaluator requires review because the full scenario contains multiple faults.
 
-Fixed order follows its deterministic check sequence and finishes by requesting review. This paired trace distinguishes support for one diagnosis from completeness of the diagnosis. The diagnosis passed the visible-evidence rule but did not match the evaluator’s full scenario outcome.
+Fixed order gathers database, authentication, storage, and service-health observations in its deterministic sequence, then requests review. This paired trace distinguishes support for one diagnosis from completeness of the diagnosis. The diagnosis passed the visible-evidence rule but did not match the evaluator’s full scenario outcome.
 
 Traces: [masked Laya](../reports/workflow-model-comparison-20260927/traces/laya_evidence_masked/eva-007.jsonl) and [fixed order](../reports/workflow-model-comparison-20260927/traces/fixed_order/eva-007.jsonl).
 

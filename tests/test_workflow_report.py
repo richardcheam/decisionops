@@ -4,11 +4,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from decisionops.workflow_report import ReportLoadError, export_report, load_report, render_html
+from decisionops.workflow_report import (
+    ReportLoadError,
+    _available_guided_examples,
+    export_report,
+    load_report,
+    render_html,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "reports" / "workflow-model-comparison-20260927"
+DEVELOPMENT_REPORT = ROOT / "reports" / "workflow-model-comparison-development-final-20260927"
 POLICIES = (
     "fixed_order", "rules", "gliclass", "gliclass_evidence_masked",
     "laya", "laya_evidence_masked",
@@ -37,6 +44,43 @@ class WorkflowReportTests(unittest.TestCase):
             report["evaluator"]["development"]["dev-database-clear"]["gold"]["gold_terminal_action"],
             "diagnose_database_failure",
         )
+
+    def test_development_only_report_omits_evaluation_guided_example(self):
+        report = load_report(DEVELOPMENT_REPORT)
+        self.assertEqual({row["split"] for row in report["comparison"]}, {"development"})
+        self.assertEqual({example["id"] for example in report["guided_examples"]}, {"blocked", "masked"})
+        self.assertTrue(all(example["split"] == "development" for example in report["guided_examples"]))
+
+    def test_premature_diagnosis_example_matches_recorded_trace(self):
+        report = load_report(REPORT)
+        scenario = "eval-multiple-current-faults"
+        laya = report["policies"]["laya_evidence_masked"]["episodes"]["evaluation"][scenario]["events"]
+        decisions = [event for event in laya if event["event_type"] == "decision"]
+        self.assertEqual([event["proposal"]["action_id"] for event in decisions], [
+            "check_database", "diagnose_database_failure",
+        ])
+        self.assertEqual(
+            [obs["tool_name"] for obs in decisions[1]["visible_state_before"]["observations"]],
+            ["check_database"],
+        )
+        self.assertTrue(decisions[1]["acceptance"]["accepted"])
+
+        fixed = report["policies"]["fixed_order"]["episodes"]["evaluation"][scenario]["events"]
+        fixed_decisions = [event for event in fixed if event["event_type"] == "decision"]
+        self.assertEqual([event["proposal"]["action_id"] for event in fixed_decisions], [
+            "check_database", "check_authentication", "check_storage", "check_service_health", "request_review",
+        ])
+        self.assertEqual(
+            report["evaluator"]["evaluation"][scenario]["gold"]["gold_terminal_action"],
+            "request_review",
+        )
+
+    def test_guides_require_the_selected_and_comparison_traces(self):
+        report = load_report(REPORT)
+        del report["policies"]["laya"]["episodes"]["development"]["dev-database-clear"]
+        del report["policies"]["fixed_order"]["episodes"]["evaluation"]["eval-multiple-current-faults"]
+        available = _available_guided_examples(report["policies"])
+        self.assertEqual({example["id"] for example in available}, {"masked"})
 
     def test_missing_report_summary_is_reported(self):
         with tempfile.TemporaryDirectory() as directory:
