@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import subprocess
 import tempfile
@@ -53,6 +54,10 @@ class LayaWorkflowTests(unittest.TestCase):
     def setUpClass(cls):
         cls.scenarios = {scenario.scenario_id: scenario for scenario in load_scenarios()}
 
+    @unittest.skipUnless(
+        importlib.util.find_spec("laya") is not None,
+        "requires the Laya package API; model-free CI does not install ML dependencies",
+    )
     def test_laya_named_choice_maps_using_the_installed_api_choice_order(self):
         from laya.agent import Agent
 
@@ -125,6 +130,10 @@ class LayaWorkflowTests(unittest.TestCase):
         self.assertIsNotNone(instructions)
         self.assertEqual(unmasked_agent.calls[0][1]["next_action"]["instructions"], instructions)
 
+    @unittest.skipUnless(
+        importlib.util.find_spec("laya") is not None,
+        "requires the Laya package API; model-free CI does not install ML dependencies",
+    )
     def test_laya_infers_for_single_remaining_candidate_and_keeps_native_metadata(self):
         from decisionops.workflow import VisibleState
         from laya.agent import Agent
