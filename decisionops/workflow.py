@@ -38,6 +38,8 @@ class Proposal:
     scores: dict[str, float] | None = None
     scored_candidate_ids: tuple[str, ...] | None = None
     excluded_candidates: dict[str, str] = field(default_factory=dict)
+    native_metadata: dict[str, Any] | None = None
+    policy_input: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -130,6 +132,18 @@ class Policy(Protocol):
 
 class ToolExecutionError(RuntimeError):
     pass
+
+
+class PolicyExecutionFailure(RuntimeError):
+    """Model failure that retains the attempted input, candidates, and native output."""
+
+    def __init__(self, message: str, policy_input: dict[str, Any], scored_candidate_ids: tuple[str, ...],
+                 excluded_candidates: dict[str, str], native_output: Any):
+        super().__init__(message)
+        self.policy_input = copy.deepcopy(policy_input)
+        self.scored_candidate_ids = tuple(scored_candidate_ids)
+        self.excluded_candidates = copy.deepcopy(excluded_candidates)
+        self.native_output = copy.deepcopy(native_output)
 
 
 class RecordedToolEnvironment:
@@ -269,6 +283,7 @@ def _proposal_dict(proposal: Any) -> dict[str, Any] | Any:
             "scores": proposal.scores,
             "scored_candidate_ids": None if proposal.scored_candidate_ids is None else list(proposal.scored_candidate_ids),
             "excluded_candidates": copy.deepcopy(proposal.excluded_candidates),
+            "native_metadata": copy.deepcopy(proposal.native_metadata),
         }
     if isinstance(proposal, dict):
         return copy.deepcopy(proposal)
@@ -280,7 +295,7 @@ def _proposal_dict(proposal: Any) -> dict[str, Any] | Any:
 def _decode_proposal(raw: Any) -> tuple[Proposal | None, str | None]:
     if isinstance(raw, Proposal):
         proposal = raw
-    elif isinstance(raw, dict) and set(raw) <= {"action_id", "evidence_ids", "scores", "scored_candidate_ids", "excluded_candidates"} and "action_id" in raw:
+    elif isinstance(raw, dict) and set(raw) <= {"action_id", "evidence_ids", "scores", "scored_candidate_ids", "excluded_candidates", "native_metadata"} and "action_id" in raw:
         evidence = raw.get("evidence_ids", ())
         if not isinstance(evidence, (tuple, list)) or not all(isinstance(value, str) for value in evidence):
             return None, "malformed_evidence_references"
@@ -293,11 +308,26 @@ def _decode_proposal(raw: Any) -> tuple[Proposal | None, str | None]:
         excluded = raw.get("excluded_candidates", {})
         if not isinstance(excluded, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in excluded.items()):
             return None, "malformed_excluded_candidates"
-        proposal = Proposal(raw["action_id"], tuple(evidence), scores, None if scored_ids is None else tuple(scored_ids), excluded)
+        native_metadata = raw.get("native_metadata")
+        if native_metadata is not None and not isinstance(native_metadata, dict):
+            return None, "malformed_native_metadata"
+        if native_metadata is not None:
+            try:
+                json.dumps(native_metadata, ensure_ascii=False, allow_nan=False)
+            except (TypeError, ValueError):
+                return None, "malformed_native_metadata"
+        proposal = Proposal(raw["action_id"], tuple(evidence), scores, None if scored_ids is None else tuple(scored_ids), excluded, native_metadata)
     else:
         return None, "malformed_proposal"
     if not isinstance(proposal.action_id, str):
         return None, "malformed_action_id"
+    if proposal.native_metadata is not None:
+        if not isinstance(proposal.native_metadata, dict):
+            return None, "malformed_native_metadata"
+        try:
+            json.dumps(proposal.native_metadata, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError):
+            return None, "malformed_native_metadata"
     if not all(isinstance(value, str) for value in proposal.evidence_ids):
         return None, "malformed_evidence_references"
     if proposal.scores is not None:
@@ -309,7 +339,8 @@ def _decode_proposal(raw: Any) -> tuple[Proposal | None, str | None]:
             return None, "malformed_scores"
         if any(not math.isfinite(value) or not 0 <= value <= 1 for value in values.values()):
             return None, "malformed_scores"
-        proposal = Proposal(proposal.action_id, tuple(proposal.evidence_ids), values, proposal.scored_candidate_ids, proposal.excluded_candidates)
+        proposal = Proposal(proposal.action_id, tuple(proposal.evidence_ids), values, proposal.scored_candidate_ids,
+                            proposal.excluded_candidates, proposal.native_metadata, proposal.policy_input)
     if proposal.scored_candidate_ids is not None and (not all(isinstance(value, str) for value in proposal.scored_candidate_ids) or len(set(proposal.scored_candidate_ids)) != len(proposal.scored_candidate_ids)):
         return None, "malformed_scored_candidate_ids"
     if not isinstance(proposal.excluded_candidates, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in proposal.excluded_candidates.items()):
@@ -376,7 +407,7 @@ def _make_event(
     else:
         scored_candidate_ids, excluded_candidates = [], {}
     return {
-        "trace_version": 2, "event_type": event_type, "episode_id": episode_id, "step_id": step_id,
+        "trace_version": 3, "event_type": event_type, "episode_id": episode_id, "step_id": step_id,
         "visible_state_before": before, "eligible_actions": list(eligible),
         "policy_input": copy.deepcopy(policy_input),
         "scored_candidate_ids": scored_candidate_ids,
@@ -426,9 +457,18 @@ def run_episode(
             raw = policy.propose(policy_state, eligible)
         except Exception as exc:
             raw = {"policy_error": f"{type(exc).__name__}: {exc}"}
+            if isinstance(exc, PolicyExecutionFailure):
+                policy_input.update(exc.policy_input)
+                raw.update({
+                    "scored_candidate_ids": list(exc.scored_candidate_ids),
+                    "excluded_candidates": exc.excluded_candidates,
+                    "native_output": exc.native_output,
+                })
             proposal, malformed_reason = None, "policy_execution_error"
         else:
             proposal, malformed_reason = _decode_proposal(raw)
+            if proposal is not None and proposal.policy_input is not None:
+                policy_input.update(copy.deepcopy(proposal.policy_input))
         acceptance = {"accepted": False, "reason": "", "detail": ""}
         observation = None
         if malformed_reason:
@@ -533,7 +573,7 @@ def replay_trace(events: list[dict[str, Any]]) -> dict[str, Any]:
         raise ValueError("trace is empty")
     events = json.loads(json.dumps(events, ensure_ascii=False))
     versions = {event.get("trace_version", 1) for event in events}
-    if not versions <= {1, 2} or len(versions) != 1:
+    if not versions <= {1, 2, 3} or len(versions) != 1:
         raise ValueError("trace contains an unsupported or mixed format version")
     trace_version = next(iter(versions))
     episode_id = events[0].get("episode_id")
@@ -565,10 +605,38 @@ def replay_trace(events: list[dict[str, Any]]) -> dict[str, Any]:
                 raise ValueError("trace eligible actions do not match visible state")
             state.remaining_decisions -= 1
             state.decision_count += 1
-            if trace_version == 2:
+            if trace_version in {2, 3}:
                 expected_policy_input = {"visible_state": _json_state(state), "eligible_action_ids": list(eligible)}
-                if event.get("policy_input") != expected_policy_input:
+                recorded_policy_input = event.get("policy_input")
+                if not isinstance(recorded_policy_input, dict) or any(recorded_policy_input.get(key) != value for key, value in expected_policy_input.items()):
                     raise ValueError("trace policy input does not match the actual decision state")
+                if trace_version == 2 and recorded_policy_input != expected_policy_input:
+                    raise ValueError("version 2 policy input has unexpected fields")
+                if trace_version == 3:
+                    model_family = recorded_policy_input.get("model_family")
+                    if model_family is None:
+                        if set(recorded_policy_input) != set(expected_policy_input):
+                            raise ValueError("trace policy input has unexpected fields")
+                    elif model_family in {"gliclass", "laya"}:
+                        from .workflow_policies import build_laya_workflow_question, render_visible_state
+                        if recorded_policy_input.get("state_text") != render_visible_state(state.visible()):
+                            raise ValueError("trace model state text does not match visible state")
+                        proposal_for_input, _malformed_for_input = _decode_proposal(event.get("proposal"))
+                        if proposal_for_input is not None and proposal_for_input.scored_candidate_ids is not None:
+                            candidate_ids = tuple(proposal_for_input.scored_candidate_ids)
+                        elif event["acceptance"].get("reason") == "policy_execution_error":
+                            candidate_ids = tuple(event.get("scored_candidate_ids", ()))
+                        else:
+                            raise ValueError("trace model input has no scored candidates")
+                        if model_family == "gliclass":
+                            expected_candidates = [{"id": action_id, "name": ACTION_NAMES[action_id]} for action_id in candidate_ids]
+                            if recorded_policy_input.get("candidates") != expected_candidates or set(recorded_policy_input) != set(expected_policy_input) | {"model_family", "state_text", "candidates"}:
+                                raise ValueError("trace GLiClass candidate input does not match scored candidates")
+                        else:
+                            if recorded_policy_input.get("question") != build_laya_workflow_question(candidate_ids) or set(recorded_policy_input) != set(expected_policy_input) | {"model_family", "state_text", "question"}:
+                                raise ValueError("trace Laya question does not match scored candidates")
+                    else:
+                        raise ValueError("trace model input names an unsupported model family")
                 scored_ids = event.get("scored_candidate_ids")
                 excluded = event.get("excluded_candidates")
                 if not isinstance(scored_ids, list) or len(set(scored_ids)) != len(scored_ids) or not set(scored_ids) <= set(eligible):
@@ -579,12 +647,37 @@ def replay_trace(events: list[dict[str, Any]]) -> dict[str, Any]:
                     raise ValueError("trace candidates are both scored and excluded")
             acceptance = event["acceptance"]
             proposal, malformed = _decode_proposal(event.get("proposal"))
-            if trace_version == 2 and proposal is not None:
+            if trace_version in {2, 3} and proposal is not None:
                 proposal_scores = list(proposal.scored_candidate_ids) if proposal.scored_candidate_ids is not None else list(proposal.scores or {})
                 if proposal_scores != event["scored_candidate_ids"] or proposal.excluded_candidates != event["excluded_candidates"]:
                     raise ValueError("trace candidate metadata differs from the recorded proposal")
+                if trace_version == 3 and event["policy_input"].get("model_family") == "laya":
+                    metadata = proposal.native_metadata
+                    if not isinstance(metadata, dict):
+                        raise ValueError("trace Laya proposal has no native output metadata")
+                    choice = metadata.get("choice")
+                    if isinstance(choice, str):
+                        selected_id = next((action_id for action_id in proposal_scores if ACTION_NAMES[action_id] == choice), None)
+                    elif isinstance(choice, int) and not isinstance(choice, bool) and 0 <= choice < len(proposal_scores):
+                        selected_id = proposal_scores[choice]
+                    else:
+                        selected_id = None
+                    if selected_id != proposal.action_id:
+                        raise ValueError("trace Laya choice does not match the selected action ID")
+                    native_probabilities = metadata.get("probabilities")
+                    if isinstance(native_probabilities, dict):
+                        native_scores = {
+                            next((action_id for action_id in proposal_scores if ACTION_NAMES[action_id] == name), ""): float(value)
+                            for name, value in native_probabilities.items()
+                        }
+                    elif isinstance(native_probabilities, (list, tuple)) and len(native_probabilities) == len(proposal_scores):
+                        native_scores = {action_id: float(value) for action_id, value in zip(proposal_scores, native_probabilities, strict=True)}
+                    else:
+                        native_scores = {}
+                    if native_scores != proposal.scores:
+                        raise ValueError("trace native Laya probabilities do not match canonical policy scores")
             if proposal is not None and proposal.scores is not None and proposal.action_id in eligible:
-                score_error = _validate_scores(proposal, eligible, require_complete_metadata=trace_version == 2)
+                score_error = _validate_scores(proposal, eligible, require_complete_metadata=trace_version in {2, 3})
                 if acceptance.get("accepted") and score_error:
                     raise ValueError("trace accepted invalid scores or candidate membership")
                 if acceptance.get("reason") == "malformed_scores" and not score_error:
@@ -592,7 +685,7 @@ def replay_trace(events: list[dict[str, Any]]) -> dict[str, Any]:
             if acceptance.get("accepted"):
                 if malformed or proposal is None or proposal.action_id not in eligible:
                     raise ValueError("trace accepted a malformed or ineligible proposal")
-                if proposal.scores and _validate_scores(proposal, eligible, require_complete_metadata=trace_version == 2):
+                if proposal.scores and _validate_scores(proposal, eligible, require_complete_metadata=trace_version in {2, 3}):
                     raise ValueError("trace accepted malformed model scores")
                 if proposal.action_id in TOOL_ACTIONS:
                     if proposal.evidence_ids or state.remaining_tool_calls <= 0:

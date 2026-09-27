@@ -152,6 +152,34 @@ class GLiClassActionRanker:
         return validate_neural_prediction("gliclass workflow", selected, scores, validation_candidates)[1]
 
 
+class LayaActionAgent:
+    """Reusable offline Laya choice agent for the bounded workflow."""
+
+    def __init__(self, revision_file: Path):
+        self.revision_file = revision_file
+        self.load_seconds = 0.0
+        self._agent = None
+
+    def load(self) -> None:
+        started = time.perf_counter()
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        import torch
+        from huggingface_hub import hf_hub_download
+        import laya
+
+        torch.set_num_threads(4)
+        pins = parse_revision_pins(self.revision_file)
+        repository, revision_key = REPOSITORIES["laya"]
+        path = offline_model_path(hf_hub_download, repository, pins[revision_key])
+        self._agent = laya.load(str(path), device="cpu")
+        self.load_seconds = time.perf_counter() - started
+
+    def predict(self, text: str, question: dict) -> dict:
+        if self._agent is None:
+            raise RuntimeError("Laya action agent must be loaded before predict")
+        return self._agent.predict(text, question)
+
+
 def build_gliclass_candidate_labels(candidates: Sequence[CandidateSpec] = CANDIDATES) -> tuple[str, ...]:
     """Return flat short labels, the tested native format for this checkpoint."""
     return tuple(candidate.name for candidate in candidates)
@@ -215,11 +243,11 @@ def _as_mapping(value):
     return value if isinstance(value, dict) else vars(value) if hasattr(value, "__dict__") else {}
 
 
-def normalize_laya_result(result, candidates: Sequence[CandidateSpec] = CANDIDATES) -> dict:
+def normalize_laya_result(result, candidates: Sequence[CandidateSpec] = CANDIDATES, answer_key: str = "incident") -> dict:
     """Map Laya's named choice to canonical IDs and validate its native distribution."""
     answers = _as_mapping(_get(result, "answers", {}))
-    incident = _as_mapping(answers.get("incident", {}))
-    raw_choice = incident.get("choice")
+    answer = _as_mapping(answers.get(answer_key, {}))
+    raw_choice = answer.get("choice")
     choice_to_id = {candidate.id: candidate.id for candidate in candidates}
     choice_to_id.update({candidate.name: candidate.id for candidate in candidates})
     if isinstance(raw_choice, int) and not isinstance(raw_choice, bool):
@@ -229,10 +257,10 @@ def normalize_laya_result(result, candidates: Sequence[CandidateSpec] = CANDIDAT
     if selected is None:
         raise InvalidModelOutput(f"laya returned unknown selected choice {raw_choice!r}")
 
-    scores = incident.get("probabilities")
+    scores = answer.get("probabilities")
     if scores is None:
         probabilities = _as_mapping(_get(result, "probabilities", {}))
-        scores = probabilities.get("incident") if probabilities else None
+        scores = probabilities.get(answer_key) if probabilities else None
     if isinstance(scores, (list, tuple)) and len(scores) == len(candidates):
         scores = {candidate.id: value for candidate, value in zip(candidates, scores, strict=True)}
     elif isinstance(scores, Mapping):
@@ -241,9 +269,9 @@ def normalize_laya_result(result, candidates: Sequence[CandidateSpec] = CANDIDAT
             scores = {by_name[name]: value for name, value in scores.items()}
     selected, scores = validate_neural_prediction("laya", selected, scores, candidates)
 
-    confidence = incident.get("confidence", _get(result, "confidence"))
-    answer_confidence = incident.get("answer_confidence", _get(result, "answer_confidence"))
-    action = _as_mapping(incident.get("action", {})).get("act_probability")
+    confidence = answer.get("confidence", _get(result, "confidence"))
+    answer_confidence = answer.get("answer_confidence", _get(result, "answer_confidence"))
+    action = _as_mapping(answer.get("action", {})).get("act_probability")
     for field, value in (("confidence", confidence), ("answer_confidence", answer_confidence), ("action_act_probability", action)):
         if value is not None:
             try:
@@ -255,4 +283,27 @@ def normalize_laya_result(result, candidates: Sequence[CandidateSpec] = CANDIDAT
     return {
         "selected_class": selected, "scores": scores, "confidence": confidence,
         "answer_confidence": answer_confidence, "action_act_probability": action,
+    }
+
+
+def normalize_laya_workflow_result(result, candidates: Sequence[CandidateSpec]) -> dict:
+    """Validate Laya's native named-choice result and retain its optional output fields."""
+    normalized = normalize_laya_result(result, candidates, answer_key="next_action")
+    answers = _as_mapping(_get(result, "answers", {}))
+    answer = _as_mapping(answers.get("next_action", {}))
+    action = _as_mapping(answer.get("action", {}))
+    probabilities = answer.get("probabilities")
+    if probabilities is None:
+        all_probabilities = _as_mapping(_get(result, "probabilities", {}))
+        probabilities = all_probabilities.get("next_action") if all_probabilities else None
+    return {
+        "selected_action_id": normalized["selected_class"],
+        "scores": normalized["scores"],
+        "native_metadata": {
+            "choice": answer.get("choice"),
+            "probabilities": probabilities,
+            "confidence": normalized["confidence"],
+            "answer_confidence": normalized["answer_confidence"],
+            "act_probability": action.get("act_probability"),
+        },
     }

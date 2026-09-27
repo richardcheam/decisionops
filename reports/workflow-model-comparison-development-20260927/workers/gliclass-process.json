@@ -1,0 +1,9 @@
+{
+  "model_family": "gliclass",
+  "status": "completed",
+  "returncode": 0,
+  "model_loading_seconds": 5.560888592997799,
+  "peak_process_rss_bytes": 882180096,
+  "stdout": "Completed isolated gliclass workflow worker\n",
+  "stderr": "/home/richard/projects/decisionops/.venv/lib/python3.12/site-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.\n  warnings.warn(\n\nLoading weights:   0%|          | 0/111 [00:00<?, ?it/s]\nLoading weights: 100%|██████████| 111/111 [00:00<00:00, 6673.56it/s]\n[transformers] You are using a model of type `GLiClass` to instantiate a model of type ``. This may be expected if you are loading a checkpoint that shares a subset of the architecture (e.g., loading a `sam2_video` checkpoint into `Sam2Model`), but is otherwise not supported and can yield errors. Please verify that the checkpoint is compatible with the model you are instantiating.\n[transformers] `use_return_dict` is deprecated! Use `return_dict` instead!\n"
+}

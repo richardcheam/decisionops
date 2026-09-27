@@ -20,7 +20,7 @@ def main(argv=None) -> int:
     workflow_commands = workflow.add_subparsers(dest="workflow_command", required=True)
     episode = workflow_commands.add_parser("episode", help="run one bounded synthetic episode")
     episode.add_argument("--scenario-id", required=True)
-    episode.add_argument("--policy", choices=("fixed_order", "rules", "gliclass", "gliclass_evidence_masked"), default="rules")
+    episode.add_argument("--policy", choices=("fixed_order", "rules", "gliclass", "gliclass_evidence_masked", "laya", "laya_evidence_masked"), default="rules")
     episode.add_argument("--trace-file", type=Path, default=Path("runs/workflow-episode.jsonl"))
     episode.add_argument("--scenario-file", type=Path)
     episode.add_argument("--revision-file", type=Path)

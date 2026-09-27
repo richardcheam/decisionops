@@ -1,0 +1,18 @@
+{
+  "evaluation_execution_status": "completed",
+  "evaluation_scope": "all",
+  "workers": {
+    "gliclass": {
+      "status": "completed",
+      "returncode": 0,
+      "model_loading_seconds": 6.769175642999471,
+      "peak_process_rss_bytes": 874635264
+    },
+    "laya": {
+      "status": "completed",
+      "returncode": 0,
+      "model_loading_seconds": 5.938599554996472,
+      "peak_process_rss_bytes": 3041480704
+    }
+  }
+}
