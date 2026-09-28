@@ -1,12 +1,14 @@
 import json
 import unittest
 from dataclasses import asdict
+from unittest.mock import patch
 
 from decisionops.workflow import (
     ACTION_IDS,
     DEFAULT_MAX_DECISIONS,
     DEFAULT_MAX_TOOL_CALLS,
     Proposal,
+    ToolExecutionError,
     VisibleState,
     eligible_actions,
     replay_trace,
@@ -108,18 +110,21 @@ class WorkflowFixtureTests(unittest.TestCase):
         self.assertEqual(result.terminal_reason, "invalid_proposal")
         self.assertEqual(result.invalid_proposals_rejected, 1)
         self.assertEqual(result.trace[-1]["acceptance"]["reason"], "tool_already_attempted")
+        self.assertEqual(replay_trace(json.loads(json.dumps(result.trace)))["terminal_reason"], "invalid_proposal")
 
     def test_tool_call_budget_is_enforced(self):
         policy = FakePolicy([Proposal("check_database"), Proposal("check_authentication")])
         result = run_episode(self.scenarios["dev-database-clear"], policy, max_tool_calls=1)
         self.assertEqual(result.terminal_reason, "exhausted_budget")
         self.assertEqual(result.tool_call_count, 1)
+        self.assertEqual(replay_trace(json.loads(json.dumps(result.trace)))["terminal_reason"], "exhausted_budget")
 
     def test_decision_budget_guarantees_termination(self):
         policy = FakePolicy([Proposal("check_database"), Proposal("check_authentication"), Proposal("check_storage")])
         result = run_episode(self.scenarios["dev-database-clear"], policy, max_decisions=1)
         self.assertEqual(result.terminal_reason, "exhausted_budget")
         self.assertLessEqual(result.decision_count, 1)
+        self.assertEqual(replay_trace(json.loads(json.dumps(result.trace)))["terminal_reason"], "exhausted_budget")
 
     def test_timeout_is_visible_observation_and_review_is_allowed(self):
         policy = FakePolicy([Proposal("check_database"), Proposal("request_review")])
@@ -156,6 +161,67 @@ class WorkflowFixtureTests(unittest.TestCase):
         result = run_episode(self.scenarios["dev-database-clear"], policy)
         self.assertEqual(result.terminal_reason, "invalid_proposal")
         self.assertEqual(result.invalid_proposals_rejected, 1)
+        self.assertEqual(replay_trace(json.loads(json.dumps(result.trace)))["terminal_reason"], "invalid_proposal")
+
+        malformed_action = run_episode(
+            self.scenarios["dev-database-clear"], FakePolicy([Proposal(None)]),
+        )
+        self.assertEqual(malformed_action.trace[0]["acceptance"]["reason"], "malformed_action_id")
+        self.assertEqual(replay_trace(json.loads(json.dumps(malformed_action.trace)))["terminal_reason"], "invalid_proposal")
+
+    def test_replay_rejects_unknown_action_reason_for_known_review_proposal(self):
+        result = run_episode(
+            self.scenarios["dev-database-clear"],
+            FakePolicy([Proposal("not_an_action")]),
+        )
+        tampered = json.loads(json.dumps(result.trace))
+        tampered[0]["proposal"]["action_id"] = "request_review"
+
+        with self.assertRaisesRegex(ValueError, "event 1.*unknown_action"):
+            replay_trace(tampered)
+
+    def test_replay_checks_repeated_tool_and_invalid_score_rejection_reasons(self):
+        repeated = run_episode(
+            self.scenarios["dev-database-clear"],
+            FakePolicy([Proposal("check_database"), Proposal("check_database")]),
+        )
+        repeated_tampered = json.loads(json.dumps(repeated.trace))
+        repeated_tampered[1]["proposal"]["action_id"] = "request_review"
+        with self.assertRaisesRegex(ValueError, "event 2.*tool_already_attempted.*review_requested"):
+            replay_trace(repeated_tampered)
+
+        invalid_scores = run_episode(
+            self.scenarios["dev-database-clear"],
+            FakePolicy([Proposal("request_review", scores={"request_review": float("nan")}, scored_candidate_ids=("request_review",))]),
+        )
+        self.assertEqual(replay_trace(json.loads(json.dumps(invalid_scores.trace)))["terminal_reason"], "invalid_proposal")
+        scores_tampered = json.loads(json.dumps(invalid_scores.trace))
+        scores_tampered[0]["acceptance"]["reason"] = "unknown_action"
+        with self.assertRaisesRegex(ValueError, "event 1.*unknown_action.*malformed_scores"):
+            replay_trace(scores_tampered)
+
+    def test_replay_checks_candidate_membership_and_unseen_evidence_reasons(self):
+        bad_candidates = Proposal(
+            "request_review",
+            scores={"request_review": 0.5, "not_eligible": 0.5},
+            scored_candidate_ids=("request_review", "not_eligible"),
+        )
+        result = run_episode(self.scenarios["dev-database-clear"], FakePolicy([bad_candidates]))
+        self.assertEqual(result.trace[0]["acceptance"]["reason"], "malformed_scores")
+        self.assertEqual(replay_trace(json.loads(json.dumps(result.trace)))["terminal_reason"], "invalid_proposal")
+
+        malformed_candidates = run_episode(
+            self.scenarios["dev-database-clear"],
+            FakePolicy([Proposal("request_review", scored_candidate_ids=("request_review", "request_review"))]),
+        )
+        self.assertEqual(malformed_candidates.trace[0]["acceptance"]["reason"], "malformed_scored_candidate_ids")
+        self.assertEqual(replay_trace(json.loads(json.dumps(malformed_candidates.trace)))["terminal_reason"], "invalid_proposal")
+
+        unseen = run_episode(
+            self.scenarios["dev-database-clear"],
+            FakePolicy([Proposal("request_review", evidence_ids=("obs-not-seen",))]),
+        )
+        self.assertEqual(replay_trace(json.loads(json.dumps(unseen.trace)))["terminal_reason"], "invalid_proposal")
 
     def test_unseen_evidence_reference_is_rejected(self):
         policy = FakePolicy([Proposal("request_review", evidence_ids=("obs-not-seen",))])
@@ -173,6 +239,73 @@ class WorkflowFixtureTests(unittest.TestCase):
         replayed = replay_trace(json.loads(json.dumps(result.trace)))
         self.assertEqual(replayed["terminal_action"], "request_review")
         self.assertEqual(replayed["terminal_reason"], "review")
+
+    def test_replay_handles_supported_diagnosis_with_wrong_visible_citation(self):
+        policy = FakePolicy([
+            Proposal("check_database"),
+            Proposal("check_storage"),
+            Proposal("diagnose_database_failure", evidence_ids=("obs-02-check_storage",)),
+            Proposal("request_review"),
+        ])
+        result = run_episode(self.scenarios["dev-database-clear"], policy)
+        rejected = result.trace[2]["acceptance"]
+        self.assertEqual(rejected["reason"], "unsupported_diagnosis")
+        self.assertEqual(rejected["evidence_check_reason"], "cited_observation_does_not_support_proposed_diagnosis")
+        replayed = replay_trace(json.loads(json.dumps(result.trace)))
+        self.assertEqual(replayed["terminal_action"], "request_review")
+        self.assertEqual(replayed["terminal_reason"], "review")
+
+    def test_replay_handles_tool_failure_and_exhausted_tool_budget(self):
+        with patch("decisionops.workflow.RecordedToolEnvironment.execute", side_effect=ToolExecutionError("fixture unavailable")):
+            failed_tool = run_episode(
+                self.scenarios["dev-database-clear"],
+                FakePolicy([Proposal("check_database")]),
+            )
+        replayed_failure = replay_trace(json.loads(json.dumps(failed_tool.trace)))
+        self.assertEqual(replayed_failure["terminal_reason"], "tool_failure")
+        self.assertEqual(list(replayed_failure["final_state"]["actions_attempted"]), ["check_database"])
+        self.assertEqual(replayed_failure["final_state"]["remaining_tool_calls"], DEFAULT_MAX_TOOL_CALLS - 1)
+
+        exhausted = run_episode(
+            self.scenarios["dev-database-clear"],
+            FakePolicy([Proposal("check_database")]),
+            max_tool_calls=0,
+        )
+        replayed_budget = replay_trace(json.loads(json.dumps(exhausted.trace)))
+        self.assertEqual(replayed_budget["terminal_reason"], "exhausted_budget")
+        self.assertEqual(replayed_budget["final_state"]["remaining_tool_calls"], 0)
+
+    def test_valid_terminal_replay_matches_final_budgets_and_evidence(self):
+        cases = (
+            ("diagnosis", FakePolicy([Proposal("check_database"), Proposal("diagnose_database_failure")])),
+            ("review", FakePolicy([Proposal("check_database"), Proposal("request_review", evidence_ids=("obs-01-check_database",))])),
+        )
+        for name, policy in cases:
+            with self.subTest(name=name):
+                result = run_episode(self.scenarios["dev-database-clear"], policy, episode_id=f"{name}-episode")
+                replayed = replay_trace(json.loads(json.dumps(result.trace)))
+                self.assertEqual(replayed["terminal_action"], result.terminal_action)
+                self.assertEqual(replayed["terminal_reason"], result.terminal_reason)
+                self.assertEqual(replayed["cited_evidence_ids"], list(result.cited_evidence_ids))
+                self.assertEqual(
+                    json.loads(json.dumps(replayed["final_state"])),
+                    json.loads(json.dumps(result.final_state.as_dict())),
+                )
+
+    def test_replay_handles_zero_decision_budget_termination(self):
+        result = run_episode(
+            self.scenarios["dev-database-clear"], FakePolicy([]), max_decisions=0,
+        )
+        replayed = replay_trace(json.loads(json.dumps(result.trace)))
+        self.assertEqual(replayed["terminal_reason"], "exhausted_budget")
+        self.assertEqual(replayed["final_state"]["remaining_decisions"], 0)
+
+    def test_replay_errors_include_event_context_for_malformed_fields(self):
+        result = run_episode(self.scenarios["dev-database-clear"], FakePolicy([Proposal("request_review")]))
+        malformed = json.loads(json.dumps(result.trace))
+        del malformed[0]["acceptance"]
+        with self.assertRaisesRegex(ValueError, r"event 1: malformed trace fields \(KeyError\)"):
+            replay_trace(malformed)
 
     def test_trace_replay_validates_transitions_without_policy_execution(self):
         policy = FakePolicy([Proposal("check_database"), Proposal("diagnose_database_failure")])
