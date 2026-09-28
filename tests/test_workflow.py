@@ -223,6 +223,32 @@ class WorkflowFixtureTests(unittest.TestCase):
         )
         self.assertEqual(replay_trace(json.loads(json.dumps(unseen.trace)))["terminal_reason"], "invalid_proposal")
 
+    def test_replay_accepts_authentic_overlap_candidate_rejection_only(self):
+        result = run_episode(
+            self.scenarios["dev-database-clear"],
+            FakePolicy([Proposal(
+                "request_review",
+                scores={"request_review": 1.0},
+                scored_candidate_ids=("request_review",),
+                excluded_candidates={action_id: "masked" for action_id in ACTION_IDS},
+            )]),
+        )
+        recorded = result.trace[0]["acceptance"]
+        self.assertEqual(recorded["reason"], "malformed_scores")
+        self.assertEqual(recorded["detail"], "scored_candidates_cannot_also_be_excluded")
+        replayed = replay_trace(json.loads(json.dumps(result.trace)))
+        self.assertEqual(replayed["terminal_reason"], "invalid_proposal")
+
+        falsely_accepted = json.loads(json.dumps(result.trace))
+        falsely_accepted[0]["acceptance"] = {"accepted": True, "reason": "review_requested", "detail": "review is always an available terminal choice"}
+        with self.assertRaisesRegex(ValueError, "event 1: trace accepts a proposal rejected by deterministic validation"):
+            replay_trace(falsely_accepted)
+
+        falsely_rejected = json.loads(json.dumps(result.trace))
+        falsely_rejected[0]["acceptance"]["reason"] = "unknown_action"
+        with self.assertRaisesRegex(ValueError, "event 1.*unknown_action.*malformed_scores"):
+            replay_trace(falsely_rejected)
+
     def test_unseen_evidence_reference_is_rejected(self):
         policy = FakePolicy([Proposal("request_review", evidence_ids=("obs-not-seen",))])
         result = run_episode(self.scenarios["dev-database-clear"], policy)

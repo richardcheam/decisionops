@@ -760,8 +760,6 @@ def replay_trace(events: list[dict[str, Any]]) -> dict[str, Any]:
                             raise ValueError("trace scored candidates are malformed")
                         if not isinstance(excluded, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in excluded.items()):
                             raise ValueError("trace candidate exclusions are malformed")
-                        if set(scored_ids) & set(excluded):
-                            raise ValueError("trace candidates are both scored and excluded")
                 acceptance = event["acceptance"]
                 if not isinstance(acceptance, dict) or not isinstance(acceptance.get("accepted"), bool):
                     raise ValueError("trace acceptance is malformed")
