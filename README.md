@@ -6,7 +6,7 @@ This is a small CPU-only development harness comparing a readable rules baseline
 
 The engineering question is whether a policy can choose useful next actions in a bounded diagnostic workflow while respecting visible evidence and fixed tool/decision budgets. The recorded comparison shows where learned action selection fails, how evidence masking changes those choices, and why fixed order remains the strongest baseline on this inspected synthetic suite. See [FINDINGS.md](FINDINGS.md) for measured outcomes and limitations.
 
-The hosted GitHub Pages demo is pending the repository's first Pages setup and successful deployment. The expected URL is `https://richardcheam.github.io/decisionops/`; it will be linked here after the deployed page is verified. See the [portfolio handoff](docs/PORTFOLIO-HANDOFF.md) for project context, source links, and current publication status.
+The [offline workflow demo](https://richardcheam.github.io/decisionops/) is published on GitHub Pages. It shows the committed synthetic comparison and replayable traces; scores are uncalibrated, and fixture timing is not live tool latency. See the [portfolio handoff](docs/PORTFOLIO-HANDOFF.md) for project context, source links, exact results, and limitations.
 
 Create a self-contained viewer from the committed report:
 
