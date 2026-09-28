@@ -7,7 +7,7 @@ This is project information for the portfolio maintainer. It describes the work 
 - **Suggested title:** DecisionOps: Bounded Diagnostic Workflow Evaluation
 - **Description:** An offline experiment comparing fixed-order, rules-based, GLiClass, and Laya policies in a bounded synthetic diagnostic workflow, with replayable traces and a standalone report viewer.
 - **Repository:** [github.com/richardcheam/decisionops](https://github.com/richardcheam/decisionops)
-- **Demo URL:** Pending GitHub Pages setup and first successful deployment. Intended URL: `https://richardcheam.github.io/decisionops/`.
+- **Demo URL:** [Live GitHub Pages viewer](https://richardcheam.github.io/decisionops/), returned by the successful main-branch deployment.
 - **Engineering question:** Can a policy select useful next actions in a bounded diagnostic workflow while respecting visible evidence and fixed tool and decision budgets?
 - **Intended use:** A reproducible engineering demonstration of evaluation design, traceability, evidence constraints, and model failure modes. It is not a live incident-response system.
 
@@ -19,7 +19,7 @@ This is project information for the portfolio maintainer. It describes the work 
 - Separate sequential worker processes for GLiClass and Laya, with each process reused for its two policy variants.
 - Versioned, model-free replay of recorded decision traces.
 - A standard-library exporter that builds a self-contained HTML viewer from the committed reports. The viewer does not need model weights, PyTorch, a server, or network access.
-- A GitHub Actions workflow that verifies the tests and exports the site for pull requests, then deploys only the generated site output from `main` after verification or through manual dispatch. Repository Pages setup is still pending; see the status above and README.
+- A GitHub Actions workflow that verifies the tests and exports the site for pull requests, then deploys only the generated site output from `main` after verification or through manual dispatch. The live deployment is linked above and from the README.
 
 The harness deterministically controls candidate eligibility, evidence masking, tool returns, proposal acceptance or rejection, budgets, and terminal accounting. The learned policy selects among the actions made available to it; the harness does not replace a model's choice with an argmax or hidden-label fallback. Fixed order is itself deterministic. The evaluator keeps gold outcomes and unrequested observations away from policies.
 
@@ -79,4 +79,4 @@ The prior feature milestone reported 69 model-free tests passing, successful exp
 
 Using Python 3.12.3 with site packages disabled, the complete unittest discovery ran 69 tests: 67 passed and the two Laya-package API checks were skipped because ML dependencies were deliberately absent. The existing exporter generated an HTML index from the committed report; the generated output contained only `index.html`, and the synthetic-simulation and uncalibrated-score notices were present. The final report summaries and traces were read directly to recalculate the aggregate table above.
 
-The GitHub Actions pull-request run then used the project version from `.python-version` and completed the model-free test, export, and Pages artifact-upload steps successfully; its deployment job was correctly skipped for the pull request. A successful Pages deployment and its actual URL remain pending the repository Pages setting, merge to `main`, and a successful deployment run.
+The GitHub Actions pull-request run used the project version from `.python-version` and completed the model-free test, export, and Pages artifact-upload steps successfully; its deployment job was correctly skipped for the pull request. After PR #2 merged, [main-branch workflow run 4](https://github.com/richardcheam/decisionops/actions/runs/36471135542) passed both verification and deployment. Its deployment status returned the live URL above. The published page returned HTTP 200 with the synthetic-simulation and uncalibrated-score notices intact. Firefox/geckodriver checks exercised all three guided examples, Development/Evaluation split selection, policy selection, fixed-order comparison toggling, and raw-data expansion.
