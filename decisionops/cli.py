@@ -2,9 +2,21 @@
 
 import argparse
 import json
+import math
+import sys
 from pathlib import Path
 
 from .runner import DEFAULT_DATASET, DEFAULT_PINS, evaluate_all, evaluate_worker
+
+
+def _positive_finite_seconds(value: str) -> float:
+    try:
+        seconds = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a finite positive number of seconds") from exc
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise argparse.ArgumentTypeError("must be a finite positive number of seconds")
+    return seconds
 
 
 def main(argv=None) -> int:
@@ -31,6 +43,8 @@ def main(argv=None) -> int:
     workflow_eval.add_argument("--output-dir", type=Path)
     workflow_eval.add_argument("--revision-file", type=Path)
     workflow_eval.add_argument("--split", choices=("development", "all"), default="all", help="run development only or both development and evaluation splits")
+    workflow_eval.add_argument("--worker-timeout-seconds", type=_positive_finite_seconds, default=600.0,
+                               help="deadline for each model-family worker, including model loading and both variants (default: 600 seconds)")
     replay = workflow_commands.add_parser("replay", help="validate and reconstruct a JSONL workflow trace")
     replay.add_argument("--trace-file", type=Path, required=True)
     html_report = workflow_commands.add_parser("export-html", help="export an existing workflow report as a standalone offline HTML viewer")
@@ -48,7 +62,7 @@ def main(argv=None) -> int:
             print(f"Wrote standalone offline workflow viewer to {output}")
             return 0
         from .workflow import replay_trace
-        from .workflow_eval import DEFAULT_OUTPUT_DIR, DEFAULT_PINS as WORKFLOW_PINS, run_one_episode, evaluate_suite
+        from .workflow_eval import DEFAULT_OUTPUT_DIR, DEFAULT_PINS as WORKFLOW_PINS, run_one_episode, evaluate_suite, WorkflowEvaluationError
         from .workflow_scenarios import SCENARIO_FILE
 
         if args.workflow_command == "episode":
@@ -70,8 +84,13 @@ def main(argv=None) -> int:
             }, indent=2))
             return 0
         if args.workflow_command == "evaluate":
-            report = evaluate_suite(args.scenario_file or SCENARIO_FILE, args.output_dir or DEFAULT_OUTPUT_DIR,
-                                    args.revision_file or WORKFLOW_PINS, split=args.split)
+            try:
+                report = evaluate_suite(args.scenario_file or SCENARIO_FILE, args.output_dir or DEFAULT_OUTPUT_DIR,
+                                        args.revision_file or WORKFLOW_PINS, split=args.split,
+                                        worker_timeout_seconds=args.worker_timeout_seconds)
+            except WorkflowEvaluationError as exc:
+                print(str(exc), file=sys.stderr)
+                return exc.exit_code
             print(f"Wrote workflow comparison to {args.output_dir or DEFAULT_OUTPUT_DIR}")
             print(json.dumps({name: policies["metrics_by_split"] for name, policies in report["policies"].items()}, indent=2))
             return 0

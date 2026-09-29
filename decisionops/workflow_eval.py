@@ -3,13 +3,16 @@
 import hashlib
 import importlib.metadata
 import json
+import math
 import os
 import platform
 import resource
+import signal
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 from collections import Counter
 from datetime import datetime, timezone
@@ -28,6 +31,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_DIR = ROOT / "reports" / "workflow-model-comparison-20260927"
 DEFAULT_PINS = ROOT / "model-revisions.env"
 POLICY_NAMES = ("fixed_order", "rules", "gliclass", "gliclass_evidence_masked", "laya", "laya_evidence_masked")
+DEFAULT_WORKER_TIMEOUT_SECONDS = 600.0
+WORKER_TERMINATION_GRACE_SECONDS = 2.0
 WORKFLOW_CODE_FILES = (
     ROOT / "decisionops" / "workflow.py", ROOT / "decisionops" / "workflow_eval.py",
     ROOT / "decisionops" / "workflow_policies.py", ROOT / "decisionops" / "workflow_scenarios.py",
@@ -152,6 +157,178 @@ def _json_write(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def _atomic_json_write(path: Path, value: Any) -> None:
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with temporary.open("w", encoding="utf-8") as stream:
+            json.dump(value, stream, indent=2, ensure_ascii=False)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def validate_worker_timeout(value: float) -> float:
+    try:
+        timeout = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("worker timeout must be a finite positive number of seconds") from exc
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("worker timeout must be a finite positive number of seconds")
+    return timeout
+
+
+class WorkflowEvaluationError(RuntimeError):
+    def __init__(self, message: str, exit_code: int = 1):
+        super().__init__(message)
+        self.exit_code = exit_code
+
+
+class CancellationRequest:
+    """Signal-safe, single-threaded cancellation state shared with the supervisor."""
+
+    def __init__(self):
+        self.signum: int | None = None
+
+    def request(self, signum: int) -> None:
+        if self.signum is None:
+            self.signum = signum
+
+
+def _install_cancellation_handlers(request: CancellationRequest) -> dict[int, Any]:
+    previous = {}
+
+    def handler(signum, _frame):
+        request.request(signum)
+
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        previous[signum] = signal.signal(signum, handler)
+    return previous
+
+
+def _restore_cancellation_handlers(previous: dict[int, Any]) -> None:
+    for signum, handler in previous.items():
+        signal.signal(signum, handler)
+
+
+def _tail_text(path: Path, limit: int = 4000) -> str:
+    try:
+        with path.open("rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            size = stream.tell()
+            stream.seek(max(0, size - limit))
+            return stream.read(limit).decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _process_group_exists(process: subprocess.Popen) -> bool:
+    if os.name != "posix":
+        return process.poll() is None
+    try:
+        os.killpg(process.pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _signal_worker_group(process: subprocess.Popen, signum: int) -> None:
+    try:
+        if os.name == "posix":
+            os.killpg(process.pid, signum)
+        elif process.poll() is None:
+            process.send_signal(signum)
+    except ProcessLookupError:
+        pass
+
+
+def _terminate_worker_group(process: subprocess.Popen, grace_seconds: float) -> None:
+    _signal_worker_group(process, signal.SIGTERM)
+    deadline = time.monotonic() + grace_seconds
+    while time.monotonic() < deadline and _process_group_exists(process):
+        process.poll()
+        time.sleep(min(0.025, max(0.0, deadline - time.monotonic())))
+    if _process_group_exists(process):
+        _signal_worker_group(process, signal.SIGKILL)
+    try:
+        process.wait(timeout=max(0.1, grace_seconds))
+    except subprocess.TimeoutExpired:
+        _signal_worker_group(process, signal.SIGKILL)
+        process.wait()
+
+
+def _supervise_worker_process(
+    command: list[str], *, cwd: Path, env: dict[str, str], timeout_seconds: float,
+    cancellation: CancellationRequest, stdout_path: Path, stderr_path: Path,
+    termination_grace_seconds: float = WORKER_TERMINATION_GRACE_SECONDS,
+) -> dict[str, Any]:
+    """Run one worker with a monotonic deadline and bounded in-memory diagnostics."""
+    timeout_seconds = validate_worker_timeout(timeout_seconds)
+    started = time.monotonic()
+    process = None
+    outcome = "failed"
+    reason = "worker_start_error"
+    error = None
+    try:
+        with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
+            process = subprocess.Popen(
+                command, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                stdout=stdout_file, stderr=stderr_file, start_new_session=(os.name == "posix"),
+            )
+            while process.poll() is None:
+                if cancellation.signum is not None:
+                    outcome = "cancelled"
+                    reason = "sigint" if cancellation.signum == signal.SIGINT else "sigterm"
+                    _terminate_worker_group(process, termination_grace_seconds)
+                    break
+                remaining = timeout_seconds - (time.monotonic() - started)
+                if remaining <= 0:
+                    outcome = "timed_out"
+                    reason = "worker_timeout"
+                    _terminate_worker_group(process, termination_grace_seconds)
+                    break
+                try:
+                    process.wait(timeout=min(0.05, remaining))
+                except subprocess.TimeoutExpired:
+                    continue
+            if process.poll() is not None and outcome == "failed":
+                if cancellation.signum is not None:
+                    outcome = "cancelled"
+                    reason = "sigint" if cancellation.signum == signal.SIGINT else "sigterm"
+                    _terminate_worker_group(process, termination_grace_seconds)
+                elif time.monotonic() - started >= timeout_seconds:
+                    outcome = "timed_out"
+                    reason = "worker_timeout"
+                    _terminate_worker_group(process, termination_grace_seconds)
+                elif process.returncode == 0:
+                    outcome = "completed"
+                    reason = "completed"
+                else:
+                    outcome = "failed"
+                    reason = "worker_exit"
+    except BaseException as exc:
+        error = f"{type(exc).__name__}: {exc}"
+        if process is not None:
+            _terminate_worker_group(process, termination_grace_seconds)
+        if isinstance(exc, KeyboardInterrupt):
+            cancellation.request(signal.SIGINT)
+            outcome = "cancelled"
+            reason = "sigint"
+            error = None
+        elif isinstance(exc, SystemExit):
+            raise
+    elapsed = time.monotonic() - started
+    return {
+        "status": outcome, "reason": reason, "returncode": process.returncode if process is not None else None,
+        "elapsed_seconds": elapsed, "stdout": _tail_text(stdout_path), "stderr": _tail_text(stderr_path),
+        **({"error": error} if error else {}),
+    }
+
+
 def _trace_text(events: tuple[dict[str, Any], ...]) -> str:
     return "".join(json.dumps(event, ensure_ascii=False) + "\n" for event in events)
 
@@ -272,28 +449,39 @@ def _run_model_worker(
     output_dir: Path,
     scenario_path: Path,
     pin_path: Path,
-    runner=subprocess.run,
+    timeout_seconds: float = DEFAULT_WORKER_TIMEOUT_SECONDS,
+    cancellation: CancellationRequest | None = None,
+    command_factory=None,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     """Run a model family in a clean child process and publish outputs only when complete."""
+    timeout_seconds = validate_worker_timeout(timeout_seconds)
+    cancellation = cancellation or CancellationRequest()
     stage_dir = Path(tempfile.mkdtemp(prefix=f".worker-{model_family}-", dir=output_dir))
     command = [
         sys.executable, "-m", "decisionops.workflow_worker", "--model-family", model_family,
         "--split", split, "--output-dir", str(stage_dir), "--scenario-file", str(scenario_path.resolve()),
         "--revision-file", str(pin_path.resolve()),
     ]
+    if command_factory is not None:
+        command = command_factory(stage_dir, model_family, split, scenario_path, pin_path)
     env = os.environ.copy()
     env["HF_HUB_OFFLINE"] = "1"
     try:
-        process = runner(command, cwd=ROOT, env=env, text=True, capture_output=True, check=False)
-    except Exception as exc:
-        process = None
-        failure = f"{type(exc).__name__}: {exc}"
-    else:
-        failure = None
+        process_status = _supervise_worker_process(
+            command, cwd=ROOT, env=env, timeout_seconds=timeout_seconds, cancellation=cancellation,
+            stdout_path=stage_dir / "stdout.log", stderr_path=stage_dir / "stderr.log",
+        )
+    except BaseException:
+        shutil.rmtree(stage_dir, ignore_errors=True)
+        raise
+    process_returncode = process_status["returncode"]
+    failure = process_status.get("error")
+    if process_status["status"] in {"timed_out", "cancelled"}:
+        failure = process_status["reason"]
     worker_file = stage_dir / "worker-summary.json"
     expected_names = (model_family, f"{model_family}_evidence_masked")
     worker_data = None
-    if process is not None and process.returncode == 0 and worker_file.is_file():
+    if process_status["status"] == "completed" and worker_file.is_file():
         try:
             worker_data = json.loads(worker_file.read_text(encoding="utf-8"))
             expected_scenarios = [item for item in load_scenarios(scenario_path) if split == "all" or item.split == "development"]
@@ -321,16 +509,19 @@ def _run_model_worker(
         except (OSError, json.JSONDecodeError, AttributeError, TypeError, KeyError, ValueError):
             failure = "worker summary was missing or malformed"
             worker_data = None
-    elif process is not None:
-        failure = "worker exited without a complete result" if process.returncode == 0 else f"worker exited with status {process.returncode}"
-    success = worker_data is not None and failure is None
+    elif process_status["status"] == "completed":
+        failure = "worker exited without a complete result"
+    elif process_status["status"] == "failed" and not failure:
+        failure = f"worker exited with status {process_returncode}"
+    success = worker_data is not None and failure is None and process_status["status"] == "completed"
+    status_name = "completed" if success else ("failed" if process_status["status"] == "completed" else process_status["status"])
     status: dict[str, Any] = {
-        "model_family": model_family, "status": "completed" if success else "failed",
-        "returncode": process.returncode if process is not None else None,
+        "model_family": model_family, "status": status_name,
+        "returncode": process_returncode, "worker_timeout_seconds": timeout_seconds,
+        "elapsed_seconds": process_status["elapsed_seconds"], "termination_reason": process_status["reason"],
         "model_loading_seconds": worker_data.get("model_loading_seconds") if success else None,
         "peak_process_rss_bytes": worker_data.get("peak_process_rss_bytes") if success else None,
-        "stdout": (process.stdout[-4000:] if process is not None else ""),
-        "stderr": (process.stderr[-4000:] if process is not None else failure or ""),
+        "stdout": process_status["stdout"], "stderr": process_status["stderr"],
     }
     if failure:
         status["error"] = failure
@@ -359,7 +550,12 @@ def _run_model_worker(
     return status, worker_data["policies"]
 
 
-def evaluate_suite(scenario_path: Path = SCENARIO_FILE, output_dir: Path = DEFAULT_OUTPUT_DIR, pin_path: Path = DEFAULT_PINS, split: str = "all") -> dict[str, Any]:
+def evaluate_suite(
+    scenario_path: Path = SCENARIO_FILE, output_dir: Path = DEFAULT_OUTPUT_DIR, pin_path: Path = DEFAULT_PINS,
+    split: str = "all", worker_timeout_seconds: float = DEFAULT_WORKER_TIMEOUT_SECONDS, *,
+    _worker_command_factory=None,
+) -> dict[str, Any]:
+    worker_timeout_seconds = validate_worker_timeout(worker_timeout_seconds)
     if split not in {"development", "all"}:
         raise ValueError("workflow evaluation split must be 'development' or 'all'")
     if output_dir.exists():
@@ -369,30 +565,73 @@ def evaluate_suite(scenario_path: Path = SCENARIO_FILE, output_dir: Path = DEFAU
     scenarios = [scenario for scenario in load_scenarios(scenario_path) if split == "all" or scenario.split == "development"]
     output_dir.mkdir(parents=True)
     run_status = {"evaluation_execution_status": "running", "evaluation_scope": split,
-                  "workers": {"gliclass": {"status": "pending"}, "laya": {"status": "pending"}}}
-    _json_write(output_dir / "run-status.json", run_status)
+                  "worker_timeout_seconds": worker_timeout_seconds,
+                  "workers": {"gliclass": {"status": "pending", "worker_timeout_seconds": worker_timeout_seconds},
+                              "laya": {"status": "pending", "worker_timeout_seconds": worker_timeout_seconds}}}
+    cancellation = CancellationRequest()
+    previous_handlers = _install_cancellation_handlers(cancellation)
+    status_path = output_dir / "run-status.json"
     all_summaries: dict[str, Any] = {}
     policies = {"fixed_order": FixedOrderPolicy(), "rules": RulesPolicy()}
     try:
+        _atomic_json_write(status_path, run_status)
         for name in ("fixed_order", "rules"):
+            if cancellation.signum is not None:
+                raise WorkflowEvaluationError("workflow evaluation cancelled", 130 if cancellation.signum == signal.SIGINT else 143)
             all_summaries[name], _results, _episodes = _evaluate_policy(name, scenarios, policies[name], output_dir)
         for model_family in ("gliclass", "laya"):
+            if cancellation.signum is not None:
+                raise WorkflowEvaluationError("workflow evaluation cancelled", 130 if cancellation.signum == signal.SIGINT else 143)
+            run_status["workers"][model_family] = {
+                "status": "running", "worker_timeout_seconds": worker_timeout_seconds,
+            }
+            _atomic_json_write(status_path, run_status)
             print(f"Starting isolated {model_family} worker", flush=True)
-            status, summaries = _run_model_worker(model_family, split, output_dir, scenario_path, pin_path)
+            status, summaries = _run_model_worker(
+                model_family, split, output_dir, scenario_path, pin_path,
+                timeout_seconds=worker_timeout_seconds, cancellation=cancellation,
+                command_factory=_worker_command_factory,
+            )
             run_status["workers"][model_family] = {key: status[key] for key in (
                 "status", "returncode", "model_loading_seconds", "peak_process_rss_bytes", "error",
+                "worker_timeout_seconds", "elapsed_seconds", "termination_reason",
             ) if key in status}
-            _json_write(output_dir / "run-status.json", run_status)
+            _atomic_json_write(status_path, run_status)
             if summaries is not None:
                 all_summaries.update(summaries)
+            if status["status"] in {"timed_out", "cancelled"}:
+                for remaining in ("gliclass", "laya"):
+                    if run_status["workers"][remaining]["status"] == "pending":
+                        run_status["workers"][remaining] = {
+                            "status": "not_run", "worker_timeout_seconds": worker_timeout_seconds,
+                            "termination_reason": status["termination_reason"],
+                        }
+                if status["status"] == "cancelled":
+                    run_status["evaluation_execution_status"] = "cancelled"
+                    run_status["cancellation_reason"] = status["termination_reason"]
+                    run_status["termination_reason"] = status["termination_reason"]
+                    exit_code = 130 if status["termination_reason"] == "sigint" else 143
+                    message = f"workflow evaluation cancelled by {status['termination_reason']}"
+                else:
+                    run_status["evaluation_execution_status"] = "failed"
+                    run_status["failure_reason"] = "worker_timeout"
+                    run_status["termination_reason"] = "worker_timeout"
+                    exit_code = 124
+                    message = f"{model_family} worker exceeded {worker_timeout_seconds:g} second deadline"
+                _atomic_json_write(status_path, run_status)
+                _json_write(output_dir / "provenance.json", _provenance(scenario_path, pin_path, split))
+                raise WorkflowEvaluationError(f"{message}; see {status_path}", exit_code)
         failed_workers = [name for name, status in run_status["workers"].items() if status["status"] != "completed"]
         provenance = _provenance(scenario_path, pin_path, split)
         _json_write(output_dir / "provenance.json", provenance)
         if failed_workers:
             run_status["evaluation_execution_status"] = "failed"
             run_status["failed_workers"] = failed_workers
-            _json_write(output_dir / "run-status.json", run_status)
-            raise RuntimeError(f"model evaluation worker(s) failed: {', '.join(failed_workers)}; see {output_dir / 'run-status.json'}")
+            run_status["failure_reason"] = "worker_failure"
+            _atomic_json_write(status_path, run_status)
+            raise WorkflowEvaluationError(f"model evaluation worker(s) failed: {', '.join(failed_workers)}; see {status_path}")
+        if cancellation.signum is not None:
+            raise WorkflowEvaluationError("workflow evaluation cancelled", 130 if cancellation.signum == signal.SIGINT else 143)
         comparison = []
         for name in POLICY_NAMES:
             summary = all_summaries[name]
@@ -410,14 +649,46 @@ def evaluate_suite(scenario_path: Path = SCENARIO_FILE, output_dir: Path = DEFAU
         _json_write(output_dir / "all-summary.json", result)
         _write_comparison_markdown(output_dir / "all-summary.md", result)
         _write_example_trace(output_dir, all_summaries)
+        if cancellation.signum is not None:
+            raise WorkflowEvaluationError("workflow evaluation cancelled", 130 if cancellation.signum == signal.SIGINT else 143)
         run_status["evaluation_execution_status"] = "completed"
-        _json_write(output_dir / "run-status.json", run_status)
+        _atomic_json_write(status_path, run_status)
         return result
-    except Exception:
+    except BaseException as exc:
         if run_status["evaluation_execution_status"] == "running":
-            run_status["evaluation_execution_status"] = "failed"
-            _json_write(output_dir / "run-status.json", run_status)
+            if cancellation.signum is not None:
+                signum = cancellation.signum
+                run_status["evaluation_execution_status"] = "cancelled"
+                run_status["cancellation_reason"] = "sigint" if signum == signal.SIGINT else "sigterm"
+                run_status["termination_reason"] = run_status["cancellation_reason"]
+                for name, worker in run_status["workers"].items():
+                    if worker["status"] in {"pending", "running"}:
+                        run_status["workers"][name] = {
+                            "status": "cancelled" if worker["status"] == "running" else "not_run",
+                            "worker_timeout_seconds": worker_timeout_seconds,
+                            "termination_reason": run_status["cancellation_reason"],
+                        }
+                code = 130 if signum == signal.SIGINT else 143
+                if not isinstance(exc, WorkflowEvaluationError):
+                    exc = WorkflowEvaluationError("workflow evaluation cancelled", code)
+            else:
+                run_status["evaluation_execution_status"] = "failed"
+                run_status["failure_reason"] = "evaluation_error"
+                if isinstance(exc, KeyboardInterrupt):
+                    run_status["evaluation_execution_status"] = "cancelled"
+                    run_status["cancellation_reason"] = "sigint"
+                    exc = WorkflowEvaluationError("workflow evaluation cancelled by Ctrl-C", 130)
+            _atomic_json_write(status_path, run_status)
+        if run_status["evaluation_execution_status"] != "completed":
+            (output_dir / "all-summary.json").unlink(missing_ok=True)
+            (output_dir / "all-summary.md").unlink(missing_ok=True)
+        if exc is not None and not isinstance(exc, WorkflowEvaluationError):
+            raise
+        if isinstance(exc, WorkflowEvaluationError):
+            raise exc
         raise
+    finally:
+        _restore_cancellation_handlers(previous_handlers)
 
 
 def _write_example_trace(output_dir: Path, summaries: dict[str, Any]) -> None:
