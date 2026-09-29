@@ -1,6 +1,6 @@
 import importlib.util
 import json
-import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -209,16 +209,19 @@ class LayaWorkflowTests(unittest.TestCase):
             output = Path(temp) / "fresh-report"
             output.mkdir()
 
-            def failed_worker(command, **_kwargs):
-                worker_dir = Path(command[command.index("--output-dir") + 1])
-                (worker_dir / "gliclass-summary.json").write_text("partial", encoding="utf-8")
-                return subprocess.CompletedProcess(command, 7, "started", "worker crashed")
+            def failed_worker(worker_dir, *_args):
+                script = (
+                    "from pathlib import Path; import sys; "
+                    f"Path({str(worker_dir / 'gliclass-summary.json')!r}).write_text('partial'); "
+                    "print('started'); print('worker crashed', file=sys.stderr); raise SystemExit(7)"
+                )
+                return [sys.executable, "-c", script]
 
             run_model_worker = getattr(workflow_eval, "_run_model_worker", None)
             self.assertTrue(callable(run_model_worker), "isolated model worker launcher is missing")
             status, summaries = run_model_worker(
                 "gliclass", split="development", output_dir=output,
-                scenario_path=Path("scenarios.jsonl"), pin_path=Path("revisions.env"), runner=failed_worker,
+                scenario_path=Path("scenarios.jsonl"), pin_path=Path("revisions.env"), command_factory=failed_worker,
             )
             self.assertEqual(status["status"], "failed")
             self.assertIn("worker crashed", status["stderr"])
@@ -232,14 +235,16 @@ class LayaWorkflowTests(unittest.TestCase):
             output = Path(temp) / "fresh-report"
             output.mkdir()
 
-            def incomplete_worker(command, **_kwargs):
-                worker_dir = Path(command[command.index("--output-dir") + 1])
-                (worker_dir / "worker-summary.json").write_text('{"worker_status":"completed"}', encoding="utf-8")
-                return subprocess.CompletedProcess(command, 0, "", "")
+            def incomplete_worker(worker_dir, *_args):
+                script = (
+                    "from pathlib import Path; "
+                    f"Path({str(worker_dir / 'worker-summary.json')!r}).write_text('{{\"worker_status\":\"completed\"}}')"
+                )
+                return [sys.executable, "-c", script]
 
             status, summaries = workflow_eval._run_model_worker(
                 "laya", split="development", output_dir=output,
-                scenario_path=SCENARIO_FILE, pin_path=Path("revisions.env"), runner=incomplete_worker,
+                scenario_path=SCENARIO_FILE, pin_path=Path("revisions.env"), command_factory=incomplete_worker,
             )
             self.assertEqual(status["status"], "failed")
             self.assertIn("incomplete", status["error"])
