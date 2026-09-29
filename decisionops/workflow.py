@@ -43,6 +43,16 @@ class Proposal:
 
 
 @dataclass(frozen=True)
+class ProposalValidation:
+    proposal: Proposal | None
+    outcome: str
+    acceptance: dict[str, Any]
+    invalid_proposal: bool = False
+    supporting_evidence_ids: tuple[str, ...] = ()
+    cited_evidence_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class VisibleState:
     initial_report: str
     observations: tuple[dict[str, Any], ...]
@@ -349,13 +359,20 @@ def _decode_proposal(raw: Any) -> tuple[Proposal | None, str | None]:
 
 
 def _validate_scores(proposal: Proposal, eligible: tuple[str, ...], require_complete_metadata: bool = True) -> str | None:
-    if proposal.scores is None:
+    if proposal.scores is None and proposal.scored_candidate_ids is None:
         return None
     scored = tuple(proposal.scored_candidate_ids) if proposal.scored_candidate_ids is not None else tuple(proposal.scores)
     if not set(scored) <= set(eligible):
         return "scored_candidates_include_harness_disallowed_actions"
     if proposal.action_id not in scored:
         return "selected_action_not_scored"
+    if proposal.scores is None:
+        if require_complete_metadata:
+            if set(scored) & set(proposal.excluded_candidates):
+                return "scored_candidates_cannot_also_be_excluded"
+            if set(scored) | set(proposal.excluded_candidates) != set(ACTION_IDS):
+                return "candidate_exclusions_must_account_for_every_action"
+        return None
     if set(proposal.scores) != set(scored):
         return "model_scores_must_cover_exactly_scored_candidates"
     if require_complete_metadata:
@@ -368,6 +385,85 @@ def _validate_scores(proposal: Proposal, eligible: tuple[str, ...], require_comp
     if proposal.scores[proposal.action_id] + 0.0011 < max(proposal.scores.values()):
         return "selected_action_disagrees_with_largest_score"
     return None
+
+
+def _validate_proposal(
+    state: EpisodeState,
+    raw: Any,
+    eligible: tuple[str, ...],
+    *,
+    trace_version: int = 3,
+    malformed_reason: str | None = None,
+) -> ProposalValidation:
+    """Classify a proposal using only deterministic harness state and rules."""
+    proposal, decoded_reason = _decode_proposal(raw)
+    malformed_reason = malformed_reason or decoded_reason
+    if malformed_reason:
+        return ProposalValidation(
+            proposal, "invalid", {"accepted": False, "reason": malformed_reason, "detail": "proposal could not be parsed"},
+            invalid_proposal=True,
+        )
+    assert proposal is not None
+    action_id = proposal.action_id
+    if action_id not in ACTION_KIND:
+        return ProposalValidation(
+            proposal, "invalid", {"accepted": False, "reason": "unknown_action", "detail": f"unknown action {action_id!r}"},
+            invalid_proposal=True,
+        )
+    if action_id not in eligible:
+        if action_id in TOOL_ACTIONS and state.remaining_tool_calls <= 0:
+            return ProposalValidation(
+                proposal, "exhausted", {"accepted": False, "reason": "tool_call_budget_exhausted", "detail": "tool call budget is zero"},
+            )
+        reason = "tool_already_attempted" if action_id in state.actions_attempted else "action_not_eligible"
+        return ProposalValidation(
+            proposal, "invalid", {"accepted": False, "reason": reason, "detail": f"{action_id} is not currently eligible"},
+            invalid_proposal=True,
+        )
+    score_error = _validate_scores(proposal, eligible, require_complete_metadata=trace_version in {2, 3})
+    if score_error:
+        return ProposalValidation(
+            proposal, "invalid", {"accepted": False, "reason": "malformed_scores", "detail": score_error}, invalid_proposal=True,
+        )
+    seen = {obs["observation_id"] for obs in state.observations}
+    if any(ref not in seen for ref in proposal.evidence_ids):
+        return ProposalValidation(
+            proposal, "invalid", {"accepted": False, "reason": "unseen_evidence_reference", "detail": "proposal cited evidence not present in visible state"},
+            invalid_proposal=True,
+        )
+    if action_id in TOOL_ACTIONS:
+        if proposal.evidence_ids:
+            return ProposalValidation(
+                proposal, "invalid", {"accepted": False, "reason": "tool_action_cannot_cite_terminal_evidence", "detail": "evidence references are only valid on terminal proposals"},
+                invalid_proposal=True,
+            )
+        return ProposalValidation(proposal, "tool", {"accepted": True, "reason": "tool_observation_recorded"})
+    if action_id == "request_review":
+        return ProposalValidation(
+            proposal, "review", {"accepted": True, "reason": "review_requested", "detail": "review is always an available terminal choice"},
+            cited_evidence_ids=proposal.evidence_ids,
+        )
+
+    passed, reason, support_ids = check_terminal_evidence(state, action_id)
+    cited_ids = tuple(proposal.evidence_ids) if proposal.evidence_ids else tuple(support_ids)
+    if any(ref not in support_ids for ref in cited_ids):
+        passed, reason = False, "cited_observation_does_not_support_proposed_diagnosis"
+    if passed:
+        return ProposalValidation(
+            proposal, "diagnosis", {"accepted": True, "reason": "diagnosis_supported", "detail": reason},
+            supporting_evidence_ids=tuple(support_ids), cited_evidence_ids=cited_ids,
+        )
+    return ProposalValidation(
+        proposal, "unsupported_diagnosis",
+        {
+            "accepted": False,
+            "reason": "unsupported_diagnosis",
+            "detail": f"proposed diagnosis does not support: {reason}",
+            "evidence_check_reason": reason,
+            "deterministic_supporting_evidence_ids": support_ids,
+        },
+        supporting_evidence_ids=tuple(support_ids), cited_evidence_ids=cited_ids,
+    )
 
 
 def _terminal_status(reason: str) -> str:
@@ -385,6 +481,18 @@ def _finish(state: EpisodeState, reason: str, action: str | None = None, evidenc
     state.cited_evidence_ids = list(evidence_ids)
 
 
+def _event_candidate_metadata(proposal_data: Any) -> tuple[Any, Any]:
+    """Mirror the candidate fields _make_event records for any proposal payload."""
+    if isinstance(proposal_data, dict):
+        scored_candidate_ids = proposal_data.get("scored_candidate_ids")
+        if scored_candidate_ids is None:
+            scores = proposal_data.get("scores")
+            scored_candidate_ids = list(scores) if isinstance(scores, dict) else []
+        excluded_candidates = proposal_data.get("excluded_candidates") or {}
+        return scored_candidate_ids, copy.deepcopy(excluded_candidates)
+    return [], {}
+
+
 def _make_event(
     episode_id: str,
     step_id: int,
@@ -398,14 +506,7 @@ def _make_event(
     policy_input: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     proposal_data = _proposal_dict(proposal)
-    if isinstance(proposal_data, dict):
-        scored_candidate_ids = proposal_data.get("scored_candidate_ids")
-        if scored_candidate_ids is None:
-            scores = proposal_data.get("scores")
-            scored_candidate_ids = list(scores) if isinstance(scores, dict) else []
-        excluded_candidates = proposal_data.get("excluded_candidates") or {}
-    else:
-        scored_candidate_ids, excluded_candidates = [], {}
+    scored_candidate_ids, excluded_candidates = _event_candidate_metadata(proposal_data)
     return {
         "trace_version": 3, "event_type": event_type, "episode_id": episode_id, "step_id": step_id,
         "visible_state_before": before, "eligible_actions": list(eligible),
@@ -469,72 +570,45 @@ def run_episode(
             proposal, malformed_reason = _decode_proposal(raw)
             if proposal is not None and proposal.policy_input is not None:
                 policy_input.update(copy.deepcopy(proposal.policy_input))
-        acceptance = {"accepted": False, "reason": "", "detail": ""}
+        validation = _validate_proposal(state, raw, eligible, malformed_reason=malformed_reason)
+        proposal = validation.proposal
+        acceptance = validation.acceptance
         observation = None
-        if malformed_reason:
-            acceptance = {"accepted": False, "reason": malformed_reason, "detail": "proposal could not be parsed"}
-            state.invalid_proposals_rejected += 1
-            _finish(state, "invalid_proposal")
-        elif proposal.action_id not in ACTION_KIND:
-            acceptance = {"accepted": False, "reason": "unknown_action", "detail": f"unknown action {proposal.action_id!r}"}
-            state.invalid_proposals_rejected += 1
-            _finish(state, "invalid_proposal")
-        elif proposal.action_id not in eligible:
-            if proposal.action_id in TOOL_ACTIONS and state.remaining_tool_calls <= 0:
-                acceptance = {"accepted": False, "reason": "tool_call_budget_exhausted", "detail": "tool call budget is zero"}
-                _finish(state, "exhausted_budget")
-            else:
-                acceptance = {"accepted": False, "reason": "tool_already_attempted" if proposal.action_id in state.actions_attempted else "action_not_eligible", "detail": f"{proposal.action_id} is not currently eligible"}
+        if validation.outcome == "invalid":
+            if validation.invalid_proposal:
                 state.invalid_proposals_rejected += 1
+            _finish(state, "invalid_proposal")
+        elif validation.outcome == "exhausted":
+            _finish(state, "exhausted_budget")
+        elif validation.outcome == "tool":
+            assert proposal is not None
+            state.actions_attempted.append(proposal.action_id)
+            state.remaining_tool_calls -= 1
+            try:
+                observation = environment.execute(proposal.action_id, f"obs-{len(state.observations) + 1:02d}-{proposal.action_id}")
+                if observation["tool_name"] != proposal.action_id or observation["status"] not in {"success", "timeout", "error"}:
+                    raise ToolExecutionError("tool returned a malformed observation")
+                state.observations.append(observation)
+                acceptance = {"accepted": True, "reason": "tool_observation_recorded", "detail": observation["status"]}
+            except Exception as exc:
+                simulator_failure = True
+                acceptance = {"accepted": False, "reason": "tool_execution_failure", "detail": f"{type(exc).__name__}: {exc}"}
+                _finish(state, "tool_failure")
+        elif validation.outcome == "review":
+            assert proposal is not None
+            _finish(state, "review", "request_review", validation.cited_evidence_ids)
+        elif validation.outcome == "diagnosis":
+            assert proposal is not None
+            _finish(state, "completed", proposal.action_id, validation.cited_evidence_ids)
+        elif validation.outcome == "unsupported_diagnosis":
+            state.unsupported_diagnosis_proposals += 1
+            state.rejection_feedback.append(validation.acceptance["evidence_check_reason"])
+            if state.recovery_attempts >= MAX_EVIDENCE_RECOVERY_ATTEMPTS:
                 _finish(state, "invalid_proposal")
+            else:
+                state.recovery_attempts += 1
         else:
-            score_error = _validate_scores(proposal, eligible)
-            seen = {obs["observation_id"] for obs in state.observations}
-            if score_error:
-                acceptance = {"accepted": False, "reason": "malformed_scores", "detail": score_error}
-                state.invalid_proposals_rejected += 1
-                _finish(state, "invalid_proposal")
-            elif any(ref not in seen for ref in proposal.evidence_ids):
-                acceptance = {"accepted": False, "reason": "unseen_evidence_reference", "detail": "proposal cited evidence not present in visible state"}
-                state.invalid_proposals_rejected += 1
-                _finish(state, "invalid_proposal")
-            elif proposal.action_id in TOOL_ACTIONS:
-                if proposal.evidence_ids:
-                    acceptance = {"accepted": False, "reason": "tool_action_cannot_cite_terminal_evidence", "detail": "evidence references are only valid on terminal proposals"}
-                    state.invalid_proposals_rejected += 1
-                    _finish(state, "invalid_proposal")
-                else:
-                    state.actions_attempted.append(proposal.action_id)
-                    state.remaining_tool_calls -= 1
-                    try:
-                        observation = environment.execute(proposal.action_id, f"obs-{len(state.observations) + 1:02d}-{proposal.action_id}")
-                        if observation["tool_name"] != proposal.action_id or observation["status"] not in {"success", "timeout", "error"}:
-                            raise ToolExecutionError("tool returned a malformed observation")
-                        state.observations.append(observation)
-                        acceptance = {"accepted": True, "reason": "tool_observation_recorded", "detail": observation["status"]}
-                    except Exception as exc:
-                        simulator_failure = True
-                        acceptance = {"accepted": False, "reason": "tool_execution_failure", "detail": f"{type(exc).__name__}: {exc}"}
-                        _finish(state, "tool_failure")
-            elif proposal.action_id == "request_review":
-                acceptance = {"accepted": True, "reason": "review_requested", "detail": "review is always an available terminal choice"}
-                _finish(state, "review", "request_review", proposal.evidence_ids)
-            else:
-                passed, reason, support_ids = check_terminal_evidence(state, proposal.action_id)
-                cited = list(proposal.evidence_ids) if proposal.evidence_ids else support_ids
-                if any(ref not in support_ids for ref in cited):
-                    passed, reason = False, "cited_observation_does_not_support_proposed_diagnosis"
-                if passed:
-                    acceptance = {"accepted": True, "reason": "diagnosis_supported", "detail": reason}
-                    _finish(state, "completed", proposal.action_id, cited)
-                else:
-                    state.unsupported_diagnosis_proposals += 1
-                    state.rejection_feedback.append(reason)
-                    acceptance = {"accepted": False, "reason": "unsupported_diagnosis", "detail": f"proposed diagnosis does not support: {reason}", "evidence_check_reason": reason, "deterministic_supporting_evidence_ids": support_ids}
-                    if state.recovery_attempts >= MAX_EVIDENCE_RECOVERY_ATTEMPTS:
-                        _finish(state, "invalid_proposal")
-                    else:
-                        state.recovery_attempts += 1
+            raise RuntimeError(f"unhandled proposal validation outcome: {validation.outcome}")
         trace.append(_make_event(episode_id, state.decision_count, before, eligible, raw, acceptance, observation, state, policy_input=policy_input))
 
     return EpisodeResult(
@@ -548,9 +622,28 @@ def run_episode(
 
 
 def _restore_state(data: dict[str, Any]) -> EpisodeState:
+    if not isinstance(data, dict):
+        raise ValueError("trace visible state must be an object")
     allowed = set(VisibleState.__dataclass_fields__)
     if set(data) != allowed:
         raise ValueError("trace visible state has unexpected or missing fields")
+    integer_fields = ("max_tool_calls", "max_decisions", "remaining_tool_calls", "remaining_decisions")
+    if any(not isinstance(data[field], int) or isinstance(data[field], bool) for field in integer_fields):
+        raise ValueError("trace visible state budgets must be integers")
+    if any(data[field] < 0 for field in integer_fields) or data["remaining_tool_calls"] > data["max_tool_calls"] or data["remaining_decisions"] > data["max_decisions"]:
+        raise ValueError("trace visible state budgets are out of range")
+    if not isinstance(data["initial_report"], str):
+        raise ValueError("trace visible state report must be text")
+    if not isinstance(data["observations"], list) or not all(isinstance(obs, dict) for obs in data["observations"]):
+        raise ValueError("trace visible state observations must be objects")
+    if not isinstance(data["actions_attempted"], list) or not all(isinstance(action_id, str) for action_id in data["actions_attempted"]):
+        raise ValueError("trace visible state attempted actions must be strings")
+    if not isinstance(data["rejection_feedback"], list) or not all(isinstance(reason, str) for reason in data["rejection_feedback"]):
+        raise ValueError("trace visible state rejection feedback must be strings")
+    if not isinstance(data["cited_evidence_ids"], list) or not all(isinstance(ref, str) for ref in data["cited_evidence_ids"]):
+        raise ValueError("trace visible state evidence citations must be strings")
+    if data["terminal_status"] != "in_progress" or data["terminal_reason"] is not None or data["terminal_action"] is not None:
+        raise ValueError("trace initial state is already terminal")
     state = EpisodeState(
         initial_report=data["initial_report"], max_tool_calls=data["max_tool_calls"], max_decisions=data["max_decisions"],
         observations=list(copy.deepcopy(data["observations"])), actions_attempted=list(data["actions_attempted"]),
@@ -569,189 +662,255 @@ def _json_state(state: EpisodeState) -> dict[str, Any]:
 
 def replay_trace(events: list[dict[str, Any]]) -> dict[str, Any]:
     """Validate recorded state transitions without invoking a policy or model."""
-    if not events:
+    if not isinstance(events, list) or not events:
         raise ValueError("trace is empty")
-    events = json.loads(json.dumps(events, ensure_ascii=False))
-    versions = {event.get("trace_version", 1) for event in events}
+    try:
+        events = json.loads(json.dumps(events, ensure_ascii=False))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("trace contains non-JSON data") from exc
+    for index, event in enumerate(events, 1):
+        if not isinstance(event, dict):
+            raise ValueError(f"event {index}: expected an object")
+    versions = set()
+    for index, event in enumerate(events, 1):
+        version = event.get("trace_version", 1)
+        if not isinstance(version, int) or isinstance(version, bool):
+            raise ValueError(f"event {index}: trace version must be an integer")
+        versions.add(version)
     if not versions <= {1, 2, 3} or len(versions) != 1:
         raise ValueError("trace contains an unsupported or mixed format version")
     trace_version = next(iter(versions))
     episode_id = events[0].get("episode_id")
-    initial = _restore_state(events[0]["visible_state_before"])
+    try:
+        initial = _restore_state(events[0]["visible_state_before"])
+    except ValueError as exc:
+        raise ValueError(f"event 1: {exc}") from exc
+    except (KeyError, TypeError, IndexError, AttributeError) as exc:
+        raise ValueError(f"event 1: malformed initial state ({type(exc).__name__})") from exc
     if initial.observations or initial.actions_attempted or initial.decision_count:
-        raise ValueError("trace does not start from an empty episode state")
+        raise ValueError("event 1: trace does not start from an empty episode state")
     state = initial
     terminal_seen = False
     next_step = 1
     for event in events:
-        if event.get("episode_id") != episode_id or event.get("step_id") != next_step:
-            raise ValueError("trace episode or step IDs are inconsistent")
-        next_step += 1
-        if event.get("visible_state_before") != _json_state(state):
-            raise ValueError("trace visible-state transition does not match prior event")
-        if terminal_seen:
-            raise ValueError("trace contains events after terminal state")
-        event_type = event.get("event_type")
-        if event_type == "termination":
-            if state.remaining_decisions > 0 or event["acceptance"]["reason"] != "exhausted_budget":
-                raise ValueError("invalid budget termination event")
-            _finish(state, "exhausted_budget")
-            terminal_seen = True
-        elif event_type == "decision":
-            if state.remaining_decisions <= 0:
-                raise ValueError("decision made after decision budget expired")
-            eligible = eligible_actions(state)
-            if event.get("eligible_actions") != list(eligible):
-                raise ValueError("trace eligible actions do not match visible state")
-            state.remaining_decisions -= 1
-            state.decision_count += 1
-            if trace_version in {2, 3}:
-                expected_policy_input = {"visible_state": _json_state(state), "eligible_action_ids": list(eligible)}
-                recorded_policy_input = event.get("policy_input")
-                if not isinstance(recorded_policy_input, dict) or any(recorded_policy_input.get(key) != value for key, value in expected_policy_input.items()):
-                    raise ValueError("trace policy input does not match the actual decision state")
-                if trace_version == 2 and recorded_policy_input != expected_policy_input:
-                    raise ValueError("version 2 policy input has unexpected fields")
-                if trace_version == 3:
-                    model_family = recorded_policy_input.get("model_family")
-                    if model_family is None:
-                        if set(recorded_policy_input) != set(expected_policy_input):
-                            raise ValueError("trace policy input has unexpected fields")
-                    elif model_family in {"gliclass", "laya"}:
-                        from .workflow_policies import build_laya_workflow_question, render_visible_state
-                        if recorded_policy_input.get("state_text") != render_visible_state(state.visible()):
-                            raise ValueError("trace model state text does not match visible state")
-                        proposal_for_input, _malformed_for_input = _decode_proposal(event.get("proposal"))
-                        if proposal_for_input is not None and proposal_for_input.scored_candidate_ids is not None:
-                            candidate_ids = tuple(proposal_for_input.scored_candidate_ids)
-                        elif event["acceptance"].get("reason") == "policy_execution_error":
-                            candidate_ids = tuple(event.get("scored_candidate_ids", ()))
+        event_number = next_step
+        try:
+            step_id = event.get("step_id")
+            if event.get("episode_id") != episode_id or not isinstance(step_id, int) or isinstance(step_id, bool) or step_id != next_step:
+                raise ValueError("trace episode or step IDs are inconsistent")
+            next_step += 1
+            if event.get("visible_state_before") != _json_state(state):
+                raise ValueError("trace visible-state transition does not match prior event")
+            if terminal_seen:
+                raise ValueError("trace contains events after terminal state")
+            event_type = event.get("event_type")
+            if event_type == "termination":
+                no_decisions = state.remaining_decisions <= 0
+                no_actions = not eligible_actions(state)
+                expected_detail = "decision budget exhausted" if no_decisions else "no eligible actions remain"
+                expected_acceptance = {"accepted": False, "reason": "exhausted_budget", "detail": expected_detail}
+                if (not no_decisions and not no_actions) or event.get("eligible_actions") != list(eligible_actions(state)):
+                    raise ValueError("trace termination does not follow exhausted budgets or actions")
+                if event.get("proposal") is not None or event.get("acceptance") != expected_acceptance:
+                    raise ValueError("invalid budget termination event")
+                _finish(state, "exhausted_budget")
+                terminal_seen = True
+            elif event_type == "decision":
+                if state.remaining_decisions <= 0:
+                    raise ValueError("decision made after decision budget expired")
+                eligible = eligible_actions(state)
+                if event.get("eligible_actions") != list(eligible):
+                    raise ValueError("trace eligible actions do not match visible state")
+                state.remaining_decisions -= 1
+                state.decision_count += 1
+                if trace_version in {2, 3}:
+                    expected_policy_input = {"visible_state": _json_state(state), "eligible_action_ids": list(eligible)}
+                    recorded_policy_input = event.get("policy_input")
+                    if not isinstance(recorded_policy_input, dict) or any(recorded_policy_input.get(key) != value for key, value in expected_policy_input.items()):
+                        raise ValueError("trace policy input does not match the actual decision state")
+                    if trace_version == 2 and recorded_policy_input != expected_policy_input:
+                        raise ValueError("version 2 policy input has unexpected fields")
+                    if trace_version == 3:
+                        model_family = recorded_policy_input.get("model_family")
+                        if model_family is None:
+                            if set(recorded_policy_input) != set(expected_policy_input):
+                                raise ValueError("trace policy input has unexpected fields")
+                        elif model_family in {"gliclass", "laya"}:
+                            from .workflow_policies import build_laya_workflow_question, render_visible_state
+                            if recorded_policy_input.get("state_text") != render_visible_state(state.visible()):
+                                raise ValueError("trace model state text does not match visible state")
+                            proposal_for_input, _malformed_for_input = _decode_proposal(event.get("proposal"))
+                            if proposal_for_input is not None and proposal_for_input.scored_candidate_ids is not None:
+                                candidate_ids = tuple(proposal_for_input.scored_candidate_ids)
+                            elif event["acceptance"].get("reason") == "policy_execution_error":
+                                candidate_ids = tuple(event.get("scored_candidate_ids", ()))
+                            else:
+                                raise ValueError("trace model input has no scored candidates")
+                            if model_family == "gliclass":
+                                expected_candidates = [{"id": action_id, "name": ACTION_NAMES[action_id]} for action_id in candidate_ids]
+                                if recorded_policy_input.get("candidates") != expected_candidates or set(recorded_policy_input) != set(expected_policy_input) | {"model_family", "state_text", "candidates"}:
+                                    raise ValueError("trace GLiClass candidate input does not match scored candidates")
+                            else:
+                                if recorded_policy_input.get("question") != build_laya_workflow_question(candidate_ids) or set(recorded_policy_input) != set(expected_policy_input) | {"model_family", "state_text", "question"}:
+                                    raise ValueError("trace Laya question does not match scored candidates")
                         else:
-                            raise ValueError("trace model input has no scored candidates")
-                        if model_family == "gliclass":
-                            expected_candidates = [{"id": action_id, "name": ACTION_NAMES[action_id]} for action_id in candidate_ids]
-                            if recorded_policy_input.get("candidates") != expected_candidates or set(recorded_policy_input) != set(expected_policy_input) | {"model_family", "state_text", "candidates"}:
-                                raise ValueError("trace GLiClass candidate input does not match scored candidates")
+                            raise ValueError("trace model input names an unsupported model family")
+                    scored_ids = event.get("scored_candidate_ids")
+                    excluded = event.get("excluded_candidates")
+                    if not isinstance(scored_ids, list) or not all(isinstance(action_id, str) for action_id in scored_ids):
+                        raise ValueError("trace scored candidates are malformed")
+                    if not isinstance(excluded, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in excluded.items()):
+                        raise ValueError("trace candidate exclusions are malformed")
+                    if trace_version in {2, 3}:
+                        expected_scored, expected_excluded = _event_candidate_metadata(event.get("proposal"))
+                        if scored_ids != expected_scored or excluded != expected_excluded:
+                            raise ValueError("trace candidate metadata differs from the recorded proposal")
+                acceptance = event["acceptance"]
+                if not isinstance(acceptance, dict) or not isinstance(acceptance.get("accepted"), bool):
+                    raise ValueError("trace acceptance is malformed")
+                raw_proposal = event.get("proposal")
+                proposal, malformed = _decode_proposal(raw_proposal)
+                policy_failure = (
+                    acceptance.get("reason") == "policy_execution_error"
+                    and isinstance(raw_proposal, dict)
+                    and isinstance(raw_proposal.get("policy_error"), str)
+                )
+                if trace_version in {2, 3} and policy_failure:
+                    has_scored_candidates = "scored_candidate_ids" in raw_proposal
+                    has_exclusions = "excluded_candidates" in raw_proposal
+                    if has_scored_candidates != has_exclusions:
+                        raise ValueError("policy failure candidate metadata is incomplete")
+                    if has_scored_candidates:
+                        failure_scored = raw_proposal["scored_candidate_ids"]
+                        failure_excluded = raw_proposal["excluded_candidates"]
+                        if not isinstance(failure_scored, list) or not all(isinstance(action_id, str) for action_id in failure_scored):
+                            raise ValueError("policy failure scored candidates are malformed")
+                        if len(set(failure_scored)) != len(failure_scored):
+                            raise ValueError("policy failure scored candidates contain duplicates")
+                        if not set(failure_scored) <= set(eligible):
+                            raise ValueError("policy failure scored candidates include harness-disallowed actions")
+                        if not isinstance(failure_excluded, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in failure_excluded.items()):
+                            raise ValueError("policy failure candidate exclusions are malformed")
+                        if not set(failure_excluded) <= set(ACTION_IDS):
+                            raise ValueError("policy failure exclusions contain unknown actions")
+                        if set(failure_scored) & set(failure_excluded):
+                            raise ValueError("policy failure candidates are both scored and excluded")
+                        if set(failure_scored) | set(failure_excluded) != set(ACTION_IDS):
+                            raise ValueError("policy failure candidate exclusions do not account for every action")
+                if trace_version in {2, 3} and proposal is not None:
+                    proposal_scores = list(proposal.scored_candidate_ids) if proposal.scored_candidate_ids is not None else list(proposal.scores or {})
+                    if proposal_scores != event["scored_candidate_ids"] or proposal.excluded_candidates != event["excluded_candidates"]:
+                        raise ValueError("trace candidate metadata differs from the recorded proposal")
+                    if trace_version == 3 and event["policy_input"].get("model_family") == "laya":
+                        metadata = proposal.native_metadata
+                        if not isinstance(metadata, dict):
+                            raise ValueError("trace Laya proposal has no native output metadata")
+                        choice = metadata.get("choice")
+                        if isinstance(choice, str):
+                            selected_id = next((action_id for action_id in proposal_scores if ACTION_NAMES[action_id] == choice), None)
+                        elif isinstance(choice, int) and not isinstance(choice, bool) and 0 <= choice < len(proposal_scores):
+                            selected_id = proposal_scores[choice]
                         else:
-                            if recorded_policy_input.get("question") != build_laya_workflow_question(candidate_ids) or set(recorded_policy_input) != set(expected_policy_input) | {"model_family", "state_text", "question"}:
-                                raise ValueError("trace Laya question does not match scored candidates")
-                    else:
-                        raise ValueError("trace model input names an unsupported model family")
-                scored_ids = event.get("scored_candidate_ids")
-                excluded = event.get("excluded_candidates")
-                if not isinstance(scored_ids, list) or len(set(scored_ids)) != len(scored_ids) or not set(scored_ids) <= set(eligible):
-                    raise ValueError("trace scored candidates are malformed or harness-disallowed")
-                if not isinstance(excluded, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in excluded.items()):
-                    raise ValueError("trace candidate exclusions are malformed")
-                if set(scored_ids) & set(excluded):
-                    raise ValueError("trace candidates are both scored and excluded")
-            acceptance = event["acceptance"]
-            proposal, malformed = _decode_proposal(event.get("proposal"))
-            if trace_version in {2, 3} and proposal is not None:
-                proposal_scores = list(proposal.scored_candidate_ids) if proposal.scored_candidate_ids is not None else list(proposal.scores or {})
-                if proposal_scores != event["scored_candidate_ids"] or proposal.excluded_candidates != event["excluded_candidates"]:
-                    raise ValueError("trace candidate metadata differs from the recorded proposal")
-                if trace_version == 3 and event["policy_input"].get("model_family") == "laya":
-                    metadata = proposal.native_metadata
-                    if not isinstance(metadata, dict):
-                        raise ValueError("trace Laya proposal has no native output metadata")
-                    choice = metadata.get("choice")
-                    if isinstance(choice, str):
-                        selected_id = next((action_id for action_id in proposal_scores if ACTION_NAMES[action_id] == choice), None)
-                    elif isinstance(choice, int) and not isinstance(choice, bool) and 0 <= choice < len(proposal_scores):
-                        selected_id = proposal_scores[choice]
-                    else:
-                        selected_id = None
-                    if selected_id != proposal.action_id:
-                        raise ValueError("trace Laya choice does not match the selected action ID")
-                    native_probabilities = metadata.get("probabilities")
-                    if isinstance(native_probabilities, dict):
-                        native_scores = {
-                            next((action_id for action_id in proposal_scores if ACTION_NAMES[action_id] == name), ""): float(value)
-                            for name, value in native_probabilities.items()
-                        }
-                    elif isinstance(native_probabilities, (list, tuple)) and len(native_probabilities) == len(proposal_scores):
-                        native_scores = {action_id: float(value) for action_id, value in zip(proposal_scores, native_probabilities, strict=True)}
-                    else:
-                        native_scores = {}
-                    if native_scores != proposal.scores:
-                        raise ValueError("trace native Laya probabilities do not match canonical policy scores")
-            if proposal is not None and proposal.scores is not None and proposal.action_id in eligible:
-                score_error = _validate_scores(proposal, eligible, require_complete_metadata=trace_version in {2, 3})
-                if acceptance.get("accepted") and score_error:
-                    raise ValueError("trace accepted invalid scores or candidate membership")
-                if acceptance.get("reason") == "malformed_scores" and not score_error:
-                    raise ValueError("trace incorrectly rejected valid model scores")
-            if acceptance.get("accepted"):
-                if malformed or proposal is None or proposal.action_id not in eligible:
-                    raise ValueError("trace accepted a malformed or ineligible proposal")
-                if proposal.scores and _validate_scores(proposal, eligible, require_complete_metadata=trace_version in {2, 3}):
-                    raise ValueError("trace accepted malformed model scores")
-                if proposal.action_id in TOOL_ACTIONS:
-                    if proposal.evidence_ids or state.remaining_tool_calls <= 0:
-                        raise ValueError("trace accepted a disallowed tool action")
-                    observation = event.get("tool_observation")
-                    if not isinstance(observation, dict) or observation.get("tool_name") != proposal.action_id:
-                        raise ValueError("trace tool observation does not match the accepted tool")
-                    if observation.get("status") not in {"success", "timeout", "error"}:
-                        raise ValueError("trace has invalid tool status")
-                    if observation.get("observation_id") in {obs["observation_id"] for obs in state.observations}:
-                        raise ValueError("trace reuses an observation ID")
-                    state.actions_attempted.append(proposal.action_id)
-                    state.remaining_tool_calls -= 1
-                    state.observations.append(copy.deepcopy(observation))
-                elif proposal.action_id == "request_review":
-                    seen = {obs["observation_id"] for obs in state.observations}
-                    if any(ref not in seen for ref in proposal.evidence_ids):
-                        raise ValueError("trace review cites unseen evidence")
-                    _finish(state, "review", proposal.action_id, proposal.evidence_ids)
-                    terminal_seen = True
-                else:
-                    passed, _reason, support_ids = check_terminal_evidence(state, proposal.action_id)
-                    cited = list(proposal.evidence_ids) if proposal.evidence_ids else support_ids
-                    if not passed or any(ref not in support_ids for ref in cited):
-                        raise ValueError("trace accepted an unsupported diagnosis")
-                    _finish(state, "completed", proposal.action_id, cited)
-                    terminal_seen = True
-            else:
-                reason = acceptance.get("reason")
-                if reason == "unsupported_diagnosis":
-                    if malformed or proposal is None or proposal.action_id not in TERMINAL_ACTIONS[:-1]:
-                        raise ValueError("trace rejected non-diagnosis as unsupported")
-                    passed, actual_reason, support_ids = check_terminal_evidence(state, proposal.action_id)
-                    if passed or acceptance.get("evidence_check_reason") != actual_reason or acceptance.get("detail") != f"proposed diagnosis does not support: {actual_reason}" or acceptance.get("deterministic_supporting_evidence_ids") != support_ids:
-                        raise ValueError("trace evidence rejection does not match visible evidence")
-                    state.unsupported_diagnosis_proposals += 1
-                    state.rejection_feedback.append(actual_reason)
-                    if state.recovery_attempts >= MAX_EVIDENCE_RECOVERY_ATTEMPTS:
-                        _finish(state, "invalid_proposal")
+                            selected_id = None
+                        if selected_id != proposal.action_id:
+                            raise ValueError("trace Laya choice does not match the selected action ID")
+                        native_probabilities = metadata.get("probabilities")
+                        if isinstance(native_probabilities, dict):
+                            native_scores = {
+                                next((action_id for action_id in proposal_scores if ACTION_NAMES[action_id] == name), ""): float(value)
+                                for name, value in native_probabilities.items()
+                            }
+                        elif isinstance(native_probabilities, (list, tuple)) and len(native_probabilities) == len(proposal_scores):
+                            native_scores = {action_id: float(value) for action_id, value in zip(proposal_scores, native_probabilities, strict=True)}
+                        else:
+                            native_scores = {}
+                        if native_scores != proposal.scores:
+                            raise ValueError("trace native Laya probabilities do not match canonical policy scores")
+                validation = _validate_proposal(
+                    state,
+                    raw_proposal,
+                    eligible,
+                    trace_version=trace_version,
+                    malformed_reason="policy_execution_error" if policy_failure else None,
+                )
+                if acceptance["accepted"]:
+                    if validation.outcome == "tool":
+                        observation = event.get("tool_observation")
+                        if not isinstance(observation, dict) or observation.get("tool_name") != validation.proposal.action_id:
+                            raise ValueError("accepted tool proposal has no matching observation")
+                        if observation.get("status") not in {"success", "timeout", "error"}:
+                            raise ValueError("accepted tool proposal has an invalid observation status")
+                        expected_acceptance = {"accepted": True, "reason": "tool_observation_recorded", "detail": observation["status"]}
+                        if acceptance != expected_acceptance:
+                            raise ValueError("accepted tool proposal has an inconsistent outcome")
+                        observation_id = observation.get("observation_id")
+                        if not isinstance(observation_id, str) or not observation_id or observation_id in {obs["observation_id"] for obs in state.observations}:
+                            raise ValueError("accepted tool proposal has an invalid or repeated observation ID")
+                        if not isinstance(observation.get("facts"), dict) or observation.get("time_scope") not in {"current", "historical"}:
+                            raise ValueError("accepted tool observation facts or time scope are malformed")
+                        if not isinstance(observation.get("observed_at"), str) or not isinstance(observation.get("message"), str):
+                            raise ValueError("accepted tool observation metadata are malformed")
+                        state.actions_attempted.append(validation.proposal.action_id)
+                        state.remaining_tool_calls -= 1
+                        state.observations.append(copy.deepcopy(observation))
+                    elif validation.outcome in {"review", "diagnosis"}:
+                        if acceptance != validation.acceptance:
+                            raise ValueError("accepted terminal proposal disagrees with deterministic validation")
+                        _finish(
+                            state,
+                            "review" if validation.outcome == "review" else "completed",
+                            validation.proposal.action_id,
+                            validation.cited_evidence_ids,
+                        )
                         terminal_seen = True
                     else:
-                        state.recovery_attempts += 1
-                elif reason == "tool_execution_failure":
-                    if malformed or proposal is None or proposal.action_id not in TOOL_ACTIONS:
-                        raise ValueError("trace tool failure is not attached to a tool proposal")
-                    state.actions_attempted.append(proposal.action_id)
+                        raise ValueError("trace accepts a proposal rejected by deterministic validation")
+                elif validation.outcome == "tool" and acceptance.get("reason") == "tool_execution_failure":
+                    if acceptance.get("detail") is None or not isinstance(acceptance.get("detail"), str) or event.get("tool_observation") is not None:
+                        raise ValueError("recorded tool failure has malformed failure details")
+                    if set(acceptance) != {"accepted", "reason", "detail"}:
+                        raise ValueError("recorded tool failure has unexpected acceptance fields")
+                    state.actions_attempted.append(validation.proposal.action_id)
                     state.remaining_tool_calls -= 1
                     _finish(state, "tool_failure")
                     terminal_seen = True
-                elif reason == "tool_call_budget_exhausted":
-                    _finish(state, "exhausted_budget")
-                    terminal_seen = True
                 else:
-                    state.invalid_proposals_rejected += 1
-                    _finish(state, "invalid_proposal")
-                    terminal_seen = True
-        else:
-            raise ValueError("unknown trace event type")
-        if event.get("visible_state_after") != _json_state(state):
-            raise ValueError("trace post-event state does not match replayed transition")
-        expected_budgets = {"tool_calls": state.remaining_tool_calls, "decisions": state.remaining_decisions}
-        if event.get("remaining_budgets") != expected_budgets:
-            raise ValueError("trace remaining budgets do not match replay")
-        expected_terminal = None if state.terminal_reason is None else {"action_id": state.terminal_action, "reason": state.terminal_reason, "status": state.terminal_status, "cited_evidence_ids": state.cited_evidence_ids}
-        if event.get("terminal_decision") != expected_terminal:
-            raise ValueError("trace terminal decision does not match replay")
+                    if acceptance != validation.acceptance:
+                        raise ValueError(
+                            f"recorded rejection reason {acceptance.get('reason')!r} "
+                            f"does not match expected {validation.acceptance.get('reason')!r}"
+                        )
+                    if validation.outcome == "invalid":
+                        state.invalid_proposals_rejected += 1
+                        _finish(state, "invalid_proposal")
+                        terminal_seen = True
+                    elif validation.outcome == "exhausted":
+                        _finish(state, "exhausted_budget")
+                        terminal_seen = True
+                    elif validation.outcome == "unsupported_diagnosis":
+                        state.unsupported_diagnosis_proposals += 1
+                        state.rejection_feedback.append(validation.acceptance["evidence_check_reason"])
+                        if state.recovery_attempts >= MAX_EVIDENCE_RECOVERY_ATTEMPTS:
+                            _finish(state, "invalid_proposal")
+                            terminal_seen = True
+                        else:
+                            state.recovery_attempts += 1
+                    else:
+                        raise ValueError("recorded rejection does not describe a rejected proposal")
+            else:
+                raise ValueError("unknown trace event type")
+            if event.get("visible_state_after") != _json_state(state):
+                raise ValueError("trace post-event state does not match replayed transition")
+            expected_budgets = {"tool_calls": state.remaining_tool_calls, "decisions": state.remaining_decisions}
+            if event.get("remaining_budgets") != expected_budgets:
+                raise ValueError("trace remaining budgets do not match replay")
+            expected_terminal = None if state.terminal_reason is None else {"action_id": state.terminal_action, "reason": state.terminal_reason, "status": state.terminal_status, "cited_evidence_ids": state.cited_evidence_ids}
+            if event.get("terminal_decision") != expected_terminal:
+                raise ValueError("trace terminal decision does not match replay")
+        except ValueError as exc:
+            raise ValueError(f"event {event_number}: {exc}") from exc
+        except (KeyError, TypeError, IndexError, AttributeError) as exc:
+            raise ValueError(f"event {event_number}: malformed trace fields ({type(exc).__name__})") from exc
     if not terminal_seen:
         raise ValueError("trace is incomplete and has no terminal event")
     return {"episode_id": episode_id, "terminal_action": state.terminal_action, "terminal_reason": state.terminal_reason,
