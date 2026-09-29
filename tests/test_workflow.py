@@ -7,6 +7,7 @@ from decisionops.workflow import (
     ACTION_IDS,
     DEFAULT_MAX_DECISIONS,
     DEFAULT_MAX_TOOL_CALLS,
+    PolicyExecutionFailure,
     Proposal,
     ToolExecutionError,
     VisibleState,
@@ -332,6 +333,68 @@ class WorkflowFixtureTests(unittest.TestCase):
         del malformed[0]["acceptance"]
         with self.assertRaisesRegex(ValueError, r"event 1: malformed trace fields \(KeyError\)"):
             replay_trace(malformed)
+
+    def test_policy_execution_failure_candidate_metadata_mutations_are_rejected(self):
+        result = run_episode(
+            self.scenarios["dev-database-clear"],
+            FakePolicy([RuntimeError("fake inference failure")]),
+        )
+        authentic = json.loads(json.dumps(result.trace))
+        self.assertEqual(authentic[0]["acceptance"]["reason"], "policy_execution_error")
+        self.assertEqual(replay_trace(authentic)["terminal_reason"], "invalid_proposal")
+
+        corruptions = (
+            ("scored_candidate_ids", ["request_review", "request_review"]),
+            ("scored_candidate_ids", ["unknown_action"]),
+            ("excluded_candidates", []),
+        )
+        for field, value in corruptions:
+            with self.subTest(field=field, value=value):
+                tampered = json.loads(json.dumps(authentic))
+                tampered[0][field] = value
+                with self.assertRaises(ValueError):
+                    replay_trace(tampered)
+
+    def test_policy_execution_failure_with_valid_candidate_metadata_replays(self):
+        excluded = {action_id: "not selected by fake policy" for action_id in ACTION_IDS if action_id != "request_review"}
+        failure = PolicyExecutionFailure(
+            "fake inference failure",
+            policy_input={},
+            scored_candidate_ids=("request_review",),
+            excluded_candidates=excluded,
+            native_output={"partial": True},
+        )
+        result = run_episode(self.scenarios["dev-database-clear"], FakePolicy([failure]))
+        self.assertEqual(result.trace[0]["acceptance"]["reason"], "policy_execution_error")
+        replayed = replay_trace(json.loads(json.dumps(result.trace)))
+        self.assertEqual(replayed["terminal_reason"], "invalid_proposal")
+
+        corruptions = (
+            ("scored_candidate_ids", ["request_review", "request_review"], ["request_review", "request_review"]),
+            ("scored_candidate_ids", ["unknown_action"], ["unknown_action"]),
+            ("excluded_candidates", [], {}),
+        )
+        for field, proposal_value, event_value in corruptions:
+            with self.subTest(field=field, proposal_value=proposal_value):
+                tampered = json.loads(json.dumps(result.trace))
+                tampered[0]["proposal"][field] = proposal_value
+                tampered[0][field] = event_value
+                with self.assertRaises(ValueError):
+                    replay_trace(tampered)
+
+    def test_malformed_proposal_replay_requires_event_metadata_to_mirror_raw_proposal(self):
+        malformed = run_episode(
+            self.scenarios["dev-database-clear"],
+            FakePolicy([Proposal("request_review", scored_candidate_ids=("request_review", "request_review"))]),
+        )
+        authentic = json.loads(json.dumps(malformed.trace))
+        self.assertEqual(authentic[0]["acceptance"]["reason"], "malformed_scored_candidate_ids")
+        self.assertEqual(replay_trace(authentic)["terminal_reason"], "invalid_proposal")
+
+        tampered = json.loads(json.dumps(authentic))
+        tampered[0]["scored_candidate_ids"] = ["request_review"]
+        with self.assertRaisesRegex(ValueError, "event 1.*candidate metadata differs from the recorded proposal"):
+            replay_trace(tampered)
 
     def test_trace_replay_validates_transitions_without_policy_execution(self):
         policy = FakePolicy([Proposal("check_database"), Proposal("diagnose_database_failure")])

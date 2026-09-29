@@ -481,6 +481,18 @@ def _finish(state: EpisodeState, reason: str, action: str | None = None, evidenc
     state.cited_evidence_ids = list(evidence_ids)
 
 
+def _event_candidate_metadata(proposal_data: Any) -> tuple[Any, Any]:
+    """Mirror the candidate fields _make_event records for any proposal payload."""
+    if isinstance(proposal_data, dict):
+        scored_candidate_ids = proposal_data.get("scored_candidate_ids")
+        if scored_candidate_ids is None:
+            scores = proposal_data.get("scores")
+            scored_candidate_ids = list(scores) if isinstance(scores, dict) else []
+        excluded_candidates = proposal_data.get("excluded_candidates") or {}
+        return scored_candidate_ids, copy.deepcopy(excluded_candidates)
+    return [], {}
+
+
 def _make_event(
     episode_id: str,
     step_id: int,
@@ -494,14 +506,7 @@ def _make_event(
     policy_input: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     proposal_data = _proposal_dict(proposal)
-    if isinstance(proposal_data, dict):
-        scored_candidate_ids = proposal_data.get("scored_candidate_ids")
-        if scored_candidate_ids is None:
-            scores = proposal_data.get("scores")
-            scored_candidate_ids = list(scores) if isinstance(scores, dict) else []
-        excluded_candidates = proposal_data.get("excluded_candidates") or {}
-    else:
-        scored_candidate_ids, excluded_candidates = [], {}
+    scored_candidate_ids, excluded_candidates = _event_candidate_metadata(proposal_data)
     return {
         "trace_version": 3, "event_type": event_type, "episode_id": episode_id, "step_id": step_id,
         "visible_state_before": before, "eligible_actions": list(eligible),
@@ -752,14 +757,14 @@ def replay_trace(events: list[dict[str, Any]]) -> dict[str, Any]:
                             raise ValueError("trace model input names an unsupported model family")
                     scored_ids = event.get("scored_candidate_ids")
                     excluded = event.get("excluded_candidates")
-                    proposal_for_metadata, _metadata_error = _decode_proposal(event.get("proposal"))
                     if not isinstance(scored_ids, list) or not all(isinstance(action_id, str) for action_id in scored_ids):
                         raise ValueError("trace scored candidates are malformed")
-                    if proposal_for_metadata is not None:
-                        if len(set(scored_ids)) != len(scored_ids):
-                            raise ValueError("trace scored candidates are malformed")
-                        if not isinstance(excluded, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in excluded.items()):
-                            raise ValueError("trace candidate exclusions are malformed")
+                    if not isinstance(excluded, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in excluded.items()):
+                        raise ValueError("trace candidate exclusions are malformed")
+                    if trace_version in {2, 3}:
+                        expected_scored, expected_excluded = _event_candidate_metadata(event.get("proposal"))
+                        if scored_ids != expected_scored or excluded != expected_excluded:
+                            raise ValueError("trace candidate metadata differs from the recorded proposal")
                 acceptance = event["acceptance"]
                 if not isinstance(acceptance, dict) or not isinstance(acceptance.get("accepted"), bool):
                     raise ValueError("trace acceptance is malformed")
@@ -770,6 +775,28 @@ def replay_trace(events: list[dict[str, Any]]) -> dict[str, Any]:
                     and isinstance(raw_proposal, dict)
                     and isinstance(raw_proposal.get("policy_error"), str)
                 )
+                if trace_version in {2, 3} and policy_failure:
+                    has_scored_candidates = "scored_candidate_ids" in raw_proposal
+                    has_exclusions = "excluded_candidates" in raw_proposal
+                    if has_scored_candidates != has_exclusions:
+                        raise ValueError("policy failure candidate metadata is incomplete")
+                    if has_scored_candidates:
+                        failure_scored = raw_proposal["scored_candidate_ids"]
+                        failure_excluded = raw_proposal["excluded_candidates"]
+                        if not isinstance(failure_scored, list) or not all(isinstance(action_id, str) for action_id in failure_scored):
+                            raise ValueError("policy failure scored candidates are malformed")
+                        if len(set(failure_scored)) != len(failure_scored):
+                            raise ValueError("policy failure scored candidates contain duplicates")
+                        if not set(failure_scored) <= set(eligible):
+                            raise ValueError("policy failure scored candidates include harness-disallowed actions")
+                        if not isinstance(failure_excluded, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in failure_excluded.items()):
+                            raise ValueError("policy failure candidate exclusions are malformed")
+                        if not set(failure_excluded) <= set(ACTION_IDS):
+                            raise ValueError("policy failure exclusions contain unknown actions")
+                        if set(failure_scored) & set(failure_excluded):
+                            raise ValueError("policy failure candidates are both scored and excluded")
+                        if set(failure_scored) | set(failure_excluded) != set(ACTION_IDS):
+                            raise ValueError("policy failure candidate exclusions do not account for every action")
                 if trace_version in {2, 3} and proposal is not None:
                     proposal_scores = list(proposal.scored_candidate_ids) if proposal.scored_candidate_ids is not None else list(proposal.scores or {})
                     if proposal_scores != event["scored_candidate_ids"] or proposal.excluded_candidates != event["excluded_candidates"]:
