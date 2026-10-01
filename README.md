@@ -125,6 +125,17 @@ uv run --locked python -m decisionops workflow replay \
 
 Run the model-free validation suite with `uv run --locked python -m unittest discover -s tests`. Replay and report export do not load model weights.
 
+Audit how often the six recorded policies gathered successful current observations before stopping. The model-free audit replays all trace references first, verifies the scenario-file hash, and writes source-linked JSON and Markdown without changing the benchmark or the deployed viewer:
+
+```sh
+uv run --locked python -m decisionops workflow audit-coverage \
+  --report-dir reports/workflow-model-comparison-20260927 \
+  --scenario-file data/diagnostic_scenarios.jsonl \
+  --output-dir reports/workflow-investigation-coverage-audit-20261001
+```
+
+Coverage measures which fixture checks returned a successful current observation; it does not imply informative facts or a correct diagnosis. Evaluator-only annotations about unrequested structured facts are clearly separated from policy-visible trace data. Definitions and interpretation are in [the investigation-coverage methodology](docs/WORKFLOW-INVESTIGATION-COVERAGE.md); generated outputs are [JSON](reports/workflow-investigation-coverage-audit-20261001/investigation-coverage.json) and [Markdown](reports/workflow-investigation-coverage-audit-20261001/investigation-coverage.md). The two-world state-identity illustration is a model-free test, not a new benchmark result.
+
 Each invocation requires a new output directory. `run-status.json` distinguishes evaluation execution and worker completion from policy outcomes; an incomplete worker leaves no `all-summary.json` and cannot publish staged results as a complete run. The prior reports at `reports/diagnostic-workflow-20260927/` and `reports/gliclass-evidence-mask-20260927/` remain historical and are not overwritten. This scenario suite has been inspected; the evaluation split is a synthetic regression comparison, not untouched held-out evidence. The full report compares six policies and all terminal outcomes. Each model's load time and worker-process peak RSS are recorded independently. The two variants share their model family's load time and worker high-water RSS. Fixture latency does not represent live tool latency.
 
 Each model-family worker has an independent 600-second deadline by default. Set `--worker-timeout-seconds 900` to change it; the deadline includes loading that family's model and running both policy variants, but is not a per-inference or whole-suite limit. Ctrl-C and SIGTERM stop the active worker process group, allow a short grace period, then escalate if needed. A timeout exits with status 124; Ctrl-C and SIGTERM use 130 and 143. Run status records the configured deadline, elapsed worker time, termination reason, and workers not run. Completed worker outputs remain as partial evidence, but incomplete runs never publish `all-summary.json` or `all-summary.md`. Rerun into a fresh output directory. SIGKILL, machine failure, and uninterruptible operating-system tasks cannot be handled as graceful cancellation; cleanup is not promised in those cases. See [worker lifecycle details](docs/WORKFLOW-WORKER-LIFECYCLE.md).
