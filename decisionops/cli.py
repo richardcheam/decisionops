@@ -50,6 +50,10 @@ def main(argv=None) -> int:
     html_report = workflow_commands.add_parser("export-html", help="export an existing workflow report as a standalone offline HTML viewer")
     html_report.add_argument("--report-dir", type=Path, required=True, help="completed report directory containing summaries and traces")
     html_report.add_argument("--output", type=Path, required=True, help="HTML output path outside the report directory")
+    coverage_audit = workflow_commands.add_parser("audit-coverage", help="audit investigation coverage from an existing replayable workflow report")
+    coverage_audit.add_argument("--report-dir", type=Path, required=True, help="completed six-policy workflow report to audit")
+    coverage_audit.add_argument("--scenario-file", type=Path, help="scenario source whose SHA-256 must match report provenance")
+    coverage_audit.add_argument("--output-dir", type=Path, required=True, help="new directory for JSON and Markdown audit outputs")
     args = parser.parse_args(argv)
     if args.command == "workflow":
         if args.workflow_command == "export-html":
@@ -60,6 +64,19 @@ def main(argv=None) -> int:
             except (OSError, ReportLoadError) as exc:
                 parser.error(str(exc))
             print(f"Wrote standalone offline workflow viewer to {output}")
+            return 0
+        if args.workflow_command == "audit-coverage":
+            from .workflow_audit import CoverageAuditError, audit_report
+            from .workflow_scenarios import SCENARIO_FILE
+
+            try:
+                json_path, markdown_path = audit_report(
+                    args.report_dir, args.output_dir, args.scenario_file or SCENARIO_FILE,
+                )
+            except (CoverageAuditError, OSError) as exc:
+                parser.error(str(exc))
+            print(f"Wrote investigation coverage audit JSON to {json_path}")
+            print(f"Wrote investigation coverage report to {markdown_path}")
             return 0
         from .workflow import replay_trace
         from .workflow_eval import DEFAULT_OUTPUT_DIR, DEFAULT_PINS as WORKFLOW_PINS, run_one_episode, evaluate_suite, WorkflowEvaluationError
