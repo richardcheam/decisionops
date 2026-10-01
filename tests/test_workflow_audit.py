@@ -1,4 +1,5 @@
 import json
+import shutil
 import tempfile
 import unittest
 from dataclasses import replace
@@ -44,10 +45,13 @@ class WorkflowCoverageAuditTests(unittest.TestCase):
                     self.assertEqual(group["all_four_current_coverage"], coverage == "all_four")
                     self.assertEqual(
                         sum(group["outcomes"][name]["count"] for name in (
-                            "correct_diagnoses", "incorrect_diagnoses", "reviews", "failed_episodes",
+                            "correct_diagnoses", "incorrect_diagnoses", "reviews", "failed_episodes", "other_terminal_outcomes",
                         )),
-                        group["classified_episode_count"],
+                        group["episode_denominator"],
                     )
+                    self.assertEqual(group["classified_episode_count"], group["episode_denominator"])
+        self.assertEqual(sum(audit["summary"]["outcome_counts"].values()), audit["episode_count"])
+        self.assertEqual(audit["summary"]["classified_episode_count"], audit["episode_count"])
         premature = next(row for row in audit["episodes"] if (
             row["policy"] == "laya_evidence_masked" and row["split"] == "evaluation"
             and row["scenario_id"] == "eval-multiple-current-faults"
@@ -152,6 +156,52 @@ class WorkflowCoverageAuditTests(unittest.TestCase):
             markdown = markdown_path.read_text(encoding="utf-8")
             self.assertIn("Evaluator-only hindsight", markdown)
             self.assertIn("traces/laya_evidence_masked/eva-007.jsonl", markdown)
+
+    def test_completed_gold_diagnosis_without_gold_evidence_is_counted_as_residual_everywhere(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report_copy = Path(directory) / "report"
+            shutil.copytree(REPORT, report_copy)
+            policy = "fixed_order"
+            split = "development"
+            scenario = "dev-database-clear"
+            summary_path = report_copy / f"{policy}-summary.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            row = next(item for item in summary["episodes"] if item["scenario_id"] == scenario and item["split"] == split)
+            self.assertEqual(row["terminal_action"], row["gold_terminal_action"])
+            self.assertEqual(row["terminal_reason"], "completed")
+            row["gold_evidence_supported"] = False
+            metrics = summary["metrics_by_split"][split]
+            metrics["correct_supported_diagnoses"] -= 1
+            metrics["correct_supported_diagnosis_rate"] = metrics["correct_supported_diagnoses"] / metrics["diagnosable_count"]
+            summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+
+            all_summary_path = report_copy / "all-summary.json"
+            all_summary = json.loads(all_summary_path.read_text(encoding="utf-8"))
+            comparison = next(item for item in all_summary["comparison"] if item["policy"] == policy and item["split"] == split)
+            comparison["correct_supported_diagnoses"] = metrics["correct_supported_diagnoses"]
+            all_summary_path.write_text(json.dumps(all_summary, indent=2) + "\n", encoding="utf-8")
+
+            audit = build_coverage_audit(report_copy, SCENARIO_FILE)
+            group = audit["policies"][policy][split]["all_four"]
+            self.assertEqual(group["outcomes"]["other_terminal_outcomes"]["count"], 1)
+            self.assertEqual(group["classified_episode_count"], group["episode_denominator"])
+            self.assertEqual(
+                sum(bucket["count"] for bucket in group["outcomes"].values()),
+                group["episode_denominator"],
+            )
+            self.assertEqual(audit["summary"]["outcome_counts"]["other_terminal_outcomes"], 1)
+            self.assertEqual(audit["summary"]["classified_episode_count"], audit["episode_count"])
+            self.assertEqual(group["outcomes"]["correct_diagnoses"]["count"], metrics["correct_supported_diagnoses"])
+            self.assertEqual(group["outcomes"]["incorrect_diagnoses"]["count"], metrics["incorrect_diagnoses"])
+
+            _json_path, markdown_path = write_coverage_audit(audit, report_copy, Path(directory) / "audit")
+            output_json = json.loads(_json_path.read_text(encoding="utf-8"))
+            markdown = markdown_path.read_text(encoding="utf-8")
+            self.assertEqual(output_json["summary"]["outcome_counts"]["other_terminal_outcomes"], 1)
+            self.assertEqual(sum(output_json["summary"]["outcome_counts"].values()), output_json["episode_count"])
+            self.assertIn("Other / n", markdown)
+            self.assertIn("1 episode was assigned to the residual outcome bucket", markdown)
+            self.assertIn("| `fixed_order` | development | all four | 11 | 6 / 7 | 0 / 11 | 4 / 11 | 0 / 11 | 1 / 11 |", markdown)
 
 
 if __name__ == "__main__":

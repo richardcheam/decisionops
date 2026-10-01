@@ -246,15 +246,10 @@ def build_coverage_audit(report_dir: Path | str, scenario_file: Path | str = SCE
                 coverage_key = "all_four" if tools["all_four_current_success"] else "partial"
                 group = grouped[policy][split][coverage_key]
                 group["episode_denominator"] += 1
-                group["classified_episode_count"] += outcome != "other_terminal_outcomes"
+                group["classified_episode_count"] += 1
+                group["outcomes"][outcome]["count"] += 1
                 if evaluator["gold"]["gold_terminal_action"] != "request_review":
                     group["diagnosable_episode_denominator"] += 1
-                for field, outcome_name in (
-                    ("correct_diagnosis", "correct_diagnoses"), ("incorrect_diagnosis", "incorrect_diagnoses"),
-                    ("review", "reviews"), ("failed_episode", "failed_episodes"),
-                ):
-                    if outcome_flags[field]:
-                        group["outcomes"][outcome_name]["count"] += 1
                 if outcome_flags["correct_review"]:
                     group["correct_review_decisions"] += 1
                 if outcome_flags["unnecessary_review"]:
@@ -318,12 +313,32 @@ def build_coverage_audit(report_dir: Path | str, scenario_file: Path | str = SCE
                     )
             if sum(c["diagnosable_episode_denominator"] for c in coverages.values()) != metrics["diagnosable_count"]:
                 raise CoverageAuditError(f"{policy} {split} diagnosable denominator disagrees with the policy summary")
+            for coverage_name, group in coverages.items():
+                selected_outcome_count = sum(bucket["count"] for bucket in group["outcomes"].values())
+                if selected_outcome_count != group["episode_denominator"]:
+                    raise CoverageAuditError(
+                        f"{policy} {split} {coverage_name} outcome buckets ({selected_outcome_count}) "
+                        f"do not equal the episode denominator ({group['episode_denominator']})"
+                    )
+                if group["classified_episode_count"] != group["episode_denominator"]:
+                    raise CoverageAuditError(
+                        f"{policy} {split} {coverage_name} classified count disagrees with its episode denominator"
+                    )
 
     audit_episodes.sort(key=lambda row: (row["split"], row["scenario_id"], POLICY_NAMES.index(row["policy"])))
     partial = [row for row in audit_episodes if not row["tools"]["all_four_current_success"]]
     partial_incorrect = sum(row["evaluator_outcome"] == "incorrect_diagnoses" for row in partial)
+    outcome_counts = {
+        name: sum(row["evaluator_outcome"] == name for row in audit_episodes)
+        for name in _OUTCOME_NAMES
+    }
+    classified_episode_count = sum(outcome_counts.values())
+    if classified_episode_count != len(audit_episodes):
+        raise CoverageAuditError("top-level evaluator outcome buckets do not account for every policy episode")
     summary = {
         "policy_episode_count": len(audit_episodes),
+        "classified_episode_count": classified_episode_count,
+        "outcome_counts": outcome_counts,
         "incomplete_coverage_episode_count": len(partial),
         "incomplete_coverage_incorrect_diagnosis_count": partial_incorrect,
         "incomplete_coverage_correct_diagnosis_count": sum(row["evaluator_outcome"] == "correct_diagnoses" for row in partial),
@@ -363,9 +378,11 @@ def _markdown(audit: dict[str, Any], report_root: Path, output_dir: Path) -> str
         "## Definitions", "",
         "An episode has **all-four current coverage** when each of the four tools returned a successful observation with `time_scope=current`. "
         "Historical, timeout, and error observations are listed separately and do not count toward coverage. Missing tool observations are not treated as healthy or faulty.", "",
-        "Correct diagnoses use the existing evaluator definition: terminal diagnosis equals the scenario gold action, termination reason is `completed`, and recorded gold evidence is supported. Incorrect diagnoses use the existing metric: a terminal diagnosis differs from the gold terminal action. Reviews count terminal `request_review` actions; failed episodes use replayed terminal status `failed`. A separate residual exposes any unusual outcome outside those four groups.", "",
+        "Correct diagnoses use the existing evaluator definition: terminal diagnosis equals the scenario gold action, termination reason is `completed`, and recorded gold evidence is supported. Incorrect diagnoses use the existing metric: a terminal diagnosis differs from the gold terminal action. Reviews count terminal `request_review` actions; failed episodes use replayed terminal status `failed`. A residual outcome includes an episode outside those buckets, such as a completed diagnosis matching gold whose recorded gold evidence is unsupported. `classified_episode_count` counts every episode assigned exactly one selected outcome bucket, including residual outcomes, so it equals the coverage group's episode denominator.", "",
         "Successful current observations measure how much of the fixture was checked. They do not guarantee informative facts, a complete diagnosis, or correctness. Fewer tool calls do not automatically mean greater efficiency: this audit does not assign utility to latency, risk, or missed faults, and tool calls have no live operational cost here.", "",
         "## Coverage and evaluator outcomes", "",
+        f"Across all {audit['summary']['classified_episode_count']} policy-episode runs, selected outcome counts are: "
+        + "; ".join(f"{name.replace('_', ' ')} {count}" for name, count in audit["summary"]["outcome_counts"].items()) + ".", "",
         "Correct diagnoses are shown as count / diagnosable episodes within that coverage group. Other outcomes use count / all episodes in the group. `n` is the episode denominator; empty groups have no rate.", "",
         "| Policy | Split | Coverage | n | Correct diagnoses / diagnosable | Incorrect diagnoses / n | Reviews / n | Failed / n | Other / n |", "|---|---|---|---:|---:|---:|---:|---:|---:|",
     ]
@@ -384,6 +401,7 @@ def _markdown(audit: dict[str, Any], report_root: Path, output_dir: Path) -> str
                     f"{outcomes['other_terminal_outcomes']['count']} / {group['episode_denominator']} |"
                 )
     s = audit["summary"]
+    residual_count = s["outcome_counts"]["other_terminal_outcomes"]
     lines += [
         "", "## Interpretation", "",
         f"Across {s['policy_episode_count']} policy-episode runs, {s['incomplete_coverage_episode_count']} ended without all four successful current observations; "
@@ -394,6 +412,13 @@ def _markdown(audit: dict[str, Any], report_root: Path, output_dir: Path) -> str
         f"The {s['incomplete_coverage_incorrect_diagnosis_count']} incomplete-coverage incorrect diagnoses support studying a stricter stopping rule as a separate question. "
         "They do not establish that such a rule would improve outcomes; no stopping behavior was changed or evaluated here.", "",
         "The traces show only report text, requested observations, tool attempts, and recorded budgets. The section below is evaluator-only hindsight: the policy did not see unrequested observations. Its annotations use only exact structured current facts that match the existing workflow evidence rules; free-text fixture messages are not interpreted.", "",
+    ]
+    if residual_count:
+        lines += [
+            f"{residual_count} episode{' was' if residual_count == 1 else 's were'} assigned to the residual outcome bucket. "
+            "This includes completed diagnoses matching gold when the evaluator did not mark the recorded gold evidence as supported; historical correctness metrics retain their existing definitions.", "",
+        ]
+    lines += [
         "## Per-episode trace evidence", "",
         "Links open the recorded JSONL traces. Each row lists the observed coverage and terminal result; hidden fixture annotations are kept in the evaluator-only section below.", "",
         "| Policy | Split / scenario | Coverage | Terminal action / reason | Evaluator outcome | Trace |", "|---|---|---|---|---|---|",
