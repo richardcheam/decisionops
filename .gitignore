@@ -23,3 +23,6 @@ frontend/artifacts/
 !.env.example
 *.dump
 *.log
+
+# Optional cached local model environment
+.venv-models

@@ -108,3 +108,14 @@ route and then requires a real exact review before creating one replacement.
 
 Use RUNBOOK's isolated project/ports/image-tag setup before local branch tests.
 The original running milestone remains revision 0004; this branch is revision 0005.
+
+
+Optional local-provider slice: inspect [local_provider.py](../../decisionops/commerce/local_provider.py)
+for permitted features, subprocess deadlines and cleanup;
+[local_model_worker.py](../../decisionops/commerce/local_model_worker.py) for native
+Commerce labels and reused cached loaders. [Pure adapter tests](../../tests/test_commerce_local_providers.py)
+use model-free doubles; appended local [database tests](../../tests/test_commerce_provider_postgres.py)
+prove forced routing without dispatch, consumed recommendation, no approval and
+zero-charge timeout recovery. The [comparison](../../reports/commerce-local-providers-20261014/README.md)
+records actual CPU inference separately from simulated contract/CI evidence.
+The full-state evidence/approval/transaction/reconciliation checks above still apply.
