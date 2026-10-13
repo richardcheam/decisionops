@@ -444,3 +444,20 @@ expectations. No dependency/lock changes, models, paid inference or AWS resource
 No new Richard-run commands, patches or tests were reported; no owner mastery is
 claimed. All implementation/publication/verification not explicitly reviewer-run
 above is agent-executed. Operational participation remains optional, not homework.
+
+
+## External provider review and integration (reported by Richard)
+
+Richard reported that ChatGPT inspected the provider, routing and budget source
+and independently ran eight pure provider tests successfully. Database/browser
+verification cited by that external review came from GitHub CI; ChatGPT did not
+independently run those environments. This review is separate from Codex's
+agent-executed verification and the independent implementation reviewer above.
+No new Richard-run commands or tests are claimed.
+
+Integration does not deploy this source into the original running store. Its
+revision-0004 database, application containers and persistent volume stay intact.
+Using the provider functionality requires Alembic migration 0005 in the intended
+environment with the matching application release; follow RUNBOOK's isolated
+provider setup before experimenting. Do not automatically migrate or restart the
+original stack merely because the PR is merged.
