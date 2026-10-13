@@ -313,3 +313,78 @@ class ProviderDatabaseTests(unittest.TestCase):
         result=apply(self.engine,'RUN-1')
         self.assertEqual(result['trace']['application_status'],'stale')
         self.assertEqual(result['case']['status'],'needs_review')
+
+    def local_budget(self):
+        from decisionops.commerce.provider_budget import create_budget
+        from decisionops.commerce.providers import Limits,Pricing
+        with self.engine.begin() as c:create_budget(c,'LOCAL-BUDGET',Limits(max_cost_usd='0'),Pricing.local())
+
+    def test_local_forced_review_skips_dispatch_and_has_no_fake_usage(self):
+        from decisionops.commerce.providers import ProviderConfig
+        from decisionops.commerce.provider_service import recommend,recover
+        self.local_budget();case=self.opened('ORD-HISTORY')
+        result=recommend(self.engine,case['id'],'LOCAL-FORCED','LOCAL-BUDGET',ProviderConfig(mode='laya'))
+        trace=result['trace'];self.assertEqual(trace['dispatch_count'],0)
+        self.assertTrue(trace['result']['metadata']['forced_choice']);self.assertFalse(trace['result']['simulated'])
+        self.assertIsNone(trace['result']['input_tokens']);self.assertEqual(trace['actual_cost_usd'],'0E-8')
+        self.assertEqual(trace['state'],'settled');self.assertEqual(result['case']['status'],'needs_review')
+        self.assertEqual(recover(self.engine,'LOCAL-FORCED')['trace']['dispatch_count'],0)
+
+    def test_local_subprocess_recommendation_is_consumed_without_approval(self):
+        import json,sys,tempfile
+        from pathlib import Path
+        from decisionops.commerce.providers import ProviderConfig
+        from decisionops.commerce.local_provider import LocalProvider
+        from decisionops.commerce.provider_service import recommend,recover
+        self.local_budget();case=self.opened();config=ProviderConfig(mode='gliclass')
+        output={'status':'success','choice':'staff_review','metadata':{'model_revision':config.model_revision,
+            'forced_choice':False,'scores':{'present_replacement':.1,'staff_review':.9},'score_meaning':'test-double probabilities',
+            'load_seconds':.1,'inference_seconds':.1,'peak_rss_kib':1000}}
+        with tempfile.TemporaryDirectory() as root:
+            worker=Path(root)/'fake_worker.py';worker.write_text('print('+repr(json.dumps(output))+')')
+            result=recommend(self.engine,case['id'],'LOCAL-ROUTE','LOCAL-BUDGET',config,
+                provider=LocalProvider(python=sys.executable,worker=worker))
+        self.assertEqual(result['case']['status'],'escalated');self.assertIsNone(result['case']['approval'])
+        self.assertEqual(result['trace']['state'],'settled');self.assertEqual(result['trace']['dispatch_count'],1)
+        self.assertFalse(result['trace']['result']['simulated']);self.assertIsNone(result['trace']['result']['input_tokens'])
+        self.assertEqual(result['budget']['committed_cost_usd'],'0.00000000')
+        self.assertEqual(recover(self.engine,'LOCAL-ROUTE')['trace']['dispatch_count'],1)
+
+    def test_local_timeout_retains_request_and_cannot_redispatch(self):
+        import sys,tempfile
+        from pathlib import Path
+        from decisionops.commerce.providers import ProviderConfig
+        from decisionops.commerce.local_provider import LocalProvider
+        from decisionops.commerce.provider_service import recommend,recover
+        self.local_budget();case=self.opened()
+        with tempfile.TemporaryDirectory() as root:
+            worker=Path(root)/'slow.py';worker.write_text('import time;time.sleep(30)')
+            r=recommend(self.engine,case['id'],'LOCAL-TIMEOUT','LOCAL-BUDGET',ProviderConfig(mode='laya'),
+                deadline_seconds=.2,provider=LocalProvider(python=sys.executable,worker=worker))
+        self.assertEqual(r['trace']['state'],'uncertain');self.assertEqual(r['case']['status'],'escalated')
+        self.assertTrue(r['trace']['result']['metadata']['process_reaped'])
+        self.assertEqual(recover(self.engine,'LOCAL-TIMEOUT')['trace']['dispatch_count'],1)
+
+    def test_local_wait_releases_business_locks_and_stale_result_is_rejected(self):
+        from decisionops.commerce.local_provider import LocalProvider,local_result,diagnostics
+        from decisionops.commerce.providers import ProviderConfig
+        from decisionops.commerce.provider_service import recommend
+        started=Event();finish=Event()
+        class WaitingLocal(LocalProvider):
+            def choose(self,request):
+                started.set();finish.wait(3)
+                return local_result(request,'present_replacement',metadata=diagnostics(request,
+                    scores={'present_replacement':.8,'staff_review':.2},score_meaning='test-double probabilities',
+                    load_seconds=0,inference_seconds=0,peak_rss_kib=0))
+        self.local_budget();case=self.opened()
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            job=pool.submit(recommend,self.engine,case['id'],'LOCAL-STALE','LOCAL-BUDGET',ProviderConfig(mode='gliclass'),provider=WaitingLocal())
+            try:
+                self.assertTrue(started.wait(3))
+                with self.engine.begin() as c:
+                    c.exec_driver_sql("SELECT * FROM inventory WHERE variant_id='shirt-blue-M' FOR UPDATE NOWAIT")
+                    c.exec_driver_sql("UPDATE inventory SET on_hand=11 WHERE variant_id='shirt-blue-M'")
+            finally:finish.set()
+            r=job.result(timeout=5)
+        self.assertEqual(r['trace']['application_status'],'stale');self.assertEqual(r['case']['status'],'needs_review')
+        self.assertIsNone(r['case']['approval'])

@@ -1,4 +1,4 @@
-"""Exact, simulated PostgreSQL reservations. Callers use short READ COMMITTED txs."""
+"""Exact simulated/local no-API-charge PostgreSQL reservations. Callers use short READ COMMITTED txs."""
 from dataclasses import replace
 from decimal import Decimal
 import json
@@ -50,11 +50,11 @@ def summary(connection,budget_id):
         sa.func.coalesce(sa.func.sum(sa.case((calls.c.state!='denied',1),else_=0)),0),
         sa.func.coalesce(sa.func.sum(cost),Decimal('0'))).where(calls.c.budget_id==budget_id)).one()
     return {'budget_id':budget_id,'limits':budget['limits'],'pricing':budget['pricing'],
-            'reserved_request_count':count,'committed_cost_usd':format(committed,'.8f'),'simulated':True}
+            'reserved_request_count':count,'committed_cost_usd':format(committed,'.8f'),'simulated':budget['pricing'].get('simulated',True),'api_charge_kind':budget['pricing'].get('charge_kind','simulated')}
 
 
 def reserve(connection,budget_id,request):
-    if request.config.mode!='fake':raise ValueError('Only simulated calls may reserve this ledger')
+    if request.config.mode not in ('fake','laya','gliclass'):raise ValueError('Unsupported provider ledger mode')
     budget=get_budget(connection,budget_id,True)
     if budget['limits']!=request.limits.as_record() or budget['pricing']!=request.pricing.as_record():
         raise ValueError('Request budget/pricing configuration mismatch')
@@ -73,6 +73,9 @@ def reserve(connection,budget_id,request):
     result=ProviderResult(None,request.config.provider_id,request.run_id,response_id('LOCAL',request.run_id),
                          status='unavailable',input_tokens=0,output_tokens=0,
                          error_kind='budget_exhausted',error_message='No dispatch: simulated budget exhausted') if denied else None
+    if denied and request.config.mode!='fake':
+        from .local_provider import local_result
+        result=local_result(request,status='unavailable',error='budget_exhausted')
     connection.execute(db.provider_calls.insert().values(run_id=request.run_id,case_id=request.case_id,
         budget_id=budget_id,request=record,request_hash=digest,state='denied' if denied else 'reserved',
         reserved_cost_usd=Decimal('0') if denied else maximum,
@@ -86,10 +89,19 @@ def claim(connection,run_id):
     row=get_call(connection,run_id,True)
     if row is None:raise ValueError('Run not found')
     if row['state']!='reserved':return None
+    request=ProviderRequest.from_record(row['request'])
     if clock(connection)>=row['deadline']:
-        request=ProviderRequest.from_record(row['request'])
         result=ProviderResult(None,request.config.provider_id,run_id,response_id('LOCAL',run_id),status='timeout',
             input_tokens=0,output_tokens=0,error_kind='deadline_before_dispatch',error_message='No dispatch: deadline expired')
+        if request.config.mode!='fake':
+            from .local_provider import local_result
+            result=local_result(request,status='timeout',error='deadline_before_dispatch')
+        connection.execute(db.provider_calls.update().where(db.provider_calls.c.run_id==run_id).values(
+            state='settled',result=result.as_record(),actual_cost_usd=Decimal('0'),finished_at=clock(connection)))
+        return None
+    if request.config.mode!='fake' and len(request.allowed_choices)==1:
+        from .local_provider import forced_result
+        result=validate_result(request,forced_result(request))
         connection.execute(db.provider_calls.update().where(db.provider_calls.c.run_id==run_id).values(
             state='settled',result=result.as_record(),actual_cost_usd=Decimal('0'),finished_at=clock(connection)))
         return None
@@ -105,11 +117,12 @@ def settle(connection,run_id,result,finished_at):
     if row['state']!='dispatching':return row
     request=ProviderRequest.from_record(row['request'])
     result=validate_result(request,result)
-    known=result.input_tokens is not None and result.output_tokens is not None
+    local=request.config.mode!='fake'
+    known=(result.status!='timeout') if local else result.input_tokens is not None and result.output_tokens is not None
     if finished_at>row['deadline']:
         result=replace(result,status='timeout',selected_choice=None,
                        error_kind='late_result',error_message='Outcome arrived after the dispatch deadline')
-    cost=request.pricing.cost(result.input_tokens,result.output_tokens) if known else None
+    cost=(Decimal('0') if local else request.pricing.cost(result.input_tokens,result.output_tokens)) if known else None
     connection.execute(db.provider_calls.update().where(db.provider_calls.c.run_id==run_id).values(
         state='settled' if known else 'uncertain',actual_cost_usd=cost,result=result.as_record(),finished_at=finished_at))
     return get_call(connection,run_id)
@@ -123,6 +136,9 @@ def recover_expired(connection,run_id):
         result=ProviderResult(None,req.config.provider_id,run_id,response_id('LOCAL',run_id),status='timeout',
             input_tokens=None,output_tokens=None,error_kind='unknown_after_restart',
             error_message='No redispatch; unknown outcome retains maximum reservation')
+        if req.config.mode!='fake':
+            from .local_provider import local_result
+            result=local_result(req,status='timeout',error='unknown_after_restart')
         connection.execute(db.provider_calls.update().where(db.provider_calls.c.run_id==run_id).values(
             state='uncertain',result=result.as_record(),finished_at=clock(connection)))
     return get_call(connection,run_id)
