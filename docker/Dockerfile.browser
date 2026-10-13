@@ -1,0 +1,8 @@
+FROM node:24-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20
+WORKDIR /workspace
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci && npx playwright install --with-deps --only-shell chromium
+RUN chmod o+x /root /root/.cache && chmod -R a+rX /root/.cache/ms-playwright
+COPY frontend/playwright.config.ts ./
+COPY frontend/tests ./tests
+CMD ["npm", "run", "test:e2e"]

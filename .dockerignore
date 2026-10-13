@@ -1,0 +1,16 @@
+.git
+.gitignore
+.env
+.venv
+runs
+reports
+frontend/node_modules
+frontend/dist
+frontend/test-results
+frontend/playwright-report
+__pycache__
+**/__pycache__
+.env.*
+*.dump
+*.log
+frontend/artifacts

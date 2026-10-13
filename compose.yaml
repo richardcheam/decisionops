@@ -1,0 +1,88 @@
+name: decisionops-commerce
+services:
+  postgres:
+    image: postgres:16.15-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4
+    environment:
+      POSTGRES_DB: commerce
+      POSTGRES_USER: commerce
+      POSTGRES_PASSWORD: local-demo-only
+    ports:
+      - "127.0.0.1:${COMMERCE_POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - commerce_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U commerce -d commerce"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+  init:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+    image: decisionops-commerce-app:local
+    environment: &store_environment
+      COMMERCE_DATABASE_URL: ${COMMERCE_CONTAINER_DATABASE_URL:-postgresql+psycopg://commerce:local-demo-only@postgres:5432/commerce}
+    command: [sh, -c, "alembic upgrade head && python -B -m decisionops.commerce.seed && python -B -m decisionops.commerce.worker setup"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    mem_limit: 384m
+  api:
+    profiles: [app]
+    image: decisionops-commerce-app:local
+    environment:
+      <<: *store_environment
+      COMMERCE_STAFF_USERNAME: ${COMMERCE_STAFF_USERNAME:-operator}
+      COMMERCE_STAFF_PASSWORD: ${COMMERCE_STAFF_PASSWORD:-}
+      COMMERCE_ORIGINS: ${COMMERCE_ORIGINS:-http://127.0.0.1:8080,http://localhost:8080}
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+    restart: unless-stopped
+    mem_limit: 256m
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  worker:
+    profiles: [app]
+    image: decisionops-commerce-app:local
+    environment: *store_environment
+    command: [python, -B, -m, decisionops.commerce.worker, run]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    mem_limit: 384m
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  web:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    image: decisionops-commerce-web:local
+    ports: ["127.0.0.1:${COMMERCE_WEB_PORT:-8080}:8080"]
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:8080/health]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+    restart: unless-stopped
+    mem_limit: 64m
+
+volumes:
+  commerce_pgdata:
