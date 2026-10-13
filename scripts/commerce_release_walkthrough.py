@@ -45,8 +45,8 @@ def main():
         return docker(name,'compose','exec','-T','postgres','psql','-U','commerce','-d','commerce','-Atc',
                       "SELECT jsonb_build_object('orders',(SELECT count(*) FROM orders),'inventory',(SELECT jsonb_agg(to_jsonb(i) ORDER BY variant_id) FROM inventory i),'operations',(SELECT count(*) FROM commerce_operations))")
     before = records('records-before')
-    images = {service:docker('image-'+service,'image','inspect',f'decisionops-commerce-{service}:local','--format','{{.Id}}').strip() for service in ('app','web')}
-    (directory/'release.json').write_text(json.dumps({'schema':'0004','images':images,'scope':'local configuration rollout; same code and schema'},indent=2)+'\n')
+    images = {label:docker('image-'+label,'inspect',docker('container-'+service,'compose','ps','-q',service).strip(),'--format','{{.Image}}').strip() for label,service in (('app','api'),('web','web'))}
+    (directory/'release.json').write_text(json.dumps({'schema':'0005','images':images,'scope':'local configuration rollout; same code and schema'},indent=2)+'\n')
     override = directory/'failed-config.yaml'
     override.write_text('services:\n  api:\n    command: [python, -c, "raise SystemExit(42)"]\n    restart: "no"\n')
     try:

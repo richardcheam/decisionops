@@ -65,8 +65,11 @@ authenticated workspace, browser workflow, isolated backup restore and same-code
 configuration rollback. Source review and separate CI jobs are documented in REVIEW.md. See the pull
 request checks for the current GitHub result; local evidence is in LEARNING.md.
 
-Remaining milestones: optional decision/language providers with durable budget
-controls and fake fault tests; independently reviewed held-out evaluation; cloud
+Optional operator-only fake decision routing and a durable simulated budget ledger
+are available in this branch; see RUNBOOK.md. The browser/worker still use rules.
+No adaptive per-tool selection or live provider is implemented.
+
+Remaining milestones: real decision/language providers and live budget reconciliation; independently reviewed held-out evaluation; cloud
 TLS/identity/IaC/deployment and encrypted off-host backups. Paid experiments and
 AWS provisioning require approval of the concrete plan and missing account facts.
 Stock release/cancellation and real external fulfilment are outside this release.

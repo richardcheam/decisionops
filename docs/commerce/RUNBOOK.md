@@ -1198,3 +1198,190 @@ separate volume and network. `docker compose --profile app down` stops only this
 project and preserves its volume. Unset these overrides before operating the
 original stack. To undo this configuration patch, unset the overrides; default
 ports remain 55432 and 8080. Do not delete original diagnostic evidence or data.
+
+## Optional fake decision routing and durable simulated budgets
+
+This is an opt-in **operator CLI** integration. The browser/API and durable worker
+continue their rules-only investigation path. The current investigation gathers
+all seven requirements through one bundled assessment; it does not adaptively
+select individual tools. `provider_service.prepare()` calls `investigate_case()`,
+saves that complete evidence/proposal, reserves a simulated budget, and commits.
+Provider work happens with no open database transaction or business locks.
+`apply()` then locks/rereads current records before consuming the recommendation.
+
+The recommendation selects `present_replacement` or `staff_review`. An eligible
+present choice keeps the exact proposal awaiting real staff review. A review choice
+actually escalates an eligible case; it cannot be approved through the existing
+review endpoint until explicitly reinvestigated. Blocked/unknown cases keep their
+actual facts and deterministic status. Failure/denial explicitly falls back to
+staff review. Stale results cannot overwrite a later generation, approval or
+execution. Same-generation eligible proposals with drifted evidence are invalidated.
+No provider creates facts, grants approval or calls execution. Confidence is only
+an estimate in the simulated response, never an eligibility fact or permission.
+
+### Safe setup: keep the working store separate
+
+This branch adds Alembic `0005`, two budget/call tables and matching health/backup
+revision expectations. Do not migrate the running milestone's `0004` database or
+reuse its app image tag to test this branch. Use a separate project, volume, ports
+and image names. No new dependencies or lockfile changes are required.
+
+```bash
+uv sync --locked --only-group commerce --no-python-downloads
+export COMPOSE_PROJECT_NAME=decisionops-provider-check
+export COMMERCE_POSTGRES_PORT=55434 COMMERCE_WEB_PORT=8082
+export COMMERCE_WEB_URL=http://127.0.0.1:8082
+export COMMERCE_ORIGINS=http://127.0.0.1:8082
+export COMMERCE_APP_IMAGE=decisionops-provider-app:local
+export COMMERCE_WEB_IMAGE=decisionops-provider-web:local
+python3 -B scripts/commerce_local_setup.py
+docker compose --profile app build
+docker compose --profile app up -d --wait
+curl --fail http://127.0.0.1:8082/health
+export COMMERCE_DATABASE_URL='postgresql+psycopg://commerce:local-demo-only@127.0.0.1:55434/commerce'
+export COMMERCE_TEST_DATABASE_URL="$COMMERCE_DATABASE_URL"
+```
+
+Expected: new store migrated to `0005`, seeded once, ordinary rules workspace
+healthy on 8082. The original store on 8080/55432 and its image/container IDs stay
+unchanged. Rules is the default in the new workspace too; no provider call is made
+on startup, polling, display, approval, execution or reconciliation.
+
+### Reproduce the complete simulated integration
+
+```bash
+.venv/bin/python -B scripts/commerce_provider_walkthrough.py
+.venv/bin/python -B scripts/commerce_ci_tests.py postgres
+python3 -B -S scripts/commerce_ci_tests.py dependency-free
+```
+
+Walkthrough creates and removes only its own schema. It demonstrates default rules,
+consumed present/review choices, timeout retention, repeated recovery without
+redispatch, explicit exhaustion, refusal/unavailability/malformed/override handling,
+and exact approval -> one verified replacement despite retry. It saves traces and
+business proof under an ignored `runs/provider-walkthrough-*` directory. All
+provider responses, usage and USD prices are **simulated**, not paid billing or
+model-performance measurements. Latency measures the local fake integration.
+
+Expected illustrative ledger: known success and review each settle 100 input / 10
+output simulated tokens at `0.00012000` USD; timeout retains `0.00260000`; three
+reserved requests commit `0.00284000` total; fourth request is denied without dispatch.
+The configured input/output prices are fictional `1`/`2` USD per million tokens,
+version `simulated-v1`. They are not an OpenAI price quote.
+
+### Select rules versus fake mode manually
+
+Use a new fictional case for each independent demonstration. The original tracking
+can become stale; do not refresh public seed timestamps to force eligibility.
+For guaranteed fresh scenarios, use the disposable walkthrough above.
+
+```bash
+CASE_ID=$(.venv/bin/python -B -m decisionops.commerce.case_demo open \
+  --order ORD-1042 --shipment SHIP-1042 --item shirt-blue-M:1 \
+  | .venv/bin/python -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+
+# Default: ordinary bundled rules investigation, no ledger reservation/dispatch.
+.venv/bin/python -B -m decisionops.commerce.provider_demo investigate \
+  --case "$CASE_ID" --run RULES-1
+
+# Explicit fictional budget. Existing IDs must keep identical limits/prices.
+.venv/bin/python -B -m decisionops.commerce.provider_demo budget-create \
+  --budget LOCAL-FAKE-1 --max-requests 3 --max-cost-usd 0.00300000
+
+# Opt in; simulated recommendation is consumed by the actual case service.
+.venv/bin/python -B -m decisionops.commerce.provider_demo investigate \
+  --mode fake --case "$CASE_ID" --run FAKE-1 --budget LOCAL-FAKE-1 \
+  --scenario success --deadline-seconds 5
+.venv/bin/python -B -m decisionops.commerce.provider_demo show --run FAKE-1
+.venv/bin/python -B -m decisionops.commerce.provider_demo budget --budget LOCAL-FAKE-1
+```
+
+Other scenarios: `review`, `unavailable`, `refused`, `invalid_choice`, `malformed`,
+`instruction_override`, `timeout`. A real time-limit failure can use
+`--delay-ms 1000 --deadline-seconds 0.1` on a new run/case. The bounded fake call
+returns to its caller at the deadline; a later daemon-thread result is discarded
+and cannot settle/rewrite the application. No SDK retry exists.
+
+CLI exit statuses: 0 completed routing or successful inspection/setup; 2 invalid
+input/binding/configuration; 3 database failure with outcome unconfirmed; 4 explicit
+fallback, stale recommendation or pending/uncertain outcome. A legitimate `review`
+choice can complete routing with exit 0 while the case still needs a manager.
+
+### Inspect reservation, trace and cause
+
+```bash
+docker compose exec -T postgres psql -U commerce -d commerce -c \
+  "SELECT run_id, case_id, budget_id, state, dispatch_count, reserved_cost_usd, actual_cost_usd, application_status, effective_choice FROM commerce_provider_calls ORDER BY created_at DESC LIMIT 10;"
+docker compose exec -T postgres psql -U commerce -d commerce -c \
+  "SELECT id, limits, pricing FROM commerce_provider_budgets;"
+.venv/bin/python -B -m decisionops.commerce.provider_demo show --run FAKE-1
+```
+
+Trace contains task/case/run/provider identities, generation/proposal/hash,
+order/shipment/variant/quantity/policy and seven source versions, only normalized
+facts (no raw customer text/PII), allowed choices, pinned limits/prices, UTC deadline,
+result/usage/status/error/latency and the effective applied choice. Pricing/costs use
+Decimal and PostgreSQL NUMERIC with eight fractional places; reservation maximum
+rounds upward. A request/call ID is bounded independently of the run identifier.
+Never publish private .env, dumps, lease tokens or authentication headers.
+
+Budget row locking serializes both count and maximum-cost checks. The cost committed
+is settled actual simulated cost plus the maximum for reserved/dispatching/uncertain
+calls. Denied calls commit zero cost and do not consume request quota. Request quota
+conservatively retains every accepted reservation, even a never-dispatched expired
+request. Settling known bounded usage releases only excess cost, not request count. A known
+late result still settles recorded usage, but its recommendation is rejected and
+routes to review; an actual timeout with no recorded usage retains the maximum.
+Budget configuration/pricing and request bindings are immutable under DB guards.
+This is application-accounting protection in the local privileged-demo DB, not a
+security guarantee against a database administrator or future provider overbilling.
+
+### Timeout, exhaustion and restart recovery
+
+| Ledger state | Meaning | Safe recovery |
+| --- | --- | --- |
+| `reserved` | Maximum budget committed; dispatch not yet claimed | Recover SAME run; it claims once if deadline remains. If expired, settle zero known usage and review without dispatch |
+| `dispatching` | Dispatch marker committed before invocation; may be running or outcome unknown | Do not dispatch again. Inspect/recover same run; after deadline it becomes uncertain |
+| `settled` | Known bounded simulated usage recorded | Recover same run to apply/replay saved result; no provider call |
+| `uncertain` | Timeout/malformed unknown usage/crash outcome; maximum retained | Review/reconcile same run; no redispatch and no automatic release |
+| `denied` | Quota/cost exhausted; no dispatch | Staff review; inspect budget rather than silently increasing limits |
+
+```bash
+.venv/bin/python -B -m decisionops.commerce.provider_demo recover --run FAKE-1
+```
+
+Recovery reuses the saved request, configuration and deadline. It does not renew a
+deadline or manufacture a new run. Never recover a timeout by automatically creating
+a fresh run ID. Actual provider reconciliation/release from authoritative billing
+receipts is future work; unresolved reservations stay committed in this slice.
+If current case/evidence changed after dispatch, settlement still accounts for known
+usage, but result application is stale and requires fresh assessment/review.
+
+To reproduce a crash boundary before dispatch, `provider_demo prepare --mode fake
+--case ... --run ... --budget ...` persists the reservation without dispatch; then
+use `recover --run ...` in a new process. The cross-process test and walkthrough
+also demonstrate uncertainty surviving restart. Logs/records, not process memory,
+establish what was reserved, dispatched, settled or applied.
+
+### Patch, verify and undo safely
+
+For a timeout, first inspect `deadline`, `result.error_kind`, state and
+`dispatch_count`. Fix a fake delay/deadline for a **new explicit experiment**, not
+by editing the old ledger/deadline. For exhaustion, inspect count plus retained
+uncertain commitments; do not treat failed/uncertain history as empty. Create a
+separate explicitly configured simulated budget if another demonstration is needed.
+Do not generalize that operation to paid experiments: approval is still required.
+
+Provider result binding/freshness belongs in `provider_service.py`; contract/fake
+behavior in `providers.py`; reservations/settlement in `provider_budget.py`.
+The review regression verifies application takes business locks **before** the call
+lock, avoiding a prepare/business -> budget -> settlement/call -> apply/business
+cycle. Tests also cover 128-character run IDs, atomic budget races, stale results,
+unknown retention, daemon deadlines, no locks during waiting and no duplicate dispatch.
+
+To stop this experiment and return to ordinary use, stop only this isolated project
+with `docker compose --profile app down` (no `-v`), then unset the project/port/image/
+URL overrides. Use the original commerce worktree for the existing rules application.
+Do not downgrade a live database, delete ledgers/volumes, switch branches underneath
+running builds, or recreate original services with the provider image tag. Schema
+0005 is additive, but this branch requires it; the old running image still checks 0004.

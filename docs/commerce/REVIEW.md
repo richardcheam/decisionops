@@ -61,9 +61,9 @@ docker compose --profile app down
 ```
 
 Expected: dependency-free suite reports optional dependency/model/database skips;
-PostgreSQL profile collects all five integration modules and fails on **any skip**;
+PostgreSQL profile collects all six integration modules and fails on **any skip**;
 six browser checks execute with zero skipped/flaky/failing checks. Init applies
-migrations through `0004`, seeds once, sets up graph checkpoints. `/health` reports
+migrations through `0005`, seeds once, sets up graph checkpoints. `/health` reports
 ready. Docker `down` preserves the volume; `down -v` destroys its data and is not a
 recovery command. Browser and release walkthroughs temporarily interrupt their
 stack; do not run against a workspace someone is using. Walkthroughs retain local
@@ -89,3 +89,22 @@ stock release/cancellation and real carrier/fulfilment integration remain future
 milestones. The spending plan is proposed, not permission to spend. Regression
 fixtures are AI-authored deterministic checks, not independent model evaluation.
 Agent verification must not be described as Richard personally operating the app.
+
+## Optional fake-provider review boundaries
+
+`provider_service.prepare` is the insertion after the existing bundled assessment.
+Recommendations route actual cases for exact staff review or escalation; they do
+not choose individual tools or grant permission. Browser and worker default rules
+are unchanged. Fake usage/prices are simulated. Migration 0005 adds the ledger.
+
+Inspect [pure provider tests](../../tests/test_commerce_providers.py) and
+[provider PostgreSQL tests](../../tests/test_commerce_provider_postgres.py) for
+atomic count/cost races, uncertain retention/no redispatch, cross-process recovery,
+no locks during provider waits, stale result rejection, later approval preservation,
+request-ID bounds and business-before-call lock ordering. Existing execution tests
+continue to verify exact review, transactional writes, duplicate prevention and
+reconciliation. `scripts/commerce_provider_walkthrough.py` demonstrates the consumed
+route and then requires a real exact review before creating one replacement.
+
+Use RUNBOOK's isolated project/ports/image-tag setup before local branch tests.
+The original running milestone remains revision 0004; this branch is revision 0005.

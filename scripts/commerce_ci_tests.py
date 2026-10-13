@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT))
 DATABASE_MODULES = (
     'test_commerce_postgres', 'test_commerce_investigations',
     'test_commerce_execution', 'test_commerce_jobs', 'test_commerce_api',
+    'test_commerce_provider_postgres',
 )
 
 
