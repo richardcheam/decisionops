@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "order_id": "ORD-1042",
+  "supported_case": true,
+  "max_age_seconds": 86400,
+  "trusted_sources": {
+    "paid": "demo-payment",
+    "shipped": "demo-fulfilment",
+    "loss_confirmed": "demo-carrier",
+    "quantities_valid": "demo-order",
+    "no_previous_compensation": "demo-resolutions",
+    "stock_available": "demo-inventory",
+    "policy_permits": "demo-policy"
+  },
+  "observations": [
+    {"requirement": "paid", "value": true, "status": "success", "source_id": "demo-payment", "source_version": "v1", "order_id": "ORD-1042", "observed_at": "2026-10-12T11:00:00Z"},
+    {"requirement": "shipped", "value": true, "status": "success", "source_id": "demo-fulfilment", "source_version": "v1", "order_id": "ORD-1042", "observed_at": "2026-10-12T11:00:00Z"},
+    {"requirement": "loss_confirmed", "value": true, "status": "success", "source_id": "demo-carrier", "source_version": "v1", "order_id": "ORD-1042", "observed_at": "2026-10-12T11:00:00Z"},
+    {"requirement": "quantities_valid", "value": true, "status": "success", "source_id": "demo-order", "source_version": "v1", "order_id": "ORD-1042", "observed_at": "2026-10-12T11:00:00Z"},
+    {"requirement": "no_previous_compensation", "value": true, "status": "success", "source_id": "demo-resolutions", "source_version": "v1", "order_id": "ORD-1042", "observed_at": "2026-10-12T11:00:00Z"},
+    {"requirement": "stock_available", "value": true, "status": "success", "source_id": "demo-inventory", "source_version": "v1", "order_id": "ORD-1042", "observed_at": "2026-10-12T11:00:00Z"},
+    {"requirement": "policy_permits", "value": true, "status": "success", "source_id": "demo-policy", "source_version": "policy-1", "order_id": "ORD-1042", "observed_at": "2026-10-12T11:00:00Z"}
+  ]
+}

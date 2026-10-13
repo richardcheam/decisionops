@@ -1,0 +1,220 @@
+"""Fictional store records, immutable audit, cases and local replacement ledger."""
+
+import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
+
+metadata = sa.MetaData()
+
+policies = sa.Table(
+    "policy_versions", metadata,
+    sa.Column("id", sa.String, primary_key=True),
+    sa.Column("store_id", sa.String, nullable=False),
+    sa.Column("version", sa.Integer, nullable=False),
+    sa.Column("allow_confirmed_loss", sa.Boolean, nullable=False),
+    sa.Column("max_units", sa.Integer, nullable=False),
+    sa.Column("carrier_max_age_seconds", sa.Integer, nullable=False),
+    sa.UniqueConstraint("store_id", "id"),
+    sa.UniqueConstraint("store_id", "version"),
+    sa.CheckConstraint("version > 0 AND max_units BETWEEN 1 AND 1000 AND carrier_max_age_seconds > 0"),
+)
+orders = sa.Table(
+    "orders", metadata,
+    sa.Column("id", sa.String, primary_key=True),
+    sa.Column("store_id", sa.String, nullable=False),
+    sa.Column("policy_id", sa.String, nullable=False),
+    sa.Column("currency", sa.String(3), nullable=False),
+    sa.Column("resolution_history_complete", sa.Boolean, nullable=False),
+    sa.Column("compensation_revision", sa.BigInteger, nullable=False, server_default="0"),
+    sa.CheckConstraint("compensation_revision >= 0", name="ck_compensation_revision"),
+    sa.ForeignKeyConstraint(["store_id", "policy_id"], ["policy_versions.store_id", "policy_versions.id"]),
+    sa.CheckConstraint("currency ~ '^[A-Z]{3}$'"),
+)
+order_lines = sa.Table(
+    "order_lines", metadata,
+    sa.Column("order_id", sa.String, sa.ForeignKey("orders.id"), primary_key=True),
+    sa.Column("variant_id", sa.String, primary_key=True),
+    sa.Column("quantity", sa.Integer, nullable=False),
+    sa.Column("unit_price_minor", sa.BigInteger, nullable=False),
+    sa.CheckConstraint("quantity BETWEEN 1 AND 1000 AND unit_price_minor >= 0"),
+)
+payments = sa.Table(
+    "payments", metadata,
+    sa.Column("order_id", sa.String, sa.ForeignKey("orders.id"), primary_key=True),
+    sa.Column("status", sa.String, nullable=False),
+    sa.Column("amount_minor", sa.BigInteger, nullable=False),
+    sa.Column("currency", sa.String(3), nullable=False),
+    sa.CheckConstraint("status IN ('paid', 'pending', 'failed') AND amount_minor >= 0"),
+    sa.CheckConstraint("currency ~ '^[A-Z]{3}$'"),
+)
+shipments = sa.Table(
+    "shipments", metadata,
+    sa.Column("id", sa.String, primary_key=True),
+    sa.Column("order_id", sa.String, sa.ForeignKey("orders.id"), nullable=False),
+    sa.Column("fulfilment_status", sa.String, nullable=False),
+    sa.Column("carrier_status", sa.String, nullable=False),
+    sa.Column("carrier_observed_at", sa.DateTime(timezone=True), nullable=False),
+    sa.UniqueConstraint("id", "order_id"),
+    sa.CheckConstraint("fulfilment_status IN ('shipped', 'prepared')"),
+    sa.CheckConstraint("carrier_status IN ('lost', 'in_transit', 'delivered', 'unknown')"),
+)
+shipment_lines = sa.Table(
+    "shipment_lines", metadata,
+    sa.Column("shipment_id", sa.String, primary_key=True),
+    sa.Column("order_id", sa.String, nullable=False),
+    sa.Column("variant_id", sa.String, primary_key=True),
+    sa.Column("quantity", sa.Integer, nullable=False),
+    sa.ForeignKeyConstraint(["shipment_id", "order_id"], ["shipments.id", "shipments.order_id"]),
+    sa.ForeignKeyConstraint(["order_id", "variant_id"], ["order_lines.order_id", "order_lines.variant_id"]),
+    sa.CheckConstraint("quantity BETWEEN 1 AND 1000"),
+)
+inventory = sa.Table(
+    "inventory", metadata,
+    sa.Column("store_id", sa.String, primary_key=True),
+    sa.Column("variant_id", sa.String, primary_key=True),
+    sa.Column("on_hand", sa.Integer, nullable=False),
+    sa.Column("reserved", sa.Integer, nullable=False),
+    sa.CheckConstraint("on_hand >= 0 AND reserved >= 0 AND reserved <= on_hand"),
+)
+resolutions = sa.Table(
+    "resolutions", metadata,
+    sa.Column("id", sa.String, primary_key=True),
+    sa.Column("order_id", sa.String, nullable=False),
+    sa.Column("variant_id", sa.String, nullable=False),
+    sa.Column("quantity", sa.Integer, nullable=False),
+    sa.Column("kind", sa.String, nullable=False),
+    sa.Column("operation_id", sa.String, sa.ForeignKey("commerce_operations.id", use_alter=True, name="fk_resolution_operation")),
+    sa.UniqueConstraint("operation_id", "variant_id", name="uq_resolution_operation_variant"),
+    sa.CheckConstraint("operation_id IS NULL OR kind = 'replacement'", name="ck_resolution_operation_kind"),
+    sa.ForeignKeyConstraint(["order_id", "variant_id"], ["order_lines.order_id", "order_lines.variant_id"]),
+    sa.CheckConstraint("quantity BETWEEN 1 AND 1000 AND kind IN ('refund', 'replacement')"),
+)
+seed_versions = sa.Table("seed_versions", metadata, sa.Column("id", sa.String, primary_key=True))
+
+# Audit snapshots are append-only; migration 0002 installs mutation guards.
+investigations = sa.Table(
+    "commerce_investigations", metadata,
+    sa.Column("id", sa.String, primary_key=True),
+    sa.Column("order_id", sa.String, nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("assessment", JSONB, nullable=False),
+    sa.CheckConstraint("jsonb_typeof(assessment) = 'object'"),
+)
+proposals = sa.Table(
+    "commerce_proposals", metadata,
+    sa.Column("id", sa.String, primary_key=True),
+    sa.Column("investigation_id", sa.String, sa.ForeignKey("commerce_investigations.id"), nullable=False, unique=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("document", JSONB, nullable=False),
+    sa.Column("content_hash", sa.String(64), nullable=False),
+    sa.CheckConstraint("jsonb_typeof(document) = 'object' AND content_hash ~ '^[0-9a-f]{64}$'"),
+)
+
+cases = sa.Table(
+    "commerce_cases", metadata,
+    sa.Column("id", sa.String, primary_key=True),
+    sa.Column("order_id", sa.String, sa.ForeignKey("orders.id"), nullable=False),
+    sa.Column("request", JSONB, nullable=False),
+    sa.Column("status", sa.String, nullable=False),
+    sa.Column("generation", sa.Integer, nullable=False),
+    sa.Column("investigation_id", sa.String, sa.ForeignKey("commerce_investigations.id")),
+    sa.Column("proposal_id", sa.String, sa.ForeignKey("commerce_proposals.id")),
+    sa.Column("approval_id", sa.String, sa.ForeignKey("commerce_reviews.id", use_alter=True, name="fk_case_approval")),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.UniqueConstraint("id", "order_id"),
+    sa.CheckConstraint("generation >= 0 AND status IN ('open','awaiting_review','needs_review','blocked','approved','rejected','escalated','executed')"),
+    sa.CheckConstraint("status NOT IN ('awaiting_review','approved') OR proposal_id IS NOT NULL"),
+    sa.CheckConstraint("status != 'approved' OR approval_id IS NOT NULL"),
+)
+reviews = sa.Table(
+    "commerce_reviews", metadata,
+    sa.Column("id", sa.String, primary_key=True),
+    sa.Column("case_id", sa.String, sa.ForeignKey("commerce_cases.id"), nullable=False),
+    sa.Column("generation", sa.Integer, nullable=False),
+    sa.Column("proposal_id", sa.String, sa.ForeignKey("commerce_proposals.id"), nullable=False),
+    sa.Column("content_hash", sa.String(64), nullable=False),
+    sa.Column("decision", sa.String, nullable=False),
+    sa.Column("actor", sa.String(128), nullable=False),
+    sa.Column("operation_id", sa.String, unique=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.UniqueConstraint("case_id", "generation"),
+    sa.UniqueConstraint("id", "case_id"),
+    sa.UniqueConstraint("id", "operation_id"),
+    sa.CheckConstraint("generation > 0 AND decision IN ('approve','reject') AND content_hash ~ '^[0-9a-f]{64}$'"),
+    sa.CheckConstraint("(decision = 'approve' AND operation_id IS NOT NULL) OR (decision = 'reject' AND operation_id IS NULL)"),
+)
+case_events = sa.Table(
+    "commerce_case_events", metadata,
+    sa.Column("id", sa.String, primary_key=True),
+    sa.Column("sequence", sa.BigInteger, sa.Identity(), nullable=False, unique=True),
+    sa.Column("case_id", sa.String, sa.ForeignKey("commerce_cases.id"), nullable=False),
+    sa.Column("kind", sa.String, nullable=False),
+    sa.Column("details", JSONB, nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+)
+operations = sa.Table(
+    "commerce_operations", metadata,
+    sa.Column("id", sa.String, primary_key=True),
+    sa.Column("review_id", sa.String, nullable=False, unique=True),
+    sa.Column("case_id", sa.String, nullable=False, unique=True),
+    sa.Column("order_id", sa.String, nullable=False, unique=True),
+    sa.Column("request", JSONB, nullable=False),
+    sa.Column("completed_at", sa.DateTime(timezone=True), nullable=False),
+    sa.UniqueConstraint("id", "order_id"),
+    sa.ForeignKeyConstraint(["review_id", "case_id"], ["commerce_reviews.id", "commerce_reviews.case_id"]),
+    sa.ForeignKeyConstraint(["review_id", "id"], ["commerce_reviews.id", "commerce_reviews.operation_id"]),
+    sa.ForeignKeyConstraint(["case_id", "order_id"], ["commerce_cases.id", "commerce_cases.order_id"]),
+)
+replacement_orders = sa.Table(
+    "commerce_replacement_orders", metadata,
+    sa.Column("id", sa.String, primary_key=True),
+    sa.Column("operation_id", sa.String, sa.ForeignKey("commerce_operations.id"), nullable=False, unique=True),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.UniqueConstraint("id", "operation_id"),
+)
+replacement_lines = sa.Table(
+    "commerce_replacement_lines", metadata,
+    sa.Column("replacement_id", sa.String, nullable=False, primary_key=True),
+    sa.Column("variant_id", sa.String, nullable=False, primary_key=True),
+    sa.Column("operation_id", sa.String, nullable=False),
+    sa.Column("order_id", sa.String, nullable=False),
+    sa.Column("quantity", sa.Integer, nullable=False),
+    sa.Column("resolution_id", sa.String, sa.ForeignKey("resolutions.id"), nullable=False, unique=True),
+    sa.UniqueConstraint("operation_id", "variant_id", "quantity"),
+    sa.ForeignKeyConstraint(["replacement_id", "operation_id"], ["commerce_replacement_orders.id", "commerce_replacement_orders.operation_id"]),
+    sa.ForeignKeyConstraint(["operation_id", "order_id"], ["commerce_operations.id", "commerce_operations.order_id"]),
+    sa.ForeignKeyConstraint(["order_id", "variant_id"], ["order_lines.order_id", "order_lines.variant_id"]),
+    sa.CheckConstraint("quantity BETWEEN 1 AND 1000"),
+)
+reservations = sa.Table(
+    "commerce_reservations", metadata,
+    sa.Column("operation_id", sa.String, primary_key=True),
+    sa.Column("variant_id", sa.String, primary_key=True),
+    sa.Column("store_id", sa.String, nullable=False),
+    sa.Column("quantity", sa.Integer, nullable=False),
+    sa.ForeignKeyConstraint(["operation_id", "variant_id", "quantity"], ["commerce_replacement_lines.operation_id", "commerce_replacement_lines.variant_id", "commerce_replacement_lines.quantity"]),
+    sa.ForeignKeyConstraint(["store_id", "variant_id"], ["inventory.store_id", "inventory.variant_id"]),
+    sa.CheckConstraint("quantity BETWEEN 1 AND 1000"),
+)
+
+jobs = sa.Table(
+    "commerce_jobs", metadata,
+    sa.Column("id", sa.String, primary_key=True),
+    sa.Column("case_id", sa.String, sa.ForeignKey("commerce_cases.id"), nullable=False),
+    sa.Column("action", sa.String, nullable=False),
+    sa.Column("operation_id", sa.String),
+    sa.Column("status", sa.String, nullable=False),
+    sa.Column("attempts", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("token", sa.String),
+    sa.Column("lease_until", sa.DateTime(timezone=True)),
+    sa.Column("outcome", JSONB),
+    sa.Column("error_kind", sa.String),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    sa.CheckConstraint("action IN ('investigate','execute') AND status IN ('queued','running','completed','failed') AND attempts BETWEEN 0 AND 3"),
+    sa.CheckConstraint("(action='investigate' AND operation_id IS NULL) OR (action='execute' AND operation_id IS NOT NULL)"),
+    sa.CheckConstraint("status != 'running' OR (token IS NOT NULL AND lease_until IS NOT NULL)"),
+    sa.CheckConstraint("status != 'completed' OR outcome IS NOT NULL"),
+)
+sa.Index("uq_commerce_inflight_case", jobs.c.case_id, unique=True,
+         postgresql_where=jobs.c.status.in_(("queued", "running")))
