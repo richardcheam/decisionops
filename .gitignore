@@ -11,3 +11,15 @@ wheels/
 
 # Local evaluation outputs
 /runs/
+
+# Local commerce credentials and reproducible frontend build/test artifacts
+.env
+frontend/node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/artifacts/
+.env.*
+!.env.example
+*.dump
+*.log
