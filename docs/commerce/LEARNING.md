@@ -377,3 +377,19 @@ Commits are created by the agent using the repository's configured Git identity;
 that metadata is not evidence of Richard independently implementing or testing.
 GitHub check status belongs to the PR, separately from these agent-local results.
 No model provider, paid inference or AWS resource was added or used.
+
+## External ChatGPT review (reported by Richard)
+
+Richard reported that ChatGPT inspected selected source paths and independently
+ran 25 dependency-free Commerce tests successfully. This was a selected-path
+source review and an independent dependency-free test run, not a complete audit.
+The PostgreSQL and browser verification cited by that review came from GitHub CI;
+ChatGPT did not independently run those environments as part of this review.
+These results are distinct from Codex's agent-executed verification and Richard's
+personally reported commands. No additional Richard-run tests or patches are
+claimed.
+
+Codex subsequently updated the root README to lead with the working local Commerce
+application, retained the detailed historical guide and its limitations, and
+verified documentation links and formatting. This documentation patch and its
+verification are agent-executed.
