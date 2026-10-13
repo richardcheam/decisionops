@@ -218,3 +218,35 @@ jobs = sa.Table(
 )
 sa.Index("uq_commerce_inflight_case", jobs.c.case_id, unique=True,
          postgresql_where=jobs.c.status.in_(("queued", "running")))
+
+# Optional simulated decision routing; immutable limits/pricing and durable call state.
+provider_budgets = sa.Table(
+    'commerce_provider_budgets', metadata,
+    sa.Column('id',sa.String(128),primary_key=True),
+    sa.Column('limits',JSONB,nullable=False),sa.Column('pricing',JSONB,nullable=False),
+    sa.Column('created_at',sa.DateTime(timezone=True),nullable=False),
+)
+provider_calls = sa.Table(
+    'commerce_provider_calls',metadata,
+    sa.Column('run_id',sa.String(128),primary_key=True),
+    sa.Column('case_id',sa.String,sa.ForeignKey('commerce_cases.id'),nullable=False),
+    sa.Column('budget_id',sa.String(128),sa.ForeignKey('commerce_provider_budgets.id'),nullable=False),
+    sa.Column('request',JSONB,nullable=False),sa.Column('request_hash',sa.String(64),nullable=False),
+    sa.Column('state',sa.String,nullable=False),
+    sa.Column('reserved_cost_usd',sa.Numeric(20,8),nullable=False),
+    sa.Column('actual_cost_usd',sa.Numeric(20,8)),
+    sa.Column('dispatch_count',sa.Integer,nullable=False,server_default='0'),
+    sa.Column('result',JSONB),sa.Column('effective_choice',sa.String),
+    sa.Column('application_status',sa.String,nullable=False,server_default='pending'),
+    sa.Column('created_at',sa.DateTime(timezone=True),nullable=False),
+    sa.Column('deadline',sa.DateTime(timezone=True),nullable=False),
+    sa.Column('finished_at',sa.DateTime(timezone=True)),
+    sa.CheckConstraint("state IN ('reserved','dispatching','settled','uncertain','denied')"),
+    sa.CheckConstraint("application_status IN ('pending','applied','fallback','stale')"),
+    sa.CheckConstraint("effective_choice IS NULL OR effective_choice IN ('present_replacement','staff_review')"),
+    sa.CheckConstraint('reserved_cost_usd >= 0 AND (actual_cost_usd IS NULL OR actual_cost_usd >= 0)'),
+    sa.CheckConstraint('dispatch_count BETWEEN 0 AND 1'),
+    sa.CheckConstraint("state != 'settled' OR (result IS NOT NULL AND actual_cost_usd IS NOT NULL)"),
+    sa.CheckConstraint("state != 'uncertain' OR actual_cost_usd IS NULL"),
+    sa.CheckConstraint("state != 'denied' OR (dispatch_count=0 AND reserved_cost_usd=0)"),
+)

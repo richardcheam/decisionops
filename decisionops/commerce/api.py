@@ -128,7 +128,7 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
     def health():
         with transaction(True) as connection:
             revision=connection.exec_driver_sql('SELECT version_num FROM alembic_version').scalar_one()
-            if revision!='0004':
+            if revision!='0005':
                 raise HTTPException(503,'Apply the current business migration before starting this release')
         return {'status':'ready','mode':'fictional_store_rules'}
 
