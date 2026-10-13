@@ -54,7 +54,7 @@ def main():
                '-v',str(results)+':/workspace/artifacts','decisionops-commerce-browser:local')
         report = json.loads((results/'browser-report.json').read_text())
         stats = report['stats']
-        if stats['expected'] < 5 or stats['skipped'] or stats['unexpected'] or stats['flaky']:
+        if stats['expected'] < 6 or stats['skipped'] or stats['unexpected'] or stats['flaky']:
             raise RuntimeError('Required browser checks did not all execute successfully: '+str(stats))
         with engine.begin() as connection:
             count = connection.exec_driver_sql(f'SELECT count(*) FROM "{schema}".commerce_operations').scalar_one()

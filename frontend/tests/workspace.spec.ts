@@ -14,11 +14,14 @@ test('proxy outage is actionable and does not retain the password field', async 
 async function login(page: Page) {
   await page.goto('/');
   await page.getByLabel('Username', { exact: true }).fill(process.env.COMMERCE_STAFF_USERNAME || 'operator');
-  await page.getByLabel('Password', { exact: true }).fill(process.env.COMMERCE_STAFF_PASSWORD!);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  // Playwright's accessibility error snapshot includes password values: clear it
-  // immediately, even if authentication or the proxy fails.
-  await page.getByLabel('Password', { exact: true }).evaluateAll(nodes => nodes.forEach(node => (node as HTMLInputElement).value = ''));
+  try {
+    await page.getByLabel('Password', { exact: true }).fill(process.env.COMMERCE_STAFF_PASSWORD!);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  } finally {
+    // Clear before failure diagnostics even when the click itself times out.
+    // A closed page cannot retain a DOM input and may reject this cleanup call.
+    await page.getByLabel('Password', { exact: true }).evaluateAll(nodes => nodes.forEach(node => (node as HTMLInputElement).value = '')).catch(() => undefined);
+  }
   await expect(page.getByRole('heading', { name: 'Lost shipment reviews' })).toBeVisible();
 }
 
@@ -96,4 +99,24 @@ test('out of stock explains a failed check without calling it missing informatio
   await expect(page.getByText('There are not enough items available for this replacement.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Approve replacement', exact: true })).toHaveCount(0);
   await expect(page.getByText('Red shirt · Size M × 1').first()).toBeVisible();
+});
+
+
+test('failed sign-in click clears the credential before diagnostics', async ({ page }) => {
+  const password = process.env.COMMERCE_STAFF_PASSWORD;
+  process.env.COMMERCE_STAFF_PASSWORD = 'fictional-timeout-test-secret';
+  await page.addInitScript(() => {
+    new MutationObserver(() => {
+      for (const button of document.querySelectorAll('button')) {
+        if (button.textContent === 'Sign in') button.disabled = true;
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  page.setDefaultTimeout(500);
+  try {
+    await expect(login(page)).rejects.toThrow();
+    await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+  } finally {
+    process.env.COMMERCE_STAFF_PASSWORD = password;
+  }
 });
