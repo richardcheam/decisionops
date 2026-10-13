@@ -40,7 +40,7 @@ def main():
                 raise RuntimeError(f'{table}: source changed during verification or restore mismatch; do not use as verified backup')
             checks[table] = {'rows':len(json.loads(restored)), 'sha256':hashlib.sha256(restored).hexdigest()}
         revision = command('psql','-U','commerce','-d',database,'-Atc','SELECT version_num FROM alembic_version',capture_output=True).stdout.decode().strip()
-        assert revision == '0004'
+        assert revision == '0005'
         graph = command('psql','-U','commerce','-d',database,'-Atc',"SELECT count(*) FROM information_schema.tables WHERE table_schema='commerce_graph'",capture_output=True).stdout.decode().strip()
         assert int(graph) > 0
         (directory/'verification.json').write_text(json.dumps({'revision':revision,'graph_tables':int(graph),'records':checks},indent=2)+'\n')

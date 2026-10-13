@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, feat/commerce-eligibility]
+    branches: [main, feat/commerce-eligibility, feat/commerce-fake-provider]
   workflow_dispatch:
 
 permissions:
@@ -63,6 +63,8 @@ jobs:
         run: .venv/bin/python -B -m unittest discover -s tests -v
       - name: Approved execution and stale-approval recovery
         run: .venv/bin/python -B scripts/commerce_execution_walkthrough.py
+      - name: Simulated provider routing, budget and restart recovery
+        run: .venv/bin/python -B scripts/commerce_provider_walkthrough.py
       - name: Durable worker and checkpoint recovery
         run: .venv/bin/python -B scripts/commerce_worker_walkthrough.py
 

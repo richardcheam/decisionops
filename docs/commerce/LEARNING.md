@@ -393,3 +393,71 @@ Codex subsequently updated the root README to lead with the working local Commer
 application, retained the detailed historical guide and its limitations, and
 verified documentation links and formatting. This documentation patch and its
 verification are agent-executed.
+
+## Optional fake-provider and durable-budget milestone
+
+Richard requested a separate branch from current origin/main, fake providers only,
+no paid calls/cloud/language generation/supervisor, and preservation of the working
+rules application. Codex created feat/commerce-fake-provider from af77267 and left
+the original Commerce worktree's uncommitted technical report and other files intact.
+
+Codex inspected the actual bundled assessment and placed opt-in routing after
+investigate_case, not between individual reads. The provider recommendation is
+consumed: present the exact eligible proposal for staff review or escalate the case.
+All facts, allowed choices, approval and execution validation remain deterministic.
+The browser/worker remain rules-only; this slice has an operator CLI integration.
+
+Codex implemented typed bounded context/results, fake faults, exact simulated
+pricing, immutable budget/request configuration and a PostgreSQL reservation ledger.
+Concurrency checks reserve count and maximum cost before dispatch. Known bounded
+usage settles; uncertainty keeps maximum cost and never automatically redispatches.
+Provider wait holds no database transaction/locks. Results revalidate current state,
+evidence versions and freshness, without overwriting newer approval/execution.
+No real billing/model-performance claim comes from the simulated fixtures.
+
+Independent reviewer found a business/budget/call lock inversion and prefixed IDs
+exceeding a valid 128-character run bound. Codex reproduced both RED and patched
+business-before-call locking and bounded hashed request IDs. Regression tests passed.
+Reviewer rechecked and independently ran eight pure tests successfully, with no
+remaining material issue; PostgreSQL/deployment results are Codex-executed, not the
+reviewer's independent tests. The earlier external ChatGPT 25-test review remains a
+separate historical attribution.
+
+Codex local verification: provider PostgreSQL 24 passed; full suite 202 collected,
+200 passed/two optional model checks skipped; required PostgreSQL 80 passed/zero skips.
+Dependency-free: 120 passed, 82 explicitly skipped (database/optional dependencies).
+Frozen evaluation: 12 passed, zero inference. Final review found no further material
+gap in late known-usage settlement or frozen migration DDL; the reviewer did not
+independently rerun PostgreSQL tests.
+The simulated provider walkthrough routes real cases, retains 0.00260000 unknown
+simulated USD, denies exhausted calls and recovers with dispatch_count 1; exact staff
+approval then creates one replacement/reservation even on retry. Initial walkthrough
+had an incorrect existing CLI flag (--content-hash versus --hash); corrected and
+rerun successfully. Contract tests are dependency-free. Browser six passed; original
+execution/worker recovery, isolated backup restore, exit 42 config rollback and DB
+outage/recovery passed. Evidence is in ignored runs/provider and walkthrough folders.
+
+Testing used a separate project/volume, ports 55434/8082 and app/web image tags. The
+original app container IDs remain unchanged and its store remains revision 0004.
+This branch's additive migration 0005 has frozen DDL and matching health/backup
+expectations. No dependency/lock changes, models, paid inference or AWS resources.
+No new Richard-run commands, patches or tests were reported; no owner mastery is
+claimed. All implementation/publication/verification not explicitly reviewer-run
+above is agent-executed. Operational participation remains optional, not homework.
+
+
+## External provider review and integration (reported by Richard)
+
+Richard reported that ChatGPT inspected the provider, routing and budget source
+and independently ran eight pure provider tests successfully. Database/browser
+verification cited by that external review came from GitHub CI; ChatGPT did not
+independently run those environments. This review is separate from Codex's
+agent-executed verification and the independent implementation reviewer above.
+No new Richard-run commands or tests are claimed.
+
+Integration does not deploy this source into the original running store. Its
+revision-0004 database, application containers and persistent volume stay intact.
+Using the provider functionality requires Alembic migration 0005 in the intended
+environment with the matching application release; follow RUNBOOK's isolated
+provider setup before experimenting. Do not automatically migrate or restart the
+original stack merely because the PR is merged.

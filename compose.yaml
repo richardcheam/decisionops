@@ -21,7 +21,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.app
-    image: decisionops-commerce-app:local
+    image: ${COMMERCE_APP_IMAGE:-decisionops-commerce-app:local}
     environment: &store_environment
       COMMERCE_DATABASE_URL: ${COMMERCE_CONTAINER_DATABASE_URL:-postgresql+psycopg://commerce:local-demo-only@postgres:5432/commerce}
     command: [sh, -c, "alembic upgrade head && python -B -m decisionops.commerce.seed && python -B -m decisionops.commerce.worker setup"]
@@ -32,7 +32,7 @@ services:
     mem_limit: 384m
   api:
     profiles: [app]
-    image: decisionops-commerce-app:local
+    image: ${COMMERCE_APP_IMAGE:-decisionops-commerce-app:local}
     environment:
       <<: *store_environment
       COMMERCE_STAFF_USERNAME: ${COMMERCE_STAFF_USERNAME:-operator}
@@ -54,7 +54,7 @@ services:
     security_opt: [no-new-privileges:true]
   worker:
     profiles: [app]
-    image: decisionops-commerce-app:local
+    image: ${COMMERCE_APP_IMAGE:-decisionops-commerce-app:local}
     environment: *store_environment
     command: [python, -B, -m, decisionops.commerce.worker, run]
     depends_on:
@@ -71,7 +71,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.web
-    image: decisionops-commerce-web:local
+    image: ${COMMERCE_WEB_IMAGE:-decisionops-commerce-web:local}
     ports: ["127.0.0.1:${COMMERCE_WEB_PORT:-8080}:8080"]
     depends_on:
       api:

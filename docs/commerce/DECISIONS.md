@@ -228,3 +228,34 @@ Implementation references: [SQLAlchemy connection/transaction model](https://doc
 - These are interface changes, not independently validated usability research.
   Observe a real nontechnical staff member using the workflow before claiming it
   is easy for that audience. No mandatory quiz or exercise is required for progress.
+
+## Optional simulated decision-provider slice
+
+- Insertion is after the actual bundled `investigate_case` assessment, before case
+  presentation/disposition. No adaptive individual-tool selection is claimed.
+- First choice is `present_replacement` versus `staff_review`. It is consumed by
+  the case service: preserve exact pending-review proposal or escalate eligible
+  case. Blocked/unknown facts never become eligible. Approvals/execution remain
+  unchanged, deterministic and mandatory. No language generation or supervisor.
+- Opt-in operator CLI only. Browser/API/job worker remain rules-only; mode defaults
+  to rules and reserves no provider budget. Fake recommendations/usage/prices are
+  integration fixtures, not performance or real billing evidence.
+- Immutable request context contains seven normalized facts, only relevant case/
+  request/policy/evidence versions and fixed allowed choices; no customer messages,
+  addresses, secrets or arbitrary tool output. Confidence is not permission.
+- Ledger reserves count plus maximum exact Decimal cost before dispatch under a
+  budget row lock. Known bounded usage settles; outcomes without known usage (including timeouts)
+  retain maximum cost. Accepted request count is conservative and never refunded.
+- Run ID is immutable/idempotent; dispatch marker commits before invocation.
+  Reserved work can be claimed once after restart; dispatching/uncertain work is
+  never automatically redispatched. Settled application can recover without calls.
+- No transactions/business locks across fake work. Application locks case/business
+  before the provider call row; settlement locks budget before call. Revalidate
+  generation, status, proposal/hash, source versions, facts/eligibility and freshness.
+  Late choices cannot overwrite newer reviews or executed cases.
+- Migration0005 adds immutable budgets/call ledger and updates current-branch
+  health/backup expectations. Test separate DB volume/project/ports/image tags;
+  preserve the running 0004 rules app and its operational guarantees.
+- OpenAI adapter/account/docs/pricing, real usage receipts/reconciliation, approval
+  of spending, production database roles and hosted provider service integration
+  remain unresolved before live work. No automatic request retry or model call.
