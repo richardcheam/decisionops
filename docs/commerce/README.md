@@ -78,3 +78,11 @@ All recent tests, image builds, rotations and demonstrations were agent-executed
 No independent owner mastery is claimed. Optional participation later can use a
 real task: inspect a case timeline, restart a worker, reproduce the backup restore
 or diagnose readiness using the documented commands.
+
+
+Optional operator routing now supports cached, offline CPU Laya and GLiClass,
+as well as rules and fake providers. Browser/API/worker remain rules-only.
+See [RUNBOOK](RUNBOOK.md#optional-cached-local-laya-and-gliclass-routing) and
+[measured integration results](../../reports/commerce-local-providers-20261014/README.md).
+Both models requested review on the only meaningful two-choice input, disagreeing
+with the rules reference. This is integration evidence, not a quality benchmark.

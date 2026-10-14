@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, feat/commerce-eligibility, feat/commerce-fake-provider]
+    branches: [main, feat/commerce-eligibility, feat/commerce-fake-provider, feat/commerce-local-providers]
   workflow_dispatch:
 
 permissions:
@@ -65,6 +65,8 @@ jobs:
         run: .venv/bin/python -B scripts/commerce_execution_walkthrough.py
       - name: Simulated provider routing, budget and restart recovery
         run: .venv/bin/python -B scripts/commerce_provider_walkthrough.py
+      - name: Model-free optional local-provider failures and recovery
+        run: .venv/bin/python -B scripts/commerce_local_provider_failures.py
       - name: Durable worker and checkpoint recovery
         run: .venv/bin/python -B scripts/commerce_worker_walkthrough.py
 

@@ -1385,3 +1385,251 @@ URL overrides. Use the original commerce worktree for the existing rules applica
 Do not downgrade a live database, delete ledgers/volumes, switch branches underneath
 running builds, or recreate original services with the provider image tag. Schema
 0005 is additive, but this branch requires it; the old running image still checks 0004.
+
+## Optional cached local Laya and GLiClass routing
+
+This operator CLI slice shares the validated `route_investigated_case` boundary
+with fake providers. Browser/API/worker stay rules-only. It runs after the full
+bundled assessment, never selects individual tools, and never approves or executes.
+`present_replacement` retains the exact proposal for staff approval; `staff_review`
+escalates eligible cases. Evidence, permission, approval invalidation, transaction
+locking and reconciliation remain deterministic.
+
+The request retains IDs and hashes for audit/revalidation. The model sees only the
+task, seven normalized tri-state facts and allowed Commerce choice descriptions.
+One allowed choice means forced deterministic review: no subprocess/model load,
+no scores and `dispatch_count=0`. Of 2,187 possible seven-fact tri-state vectors,
+only the all-true vector permits two choices. This is one meaningful scored input,
+not a broad model-quality benchmark. Repeated cases do not add independent inputs.
+
+### Start only the isolated database
+
+From the local-provider branch/worktree (not the original application's checkout):
+
+```bash
+uv sync --locked --only-group commerce --offline --no-python-downloads
+export COMPOSE_PROJECT_NAME=decisionops-local-provider-check
+export COMMERCE_POSTGRES_PORT=55435
+# Starts PostgreSQL only; does not build, retag or restart application images.
+docker compose up -d --wait postgres
+docker compose exec -T postgres pg_isready -U commerce -d commerce
+export COMMERCE_DATABASE_URL='postgresql+psycopg://commerce:local-demo-only@127.0.0.1:55435/commerce'
+export COMMERCE_TEST_DATABASE_URL="$COMMERCE_DATABASE_URL"
+.venv/bin/alembic upgrade head
+.venv/bin/python -B -m decisionops.commerce.seed
+```
+
+Expected PostgreSQL healthy, migration `0005`, fictional records seeded. The
+original migration-0004 store/volume on 55432 and application on 8080 stay intact.
+This adapter slice adds no migration or lockfile/dependency changes.
+
+### Optional dependencies and selecting a model
+
+The commerce-only profile above intentionally excludes model dependencies. Keep
+that profile for ordinary CI/development. An existing pinned model environment can
+be used solely by the child process. On Richard's machine it is:
+
+```bash
+export COMMERCE_MODEL_PYTHON=/home/richard/projects/decisionops/.venv/bin/python
+export HF_HOME=/mnt/hdd/data/hf
+export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+"$COMMERCE_MODEL_PYTHON" -B -c 'from importlib.metadata import version; print({n: version(n) for n in ("torch", "transformers", "laya", "gliclass", "huggingface-hub")})'
+hf cache ls --revisions
+```
+
+Those two absolute paths are examples of Richard's existing environment; set them
+for your machine. They are not model features or baked into source. The repository's
+historical default dependency profile has the locked models; the Commerce-only
+profile does not. To build a separate optional environment from already cached
+packages, use `UV_PROJECT_ENVIRONMENT=.venv-models uv sync --locked --offline
+--no-default-groups --no-python-downloads`, then set COMMERCE_MODEL_PYTHON to its
+absolute `bin/python`. Do not run that command against the running application's
+environment or upgrade packages to mask a cache problem. Offline install fails if
+packages are missing: report that need before any download/change.
+
+Pinned revisions are committed in model-revisions.env: GLiClass
+`21edefaf7951f68c68c505f9139ba536d3b448f7`, Laya
+`55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851`. Loading uses the existing
+`offline_model_path`: locate cached model.safetensors with local_files_only and
+use its snapshot parent without resolving the weight symlink. A snapshot need
+only contain files the loader actually needs, not a complete remote repository.
+Missing tokenizer/config files still need diagnosis; a weight alone is insufficient.
+
+### Reproduce measured routing and inspect a trace
+
+```bash
+.venv/bin/python -B scripts/commerce_local_provider_comparison.py \
+  --output runs/my-local-comparison.json
+```
+
+The command creates/migrates/seeds only its owned schema, opens separate cases
+for rules/GLiClass/Laya, saves CLI traces, and removes only that schema. It runs
+one family per process, CPU, batch one, four threads. Checkpoints are never loaded
+in the parent or concurrently. Child imports/load/inference/startup/cleanup are
+inside the bounded deadline (default 120 seconds for local modes, maximum 120).
+No preload time is hidden. Cache warmth and host contention affect timings.
+
+The committed example is [the integration comparison](../../reports/commerce-local-providers-20261014/README.md).
+Both cached models selected review on the all-true case, disagreeing with rules;
+the case really became `escalated`. Unknown history forced review without loading.
+The negative result is preserved. No reference-policy agreement percentage across
+repeated states is a quality estimate; no held-out generalisation/business value
+is established. Historical incident performance claims do not transfer here.
+
+For manual operator use, open a fresh case with `case_demo open` as documented
+above, copy its ID, then:
+
+```bash
+.venv/bin/python -B -m decisionops.commerce.provider_demo budget-create \
+  --budget LOCAL-CPU-1 --accounting local --max-requests 3 --max-cost-usd 0
+.venv/bin/python -B -m decisionops.commerce.provider_demo investigate \
+  --mode gliclass --case CASE-ID --run CPU-RUN-1 --budget LOCAL-CPU-1 \
+  --deadline-seconds 120
+.venv/bin/python -B -m decisionops.commerce.provider_demo show --run CPU-RUN-1
+.venv/bin/python -B -m decisionops.commerce.provider_demo budget --budget LOCAL-CPU-1
+```
+
+Replace CASE-ID with the actual ID; `--mode laya` uses Laya instead. A fresh run
+ID is required for a genuinely new attempt. `--mode rules` needs no budget and
+keeps the ordinary reference workflow. `--mode fake` still requires a simulated
+budget, using the previous walkthrough. Local mode cannot consume simulated
+pricing and cannot invent tokens: both token fields are null. Its pricing record
+says `local_no_api_charge` and USD API charge is exactly zero; CPU, memory and
+power are real resources, not dollar-billing measurements.
+
+Inspect `trace.result.metadata`: pinned revision/repository, native `scores` and
+`score_meaning`, `forced_choice`, `inference_performed`, `load_seconds`,
+`inference_seconds`, child `peak_rss_kib`, total `wall_seconds`, and
+`process_reaped` and `validation_outcome`. Single-label GLiClass scores are softmax probabilities over the
+allowed labels. Laya retains choice probabilities, native confidence,
+answer_confidence and action_act_probability separately. All are uncalibrated;
+even an action head of 1.0 is not permission. `trace.effective_choice`,
+`application_status` and `case.status` show the actual routing effect. Stale state
+or expired evidence prevents application even when a native recommendation is valid.
+
+```bash
+docker compose exec -T postgres psql -U commerce -d commerce -c \
+  "SELECT run_id,state,dispatch_count,effective_choice,application_status,actual_cost_usd,result->'metadata' AS metadata FROM commerce_provider_calls ORDER BY created_at DESC LIMIT 5;"
+```
+
+### Failure diagnosis, recovery and safe undo
+
+```bash
+.venv/bin/python -B scripts/commerce_local_provider_failures.py
+.venv/bin/python -B scripts/commerce_ci_tests.py postgres
+python3 -B -S scripts/commerce_ci_tests.py dependency-free
+```
+
+Run the failure walkthrough in the commerce-only environment. It proves missing
+model dependencies cause explicit staff-review fallback, exhausted request count
+prevents dispatch, and an intentionally slow **test-double** child is killed and
+reaped. No models are imported/downloaded for that failure proof or CI. The
+comparison command above is the separate actual-inference proof.
+
+`ModuleNotFoundError` in the trace: inspect COMMERCE_MODEL_PYTHON and its pinned
+package versions; point it at the existing model environment, then use a new case/
+run if a new attempt is wanted. Missing-cache `OSError`/local-entry failure:
+inspect HF_HOME and the pinned snapshot's model/config/tokenizer files with offline
+cache listing. Correct the cache path; do not resolve a weight symlink to blobs,
+request a whole snapshot, or disable offline mode to fix it silently.
+
+Timeout (`deadline_including_load` or a late result): loading may have consumed
+most of the allowance. Trace wall/phase timings and RSS identify this. The smallest
+configuration change is a larger explicit deadline, up to 120 seconds, for a new
+run after inspecting the old outcome. A local timeout retains the request count
+and uncertain state with zero maximum API charge. It never redispatches automatically:
+
+```bash
+.venv/bin/python -B -m decisionops.commerce.provider_demo recover --run CPU-RUN-1
+```
+
+Recovery inspects/applies saved results or settles an expired in-flight marker as
+uncertain, preserving dispatch_count. An exit code 4 indicates fallback/stale
+routing, not a container crash. Code 2 is invalid input; code 3 means database
+outcome unconfirmed. Inspect/recover the same run after readiness; do not assume
+an unavailable database means no dispatch occurred. Missing dependencies/cache
+with a known completed failure settle zero charge but still consume request count.
+No provider result may revive a later approval or execution.
+
+To undo opt-in operation, select rules for subsequent investigations and unset
+COMMERCE_MODEL_PYTHON. Reinvestigate escalated cases explicitly if staff wants a
+new deterministic proposal. Never edit an audit request/proposal or provider ledger
+to clear its history. Stop the isolated container with `docker compose down` while
+COMPOSE_PROJECT_NAME still equals decisionops-local-provider-check. Restarting or
+stopping containers preserves the named volume; `down -v` deletes it and is not a
+recovery step. Do not restart or migrate the original stack for this demonstration.
+
+### Pin rotation and historical recovery
+
+New local configurations/requests validate against model-revisions.env and require
+full checkpoint commit SHAs. `ProviderConfig.from_record` and
+`ProviderRequest.from_record` validate the recorded structure, identity and bindings
+without rereading current pins. Inspection and recovery of completed, in-flight or
+forced deterministic calls keep the recorded revision even after pins change.
+They never load a model merely to reconstruct audit history.
+
+Dispatch policy is **current-pin-only admission**. If an eligible reserved request
+is bound to checkpoint A and the configured pin is now B, recovery settles an
+explicit `checkpoint_policy_changed` no-dispatch failure: dispatch_count remains
+zero, actual API charge is zero, the immutable request still says A, and the case
+routes to review. An unreadable policy file produces `checkpoint_policy_unavailable`
+without dispatch. Forced one-choice requests need no model pin consultation.
+Already-dispatched calls retain A; uncertain calls are not automatically repeated.
+
+The worker checks admission again before loading. The admitted revision is passed
+explicitly to the existing cached loaders, so a file rotation during startup cannot
+load B and label it A. Historical diagnostic callers that omit this override retain
+their previous pin-file behavior. No checkpoint is silently substituted or downloaded.
+
+Inspect/recover the SAME run first. For a genuinely new attempt under B, explicitly
+reinvestigate as needed and create a fresh run with the configured policy. Do not
+edit old request JSON, change a reservation's identity or erase request counts.
+The old recorded snapshot remains evidence of what was requested, not permission.
+
+### Bounded subprocess output and diagnosis
+
+The parent concurrently drains binary stdout and stderr (and writes stdin) through
+nonblocking selectors. Each output stream has a fixed **65,536-byte** cap. Limits
+apply during reads, not after buffering or writing an unbounded log. Reading the
+first overflow byte stops consumption: the overflowing stream's consumed count is
+at most 65,537, retained bytes at most 65,536. Multibyte text counts as bytes.
+
+Overflow yields `worker_output_overflow`, an invalid recommendation and explicit
+staff-review fallback. The owned process group is terminated, the direct child is
+reaped, and pipe handles close. Independent deadlines still cover live children
+that close their streams and descendants that retain pipes. Normal nonzero exits,
+malformed JSON and timeout remain distinct outcomes. No `communicate()` accumulation
+or unbounded temporary output file is used in this boundary.
+
+Inspect `trace.result.metadata` for `overflow_stream`, `stream_limits_bytes`,
+`stream_bytes_consumed`, `stream_bytes_retained`, `stream_diagnostics`,
+`process_reaped` and `validation_outcome`. Diagnostics retain only the first 1,024
+raw bytes per stream, decoded with replacement; these are bounded excerpts, not
+complete logs. Native stdout is parsed only after bounded completion. On overflow,
+no truncated/native recommendation is applied. Recovery consumes the saved fallback
+without repeating dispatch; known completed failures settle zero API charge while
+still consuming the request-count reservation.
+
+The smallest response is to inspect the excerpt for unexpected dependency logging,
+wrong entry points or corrupt protocol output. Keep progress/logging off stdout and
+fix the noisy source. Do not weaken caps or retry an old run automatically. These
+POSIX pipe/process-group controls target the supported local Linux environment.
+
+Reproduce both fixes without model packages or checkpoints:
+
+```bash
+python3 -B -S -m unittest discover -s tests -p test_commerce_local_providers.py -v
+# After starting only the isolated database as documented above:
+.venv/bin/python -B -m unittest discover -s tests -p test_commerce_provider_postgres.py -v
+.venv/bin/python -B scripts/commerce_ci_tests.py postgres
+```
+
+Pure tests rotate temporary pin A to B, reject new use of A, hydrate old requests
+without current-pin reads, verify explicit loader revision forwarding with stubs,
+and exercise stdout/stderr overflow, simultaneous streams, malformed output,
+deadlines and descendant cleanup. A noisy child intentionally keeps running for
+30 seconds; overflow is detected and killed well before its deadline. Database
+tests cover old settled/reserved/in-flight/forced calls, controlled no-dispatch,
+new B requests and bounded overflow diagnostics/fallback/recovery. These are
+model-free regression evidence; historical comparison reports and negative model
+results remain unchanged and were not rerun for this patch.

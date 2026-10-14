@@ -259,3 +259,27 @@ Implementation references: [SQLAlchemy connection/transaction model](https://doc
 - OpenAI adapter/account/docs/pricing, real usage receipts/reconciliation, approval
   of spending, production database roles and hosted provider service integration
   remain unresolved before live work. No automatic request retry or model call.
+
+
+## Optional offline local routing adapters (2026-10-14)
+
+- Laya/GLiClass operator CLI modes share post-bundled-assessment validation and
+  actual routing with fake mode. Browser/API/worker stay rules-only. No supervisor
+  or adaptive tool selection. Existing approvals and execution services are intact.
+- Model features: task, normalized facts and allowed choices only. Bindings, case
+  IDs, hashes and evaluator labels are audit metadata, excluded from inference.
+- One scored input: all seven facts true. Other tri-state vectors force review
+  without loading. No claim of held-out generalisation from duplicated states.
+- CPU four threads, batch1, one family per bounded subprocess. Offline flags before
+  imports; cached pinned weight's unresolved snapshot parent, no whole snapshot
+  download. Loading is inside the maximum 120-second deadline. Always kill/reap the
+  owned process group, including descendants after parent exit.
+- Migration0005 suffices. Local budgets require explicit zero API charge and
+  null token counts. Count reservations, immutable run bindings, timeout retention
+  and no redispatch remain. CPU/memory/power are not measured USD prices.
+- Native scores and resource phases retained separately, confidence uncalibrated.
+  Both models chose review on alltrue evidence; preserve that negative disagreement.
+- Dependencies remain optional for Commerce-only CI. Reuse the pinned model
+  environment or locked offline historical profile; no upgrades/downloads required.
+- Actual billing/live OpenAI, production permissions, hosted adapters and model
+  business-value evaluation remain future work. Original 0004 store is untouched.

@@ -461,3 +461,102 @@ Using the provider functionality requires Alembic migration 0005 in the intended
 environment with the matching application release; follow RUNBOOK's isolated
 provider setup before experimenting. Do not automatically migrate or restart the
 original stack merely because the PR is merged.
+
+## Optional cached Commerce local-provider milestone (2026-10-14)
+
+Richard requested optional Laya/GLiClass operator adapters and an offline comparison,
+not real API/cloud/supervisor work. Codex created feat/commerce-local-providers from
+current origin/main e1a7f67287c32d65538faa769e4b7876823557a6. Original containers,
+migration-0004 volume, unrelated draft/worktrees and historical reports are preserved.
+
+Codex reused the committed cached checkpoint resolver and corrected flat-label
+GLiClassActionRanker/LayaActionAgent. Offline flags precede library imports; CPU,
+four threads, batch1, one family per bounded process; loading counted in deadline.
+Models see normalized facts/allowed choices/task, never IDs/hashes/evaluator labels.
+One-choice cases force review with no dispatch. Typed results record native
+uncalibrated scores, measured phases/RSS, model pin and validation/routing effects;
+local budgets have explicit zero API charge and null token usage. Existing fake
+simulated budgets/tests remain distinct and unchanged in meaning.
+
+Agent actually ran both cached models through direct probes and operator CLI in
+an owned schema on a separate PostgreSQL project/volume at 55435. Both requested
+review for all-true evidence instead of the reference rules' present choice. Actual
+cases became escalated; zero approval/operations and unchanged stock were verified.
+Unknown history forced review without model loading. There is only one meaningful
+scored vector; repeats are execution checks, not extra model-quality examples.
+No held-out generalisation/business-value claim follows. First/final comparison
+results are committed under reports/commerce-local-providers-20261014; probe/CLI
+trace artifacts remain ignored under runs. No prompt tuning followed disagreement.
+
+Independent read-only reviewer found exited-parent descendant cleanup and failed-
+inference timing attribution bugs. Codex reproduced both RED and patched them.
+Reviewer independently ran nine local pure and eight existing provider tests after
+cleanup repair, and verified separate failure timing using model-free mocks. No
+models or PostgreSQL checks were independently run by that reviewer. This is
+separate from Richard's previously reported external ChatGPT provider review.
+
+Agent's failure walkthrough first exposed datetime serialization in a saved trace;
+using the existing canonical serializer fixed it. Missing optional dependencies,
+request exhaustion and slow-child cleanup/recovery were then demonstrated without
+model loading. Same-run recovery preserved dispatch_count=1; no operations/API
+charges. Native real comparison and model-free test doubles are labelled separately.
+No new Richard-run commands, patches or model verification have been reported.
+All implementation/model/database/CLI verification in this milestone is agent-
+executed unless expressly attributed to the reviewer above. No dependency/lock
+upgrades, checkpoint downloads, OpenAI calls or AWS provisioning occurred.
+
+A verification run overlapped Codex's typed-rules boundary edit and mixed old
+imported modules with new source, so that result was discarded. Codex stopped
+source edits and reran the final checks in fresh processes. This was agent work,
+not a store runtime failure; the running application was unaffected.
+
+Final fresh-process agent verification: 217 collected, 215 passed/two optional
+model checks skipped. Required PostgreSQL: 84 passed, zero skips, including 28
+provider database tests. Dependency-free: 131 passed, 86 explicitly skipped
+database/optional checks. Eleven local pure contracts and all eight existing fake
+pure tests pass. Frozen evaluation: 12 passed, zero inference. Browser/backup/worker
+checks are performed by model-free GitHub CI on the published branch, separately
+from the actual cached local model comparison. No owner-run verification is claimed.
+
+## PR #9 checkpoint-provenance and pipe-output review fixes
+
+Richard requested both unresolved P2 findings be fixed on the existing branch,
+with no model runs/downloads/upgrades/OpenAI/AWS. Codex reproduced pin hydration
+failure and stdout/stderr overflows that formerly waited for the deadline.
+Historical deserialization now validates recorded structure independently of new
+request/current-pin policy; old reserved model calls receive explicit no-dispatch
+fallback, while settled/in-flight/forced history remains readable without pins.
+
+Codex added concurrent binary draining with per-stream byte caps and bounded
+prefix diagnostics, preserving deadlines, group termination and direct-child reap.
+Overflow regressions demonstrate detection during consumption (cap+1 byte), not
+post-exit inspection, and database records show fallback without duplicate dispatch.
+
+Independent read-only reviewer ran 16 local pure tests and eight existing provider
+contracts, without models or PostgreSQL. It found an additional pin-file race in
+worker-to-loader startup. Codex added RED-to-GREEN stub regressions and passed the
+admitted revision directly to cached loaders; their default historical behavior is
+unchanged. Historical model reports/negative results remain unmodified, not rerun.
+All patch/test/publication work here is agent-executed. No new Richard-run commands
+or verification are claimed; prior external review attribution remains separate.
+
+Final P2 patch verification (agent-executed, fresh processes): 20 local pure tests;
+32 provider PostgreSQL tests within the required suite of 88 passed/zero skips.
+Full regression: 230 collected, 228 passed/two optional model checks skipped.
+Dependency-free: 140 passed, 90 explicitly reported database/optional skips.
+Frozen evaluation: 12 passed with zero inference. Model-free failure and preserved
+fake walkthroughs passed. No actual model comparison was rerun for these fixes.
+
+## External ChatGPT verification of PR #9 fixes (reported by Richard)
+
+Richard reported that ChatGPT reviewed the fixes' source and independently passed
+20 model-free adapter tests. PostgreSQL/browser verification cited by that review
+came from GitHub CI; ChatGPT did not independently run those environments. This
+is separate from Codex's agent-executed regression checks and the independent
+implementation reviewers above. No new Richard-run commands/tests are claimed.
+
+Source integration leaves the original running migration-0004 application,
+containers and persistent volume intact. Optional provider functionality requires
+migration 0005 and the matching source in the intended environment; merging does
+not automatically migrate or restart the original stack. Historical comparison
+reports/negative results remain preserved, with no model reruns during integration.

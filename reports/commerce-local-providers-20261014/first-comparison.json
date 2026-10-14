@@ -1,0 +1,294 @@
+{
+  "kind": "offline_commerce_integration_comparison",
+  "evidence_level": "integration_and_reference_policy_agreement",
+  "meaningful_scored_inputs": 1,
+  "possible_tri_state_vectors": 2187,
+  "forced_vectors": 2186,
+  "measured_scored_inputs_per_model": 1,
+  "held_out_generalisation": false,
+  "business_value_measured": false,
+  "feature_policy": "Only task, normalized facts and allowed choices; no identifiers/hashes/evaluator labels",
+  "no_api_charge": true,
+  "tokens": "not reported; no invented usage",
+  "rows": [
+    {
+      "provider": "rules",
+      "input": "eligible",
+      "reference_choice": "present_replacement",
+      "choice": "present_replacement",
+      "reference_agreement": true,
+      "case_status": "awaiting_review",
+      "approval_present": false,
+      "dispatch_count": 0,
+      "result": null,
+      "ledger_state": null,
+      "actual_api_charge_usd": "0"
+    },
+    {
+      "provider": "rules",
+      "input": "history_unknown",
+      "reference_choice": "staff_review",
+      "choice": "staff_review",
+      "reference_agreement": true,
+      "case_status": "needs_review",
+      "approval_present": false,
+      "dispatch_count": 0,
+      "result": null,
+      "ledger_state": null,
+      "actual_api_charge_usd": "0"
+    },
+    {
+      "provider": "gliclass",
+      "input": "eligible",
+      "reference_choice": "present_replacement",
+      "choice": "staff_review",
+      "reference_agreement": false,
+      "case_status": "escalated",
+      "approval_present": false,
+      "dispatch_count": 1,
+      "result": {
+        "confidence": null,
+        "confidence_meaning": "model estimate only",
+        "error_kind": null,
+        "error_message": null,
+        "execution_authorized": false,
+        "input_tokens": null,
+        "latency_ms": 19037,
+        "metadata": {
+          "batch_size": 1,
+          "deadline_includes_loading": true,
+          "device": "cpu",
+          "forced_choice": false,
+          "inference_performed": true,
+          "inference_seconds": 1.667302101966925,
+          "load_seconds": 15.718819673056714,
+          "model_features": {
+            "allowed_choices": [
+              "present_replacement",
+              "staff_review"
+            ],
+            "facts": {
+              "loss_confirmed": true,
+              "no_previous_compensation": true,
+              "paid": true,
+              "policy_permits": true,
+              "quantities_valid": true,
+              "shipped": true,
+              "stock_available": true
+            },
+            "task": "route_investigated_case"
+          },
+          "model_revision": "21edefaf7951f68c68c505f9139ba536d3b448f7",
+          "package_versions": {
+            "gliclass": "0.1.20",
+            "huggingface-hub": "1.33.0",
+            "laya": "0.3.20",
+            "torch": "2.14.0+cpu",
+            "transformers": "5.17.0"
+          },
+          "peak_rss_kib": 760556,
+          "process_reaped": true,
+          "repository": "knowledgator/gliclass-small-v1.0",
+          "score_meaning": "single-label softmax probabilities across allowed labels; uncalibrated",
+          "scores": {
+            "present_replacement": 0.33666446805000305,
+            "staff_review": 0.6633354425430298
+          },
+          "threads": 4,
+          "wall_seconds": 19.037570575019345
+        },
+        "output_tokens": null,
+        "provider_id": "gliclass-local-v1",
+        "provider_request_id": "LOCAL-7477568f5dfa363fe809a8a7ca1ecafc9db04a2700221a373d767eea3033bc3d",
+        "run_id": "gliclass-eligible",
+        "selected_choice": "staff_review",
+        "simulated": false,
+        "status": "success"
+      },
+      "ledger_state": "settled",
+      "actual_api_charge_usd": "0E-8"
+    },
+    {
+      "provider": "gliclass",
+      "input": "history_unknown",
+      "reference_choice": "staff_review",
+      "choice": "staff_review",
+      "reference_agreement": true,
+      "case_status": "needs_review",
+      "approval_present": false,
+      "dispatch_count": 0,
+      "result": {
+        "confidence": null,
+        "confidence_meaning": "model estimate only",
+        "error_kind": null,
+        "error_message": null,
+        "execution_authorized": false,
+        "input_tokens": null,
+        "latency_ms": 0,
+        "metadata": {
+          "forced_choice": true,
+          "inference_performed": false,
+          "inference_seconds": 0.0,
+          "load_seconds": 0.0,
+          "model_revision": "21edefaf7951f68c68c505f9139ba536d3b448f7",
+          "peak_rss_kib": 0,
+          "score_meaning": "forced deterministic choice; no model score",
+          "scores": {}
+        },
+        "output_tokens": null,
+        "provider_id": "gliclass-local-v1",
+        "provider_request_id": "LOCAL-a3764a913835a69c41a6c90892e5413a10fbb2672f2fc01f75cb535fd8eda3cf",
+        "run_id": "gliclass-history_unknown",
+        "selected_choice": "staff_review",
+        "simulated": false,
+        "status": "success"
+      },
+      "ledger_state": "settled",
+      "actual_api_charge_usd": "0E-8"
+    },
+    {
+      "provider": "laya",
+      "input": "eligible",
+      "reference_choice": "present_replacement",
+      "choice": "staff_review",
+      "reference_agreement": false,
+      "case_status": "escalated",
+      "approval_present": false,
+      "dispatch_count": 1,
+      "result": {
+        "confidence": 0.0644,
+        "confidence_meaning": "model estimate only",
+        "error_kind": null,
+        "error_message": null,
+        "execution_authorized": false,
+        "input_tokens": null,
+        "latency_ms": 18398,
+        "metadata": {
+          "action_act_probability": 1.0,
+          "answer_confidence": 0.6482,
+          "batch_size": 1,
+          "deadline_includes_loading": true,
+          "device": "cpu",
+          "forced_choice": false,
+          "inference_performed": true,
+          "inference_seconds": 1.3610748149221763,
+          "load_seconds": 15.214510674937628,
+          "model_features": {
+            "allowed_choices": [
+              "present_replacement",
+              "staff_review"
+            ],
+            "facts": {
+              "loss_confirmed": true,
+              "no_previous_compensation": true,
+              "paid": true,
+              "policy_permits": true,
+              "quantities_valid": true,
+              "shipped": true,
+              "stock_available": true
+            },
+            "task": "route_investigated_case"
+          },
+          "model_revision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+          "native_confidence": 0.0644,
+          "package_versions": {
+            "gliclass": "0.1.20",
+            "huggingface-hub": "1.33.0",
+            "laya": "0.3.20",
+            "torch": "2.14.0+cpu",
+            "transformers": "5.17.0"
+          },
+          "peak_rss_kib": 2822100,
+          "process_reaped": true,
+          "repository": "convaiinnovations/laya",
+          "score_meaning": "native Laya choice probabilities; confidence/action heads uncalibrated and not permission",
+          "scores": {
+            "present_replacement": 0.3518,
+            "staff_review": 0.6482
+          },
+          "threads": 4,
+          "wall_seconds": 18.39892039296683
+        },
+        "output_tokens": null,
+        "provider_id": "laya-local-v1",
+        "provider_request_id": "LOCAL-faa9e643828a1c1d5e58a81e14e18de833cf72761f9fbea8de20b70331c713db",
+        "run_id": "laya-eligible",
+        "selected_choice": "staff_review",
+        "simulated": false,
+        "status": "success"
+      },
+      "ledger_state": "settled",
+      "actual_api_charge_usd": "0E-8"
+    },
+    {
+      "provider": "laya",
+      "input": "history_unknown",
+      "reference_choice": "staff_review",
+      "choice": "staff_review",
+      "reference_agreement": true,
+      "case_status": "needs_review",
+      "approval_present": false,
+      "dispatch_count": 0,
+      "result": {
+        "confidence": null,
+        "confidence_meaning": "model estimate only",
+        "error_kind": null,
+        "error_message": null,
+        "execution_authorized": false,
+        "input_tokens": null,
+        "latency_ms": 0,
+        "metadata": {
+          "forced_choice": true,
+          "inference_performed": false,
+          "inference_seconds": 0.0,
+          "load_seconds": 0.0,
+          "model_revision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+          "peak_rss_kib": 0,
+          "score_meaning": "forced deterministic choice; no model score",
+          "scores": {}
+        },
+        "output_tokens": null,
+        "provider_id": "laya-local-v1",
+        "provider_request_id": "LOCAL-35746148a222cdd2da8fbcaa08adb0584312555e51183ea56f45ec867b16795d",
+        "run_id": "laya-history_unknown",
+        "selected_choice": "staff_review",
+        "simulated": false,
+        "status": "success"
+      },
+      "ledger_state": "settled",
+      "actual_api_charge_usd": "0E-8"
+    }
+  ],
+  "budget": {
+    "api_charge_kind": "local_no_api_charge",
+    "budget_id": "LOCAL-COMPARISON",
+    "committed_cost_usd": "0.00000000",
+    "limits": {
+      "max_cost_usd": "0E-8",
+      "max_input_tokens": 2000,
+      "max_output_tokens": 300,
+      "max_requests": 10
+    },
+    "pricing": {
+      "charge_kind": "local_no_api_charge",
+      "currency": "USD",
+      "input_usd_per_million": "0E-8",
+      "output_usd_per_million": "0E-8",
+      "simulated": false,
+      "version": "local-cpu-v1"
+    },
+    "reserved_request_count": 4,
+    "simulated": false
+  },
+  "proof": "zero operations, stock reservation unchanged, no approval created",
+  "trace_directory": "runs/local-provider-6qjupddw",
+  "limitations": [
+    "All true evidence yields exactly one distinct scored input; repeats are not independent quality samples.",
+    "One unknown-history state demonstrates forced review without inference.",
+    "Native input formats differ; this does not isolate model architecture.",
+    "Scores/confidence are uncalibrated; action heads never authorize execution.",
+    "Load includes imports, model/tokenizer loading; wall includes worker startup and cleanup.",
+    "RSS is child-process peak in KiB, not total system memory or incremental model memory.",
+    "Measured reference-policy disagreement is retained; no prompt tuning on these outputs."
+  ]
+}

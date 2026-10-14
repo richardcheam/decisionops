@@ -1,4 +1,4 @@
-"""Operator CLI for rules versus simulated provider routing. Never calls a live API."""
+"""Operator CLI for rules, simulated or cached local routing. Offline local models are optional; no live API."""
 import argparse
 import json
 import sys
@@ -18,6 +18,7 @@ def main(argv=None):
     commands=parser.add_subparsers(dest='command',required=True)
     setup=commands.add_parser('budget-create')
     setup.add_argument('--budget',required=True)
+    setup.add_argument('--accounting',choices=('simulated','local'),default='simulated')
     setup.add_argument('--max-requests',type=int,default=3)
     setup.add_argument('--max-cost-usd',default='0.00300000')
     setup.add_argument('--max-input-tokens',type=int,default=2000)
@@ -30,10 +31,10 @@ def main(argv=None):
         command=commands.add_parser(name)
         command.add_argument('--case',required=True);command.add_argument('--run',required=True)
         command.add_argument('--budget')
-        command.add_argument('--mode',choices=('rules','fake'),default='rules' if name=='investigate' else 'fake')
+        command.add_argument('--mode',choices=('rules','fake','laya','gliclass'),default='rules' if name=='investigate' else 'fake')
         command.add_argument('--scenario',choices=SCENARIOS,default='success')
         command.add_argument('--delay-ms',type=int,default=0)
-        command.add_argument('--deadline-seconds',type=float,default=5)
+        command.add_argument('--deadline-seconds',type=float,default=None)
     for name in ('show','recover'):
         command=commands.add_parser(name);command.add_argument('--run',required=True)
     args=parser.parse_args(argv);engine=None
@@ -41,7 +42,7 @@ def main(argv=None):
         engine=database_engine()
         if args.command=='budget-create':
             limits=Limits(args.max_requests,args.max_cost_usd,args.max_input_tokens,args.max_output_tokens)
-            pricing=Pricing(args.pricing_version,'USD',args.input_usd_per_million,args.output_usd_per_million)
+            pricing=Pricing.local() if args.accounting=='local' else Pricing(args.pricing_version,'USD',args.input_usd_per_million,args.output_usd_per_million)
             with transaction(engine) as c:create_budget(c,args.budget,limits,pricing)
             with transaction(engine,True) as c:result=summary(c,args.budget)
         elif args.command=='budget':
@@ -50,14 +51,15 @@ def main(argv=None):
         elif args.command=='recover':result=recover(engine,args.run)
         else:
             config=ProviderConfig(mode=args.mode,scenario=args.scenario,delay_ms=args.delay_ms)
+            deadline=args.deadline_seconds if args.deadline_seconds is not None else (120 if args.mode in ('laya','gliclass') else 5)
             if args.command=='prepare':
-                if config.mode!='fake' or not args.budget:raise ValueError('Prepare requires fake mode and budget')
-                prepare(engine,args.case,args.run,args.budget,config,args.deadline_seconds)
+                if config.mode=='rules' or not args.budget:raise ValueError('Prepare requires provider mode and budget')
+                prepare(engine,args.case,args.run,args.budget,config,deadline)
                 result=inspect(engine,args.run)
             else:result=recommend(engine,args.case,args.run,args.budget,config,
-                                  deadline_seconds=args.deadline_seconds)
+                                  deadline_seconds=deadline)
         print(canonical(result))
-        if args.command in ('investigate','recover') and result.get('mode')=='fake':
+        if args.command in ('investigate','recover') and result.get('mode') in ('fake','laya','gliclass'):
             return 0 if result['trace']['application_status']=='applied' else 4
         return 0
     except ValueError as error:

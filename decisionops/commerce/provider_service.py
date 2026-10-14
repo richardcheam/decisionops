@@ -15,7 +15,7 @@ from .cases import (clock,event,lock_case,lock_business,investigate_case,show_ca
 from .read_tools import AssessmentRequest,read_assessment
 from .proposals import binding,document_hash
 from .providers import (ProviderConfig,ProviderRequest,ProviderResult,Pricing,Limits,
-                        FakeProvider,validate_result,permitted_choices,response_id)
+                        FakeProvider,RulesProvider,validate_result,permitted_choices,response_id)
 from . import provider_budget as ledger
 
 
@@ -34,9 +34,18 @@ def request_from_call(row):
     return ProviderRequest.from_record(row['request'])
 
 
+def build_request(case,assessment,run_id,config,deadline,limits,pricing):
+    bound={key:case[key] for key in ('generation','status','investigation_id','proposal_id','request')}
+    bound.update(content_hash=case['proposal']['content_hash'] if case['proposal'] else None,
+                 policy_id=assessment['policy_id'],source_versions=binding(assessment)['source_versions'])
+    return ProviderRequest('route_investigated_case',case['id'],run_id,assessment['facts'],bound,
+        permitted_choices(assessment['facts'],case['status']),config,deadline,limits,pricing)
+
+
 def prepare(engine,case_id,run_id,budget_id,config,deadline_seconds=5):
-    if type(deadline_seconds) not in (int,float) or not 0<deadline_seconds<=30:
-        raise ValueError('Provider deadline must be 0–30 seconds, positive')
+    maximum=120 if config.mode in ('laya','gliclass') else 30
+    if type(deadline_seconds) not in (int,float) or not 0<deadline_seconds<=maximum:
+        raise ValueError('Provider deadline exceeds the bounded mode limit')
     with transaction(engine) as c:
         case=lock_case(c,case_id)
         saved=ledger.get_call(c,run_id)
@@ -53,33 +62,41 @@ def prepare(engine,case_id,run_id,budget_id,config,deadline_seconds=5):
             db.investigations.c.id==case['investigation_id'])).scalar_one()
         budget=ledger.get_budget(c,budget_id)
         prices=dict(budget['pricing']);prices.pop('simulated')
-        bound={key:case[key] for key in ('generation','status','investigation_id','proposal_id','request')}
-        bound.update(content_hash=case['proposal']['content_hash'] if case['proposal'] else None,
-                     policy_id=assessment['policy_id'],source_versions=binding(assessment)['source_versions'])
-        req=ProviderRequest('route_investigated_case',case_id,run_id,assessment['facts'],bound,
-            permitted_choices(assessment['facts'],case['status']),config,
-            clock(c)+timedelta(seconds=deadline_seconds),Limits(**budget['limits']),Pricing(**prices))
+        req=build_request(case,assessment,run_id,config,clock(c)+timedelta(seconds=deadline_seconds),Limits(**budget['limits']),Pricing(**prices))
         row=ledger.reserve(c,budget_id,req)
         event(c,case_id,'provider_reserved',{'run_id':run_id,'state':row['state'],
-              'simulated':True,'execution_authorized':False},clock(c))
+              'simulated':config.mode=='fake','execution_authorized':False},clock(c))
         return row
 
 
 def failure(request,kind,status='invalid',latency=0):
+    if request.config.mode!='fake':
+        from .local_provider import local_result
+        return replace(local_result(request,status=status,error=kind),latency_ms=latency)
     return ProviderResult(None,request.config.provider_id,request.run_id,response_id('LOCAL',request.run_id),
                          status=status,input_tokens=None,output_tokens=None,latency_ms=latency,
                          error_kind=kind,error_message='Simulated provider failure; staff review required')
 
 
 def dispatch(engine,run_id,provider=None):
-    provider=provider or FakeProvider()
-    if not isinstance(provider,FakeProvider):raise ValueError('Only fake providers are implemented')
+    from .local_provider import LocalProvider
+    with transaction(engine,True) as c:
+        row=ledger.get_call(c,run_id)
+        if row is None:raise ValueError('Run not found')
+        initial=request_from_call(row)
+    local=initial.config.mode in ('laya','gliclass')
+    provider=provider or (LocalProvider() if local else FakeProvider())
+    if not isinstance(provider,LocalProvider if local else FakeProvider):raise ValueError('Provider implementation/mode mismatch')
     with transaction(engine) as c:
         ledger.recover_expired(c,run_id)
         owned=ledger.claim(c,run_id)
     if owned is None:
         with transaction(engine,True) as c:return ledger.get_call(c,run_id)
     request=request_from_call(owned)
+    if local:
+        try:result=validate_result(request,provider.choose(request))
+        except ValueError:result=failure(request,'invalid_local_result')
+        with transaction(engine) as c:return ledger.settle(c,run_id,result,datetime.now(timezone.utc))
     started=time.monotonic();remaining=(request.deadline-datetime.now(timezone.utc)).total_seconds()
     queue=Queue(maxsize=1)
     def invoke():
@@ -122,7 +139,7 @@ def inspect(engine,run_id):
         row=ledger.get_call(c,run_id)
         if row is None:raise ValueError('Run not found')
         request_from_call(row)
-        return {'mode':'fake','simulated':True,'trace':public_row(row),
+        return {'mode':request_from_call(row).config.mode,'simulated':request_from_call(row).config.mode=='fake','trace':public_row(row),
                 'budget':ledger.summary(c,row['budget_id']),'case':show_case(c,row['case_id']),
                 'execution_authorized':False}
 
@@ -166,10 +183,10 @@ def apply(engine,run_id):
                 if choice not in permitted_choices(current['facts'],case['status']):
                     raise ValueError('Stored provider choice is not permitted')
                 if choice=='staff_review' and case['status']=='awaiting_review':
-                    escalate_case(c,case['id'],'Simulated provider routing requires staff review')
+                    escalate_case(c,case['id'],'Provider routing requires staff review')
                 # Blocked/unknown cases keep their deterministic status and facts.
                 event(c,case['id'],'provider_routed',{'run_id':run_id,'effective_choice':choice,
-                    'fallback':not good,'simulated':True,'execution_authorized':False},clock(c))
+                    'fallback':not good,'simulated':req.config.mode=='fake','execution_authorized':False},clock(c))
                 connection_change={'application_status':'applied' if good else 'fallback','effective_choice':choice}
             c.execute(db.provider_calls.update().where(db.provider_calls.c.run_id==run_id).values(**connection_change))
     return inspect(engine,run_id)
@@ -183,9 +200,14 @@ def recover(engine,run_id):
 def recommend(engine,case_id,run_id,budget_id=None,config=None,*,deadline_seconds=5,provider=None):
     config=config or ProviderConfig(mode='rules')
     if config.mode=='rules':
-        with transaction(engine) as c:case=investigate_case(c,case_id)
-        return {'mode':'rules','case':case,'provider_calls':0,'execution_authorized':False}
-    if not budget_id:raise ValueError('Fake mode requires a durable simulated budget')
+        with transaction(engine) as c:
+            case=investigate_case(c,case_id)
+            assessment=c.execute(sa.select(db.investigations.c.assessment).where(db.investigations.c.id==case['investigation_id'])).scalar_one()
+            request=build_request(case,assessment,run_id,config,clock(c)+timedelta(seconds=5),Limits(max_cost_usd='0'),Pricing.local())
+            result=validate_result(request,RulesProvider().choose(request))
+        return {'mode':'rules','case':case,'provider_calls':0,'execution_authorized':False,
+                'recommendation':result.as_record()}
+    if not budget_id:raise ValueError('Provider mode requires a durable budget')
     prepare(engine,case_id,run_id,budget_id,config,deadline_seconds)
     dispatch(engine,run_id,provider)
     return apply(engine,run_id)
