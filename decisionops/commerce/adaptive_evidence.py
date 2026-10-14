@@ -27,7 +27,7 @@ POLICY_REASONS = frozenset({
     'carrier_event_stale_or_future', 'loss_not_confirmed', 'history_marker_missing',
     'history_incomplete', 'inventory_missing', 'database_error', 'malformed_records',
     'dependency_cycle', 'future_timestamp', 'expired', 'dependency_changed',
-    'dependency_ambiguous', 'dependency_unresolved', 'conflicting_active_contents',
+    'dependency_ambiguous', 'dependency_unresolved', 'conflicting_active_contents', 'refresh_required', 'run_deadline',
 })
 POLICY_SCOPE_REASONS = frozenset({
     'partial_request', 'split_shipment', 'partial_shipment',
@@ -89,7 +89,8 @@ def observation(tool, request, now, *, value, payload, status='success', stream=
 
 class History:
     """Append-only observations plus explicit supersession edges; no SQL on inspection."""
-    def __init__(self, request, *, streams=('primary',)):
+    def __init__(self, request, *, streams=('primary',), invalidated=()):
+        self._invalidated = frozenset(invalidated)
         self._request = canonical(request)
         self._streams = frozenset(streams)
         self._observations = ()
@@ -141,6 +142,8 @@ class History:
 
     def invalid_reason(self, obs, now, trail=()):
         record = obs.record()
+        if obs.id in self._invalidated:
+            return 'refresh_required'
         if obs.id in trail:
             return 'dependency_cycle'
         if now < utc_timestamp(obs.observed_at):

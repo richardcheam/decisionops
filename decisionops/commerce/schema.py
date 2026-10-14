@@ -116,6 +116,7 @@ cases = sa.Table(
     sa.Column("request", JSONB, nullable=False),
     sa.Column("status", sa.String, nullable=False),
     sa.Column("generation", sa.Integer, nullable=False),
+    sa.Column("case_revision", sa.BigInteger, nullable=False, server_default="0"),
     sa.Column("investigation_id", sa.String, sa.ForeignKey("commerce_investigations.id")),
     sa.Column("proposal_id", sa.String, sa.ForeignKey("commerce_proposals.id")),
     sa.Column("approval_id", sa.String, sa.ForeignKey("commerce_reviews.id", use_alter=True, name="fk_case_approval")),
@@ -249,4 +250,65 @@ provider_calls = sa.Table(
     sa.CheckConstraint("state != 'settled' OR (result IS NOT NULL AND actual_cost_usd IS NOT NULL)"),
     sa.CheckConstraint("state != 'uncertain' OR actual_cost_usd IS NULL"),
     sa.CheckConstraint("state != 'denied' OR (dispatch_count=0 AND reserved_cost_usd=0)"),
+)
+
+# Optional adaptive read-only investigation. Business writes remain separate.
+adaptive_runs = sa.Table(
+    'commerce_adaptive_runs', metadata,
+    sa.Column('id',sa.String,primary_key=True),
+    sa.Column('case_id',sa.String,sa.ForeignKey('commerce_cases.id'),nullable=False),
+    sa.Column('generation',sa.Integer,nullable=False),
+    sa.Column('case_revision',sa.BigInteger,nullable=False),
+    sa.Column('request',JSONB,nullable=False),sa.Column('report',sa.Text,nullable=False),
+    sa.Column('contracts',JSONB,nullable=False),
+    sa.Column('state',sa.String,nullable=False),
+    sa.Column('created_at',sa.DateTime(timezone=True),nullable=False),
+    sa.Column('deadline',sa.DateTime(timezone=True),nullable=False),
+    sa.Column('context_version',sa.BigInteger,nullable=False,server_default='0'),
+    sa.Column('decision_attempts',sa.Integer,nullable=False,server_default='0'),
+    sa.Column('tool_attempts',sa.Integer,nullable=False,server_default='0'),
+    sa.Column('pending_token',sa.String),sa.Column('pending_context',sa.BigInteger),sa.Column('terminal',JSONB),
+    sa.CheckConstraint("generation > 0 AND case_revision >= 0 AND context_version >= 0"),
+    sa.CheckConstraint("state IN ('active','proposed','blocker_reported','review','stale')"),
+    sa.CheckConstraint('decision_attempts BETWEEN 0 AND 16 AND tool_attempts BETWEEN 0 AND 12'),
+    sa.CheckConstraint("octet_length(report) <= 2000 AND deadline > created_at AND deadline <= created_at + INTERVAL '240 seconds'"),
+    sa.CheckConstraint("state = 'active' OR (terminal IS NOT NULL AND pending_token IS NULL)"),
+    sa.CheckConstraint("(pending_token IS NULL AND pending_context IS NULL) OR (pending_token IS NOT NULL AND pending_context BETWEEN 1 AND context_version)"),
+)
+sa.Index('uq_adaptive_active_case',adaptive_runs.c.case_id,unique=True,
+         postgresql_where=adaptive_runs.c.state=='active')
+adaptive_steps = sa.Table(
+    'commerce_adaptive_steps',metadata,
+    sa.Column('run_id',sa.String,sa.ForeignKey('commerce_adaptive_runs.id'),primary_key=True),
+    sa.Column('sequence',sa.BigInteger,primary_key=True),
+    sa.Column('kind',sa.String,nullable=False),sa.Column('data',JSONB,nullable=False),
+    sa.Column('created_at',sa.DateTime(timezone=True),nullable=False),
+    sa.CheckConstraint('sequence > 0'),
+)
+adaptive_observations = sa.Table(
+    'commerce_adaptive_observations',metadata,
+    sa.Column('id',sa.String,primary_key=True),sa.Column('run_id',sa.String,nullable=False),
+    sa.Column('step_sequence',sa.BigInteger,nullable=False),
+    sa.Column('record',JSONB,nullable=False),sa.Column('applied',sa.Boolean,nullable=False),
+    sa.UniqueConstraint('run_id','id'),
+    sa.ForeignKeyConstraint(['run_id','step_sequence'],['commerce_adaptive_steps.run_id','commerce_adaptive_steps.sequence']),
+)
+adaptive_supersessions = sa.Table(
+    'commerce_adaptive_supersessions',metadata,
+    sa.Column('run_id',sa.String,primary_key=True),sa.Column('old_id',sa.String,primary_key=True),
+    sa.Column('new_id',sa.String,nullable=False),
+    sa.ForeignKeyConstraint(['run_id','old_id'],['commerce_adaptive_observations.run_id','commerce_adaptive_observations.id']),
+    sa.ForeignKeyConstraint(['run_id','new_id'],['commerce_adaptive_observations.run_id','commerce_adaptive_observations.id']),
+)
+adaptive_active = sa.Table(
+    'commerce_adaptive_active',metadata,
+    sa.Column('run_id',sa.String,primary_key=True),sa.Column('tool',sa.String,primary_key=True),
+    sa.Column('stream',sa.String,primary_key=True),sa.Column('observation_id',sa.String,nullable=False),
+    sa.ForeignKeyConstraint(['run_id','observation_id'],['commerce_adaptive_observations.run_id','commerce_adaptive_observations.id']),
+)
+adaptive_tool_counts = sa.Table(
+    'commerce_adaptive_tool_counts',metadata,
+    sa.Column('run_id',sa.String,sa.ForeignKey('commerce_adaptive_runs.id'),primary_key=True),
+    sa.Column('tool',sa.String,primary_key=True),sa.Column('attempts',sa.Integer,nullable=False),
+    sa.CheckConstraint('attempts BETWEEN 1 AND 2'),
 )
