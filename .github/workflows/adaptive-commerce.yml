@@ -1,7 +1,7 @@
 name: Verify adaptive commerce without models
 on:
   push:
-    branches: [feat/commerce-adaptive-recovery]
+    branches: [feat/commerce-adaptive-recovery, feat/commerce-adaptive-sessions]
   workflow_dispatch:
 permissions:
   contents: read

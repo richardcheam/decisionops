@@ -36,7 +36,7 @@ def request_from(row):
     policy=PolicyRequest(record['run_id'],record['context_version'],f['report'],f['observations'],
             tuple(Action.from_record(a) for a in f['allowed_actions']),tuple(f['attempted_tools']),f['remaining_budgets'],tuple(f['rejections']))
     return Request(row['id'],record['run_id'],record['generation'],record['case_revision'],policy,
-                   record['configuration']['mode'],record['max_runtime_ms'],record['task'])
+                   record['configuration']['mode'],record['max_runtime_ms'],record['task'],record['configuration'].get('session'),row['deadline'])
 
 def prepare(engine,run_id,fence):
     with service.guarded(engine,run_id,fence) as (c,run,case):
@@ -48,22 +48,35 @@ def prepare(engine,run_id,fence):
         committed=c.execute(sa.select(sa.func.coalesce(sa.func.sum(sa.case(
             (db.adaptive_calls.c.state=='settled',db.adaptive_calls.c.actual_ms),else_=db.adaptive_calls.c.reserved_ms)),0))
             .where(db.adaptive_calls.c.run_id==run_id)).scalar_one()
+        session_binding=None
+        if run['contracts'].get('session'):
+            from .adaptive_sessions import phase_charge,records
+            committed+=phase_charge(c,run_id)
+            fallback=bool(old and (old['application_status']=='stale' or old['result'] and old['result']['status']!='success' or old['request']['configuration'].get('source')=='rules'))
+            if not fallback:
+                sessions=records(c,run_id);ready=next((r for r in reversed(sessions) if r['state']=='ready' and not r['retired']),None)
+                session_binding={'config':run['contracts']['session'],'session_id':ready['id'] if ready else None}
         now=clock(c);maximum=min(20000,int((run['deadline']-now).total_seconds()*1000),240000-committed)
         if maximum<=0:raise ValueError('Decision resource budget exhausted')
         mode=run['contracts']['policy']
         if old and (old['application_status']=='stale' or old['result'] and old['result']['status']!='success'):mode='fixed'
+        if run['contracts'].get('session') and fallback:mode='fixed'
         initial=service.request_for(run,history,steps,counts,now)
+        if session_binding is not None and len(initial.allowed)==1:session_binding['session_id']=None
         policy=replace(initial,context_version=run['context_version']+1,
                        budgets={**initial.budgets,'decisions':initial.budgets['decisions']-1})
-        req=Request(identifier('AREC'),run_id,run['generation'],run['case_revision'],policy,mode,maximum)
-        record=req.record();record.update(case_id=case['id'],deadline=(now+timedelta(milliseconds=maximum)).isoformat(),
+        req=Request(identifier('AREC'),run_id,run['generation'],run['case_revision'],policy,mode,maximum,session=session_binding)
+        record=req.record()
+        if run['contracts'].get('session'):
+            record['configuration'].update(source=('fake_session' if session_binding['config']['family']=='fake' else 'local_session') if session_binding else 'rules',fallback=fallback)
+        record.update(case_id=case['id'],deadline=(now+timedelta(milliseconds=maximum)).isoformat(),
             contract_versions=run['contracts'],source_bindings=[o.dependency() for o in history.active()])
         if len(canonical(record).encode())>32768:raise ValueError('Recommendation request byte cap')
         service.step(c,run,'recommendation_reserved',{'call_id':req.id,'task':TASK,'request_hash':document_hash(record),
-             'fallback':mode!=run['contracts']['policy'],'reserved_ms':maximum},decision_attempts=run['decision_attempts']+1)
+             'fallback':fallback if run['contracts'].get('session') else mode!=run['contracts']['policy'],'reserved_ms':maximum},decision_attempts=run['decision_attempts']+1)
         c.execute(db.adaptive_calls.insert().values(id=req.id,run_id=run_id,task=TASK,request=record,request_hash=document_hash(record),
              context_version=policy.context_version,state='reserved',reserved_ms=maximum,reserved_cost_usd=Decimal('0'),
-             pricing_version=CONFIG_VERSION,deadline=now+timedelta(milliseconds=maximum),created_at=now))
+             pricing_version='local-session-no-api/v1' if session_binding else CONFIG_VERSION,deadline=now+timedelta(milliseconds=maximum),created_at=now))
         event(c,req.id,'reserved',{'count':1,'maximum_ms':maximum,'api_charge_kind':'no_api_charge'})
         return get(c,req.id)
 

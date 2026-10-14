@@ -26,9 +26,9 @@ class Fence:
             or job['lease_until']<=now or run['deadline']<=now):raise LeaseLost('Adaptive ownership lost/expired')
         return job
 
-def enqueue(engine,case_id,report,policy='fixed',deadline_seconds=240):
+def enqueue(engine,case_id,report,policy='fixed',deadline_seconds=240,session=None):
     # Job and run creation commit atomically; no crash can orphan a scheduled run.
-    return service.start(engine,case_id,report,policy=policy,deadline_seconds=deadline_seconds,scheduled=True)['job']
+    return service.start(engine,case_id,report,policy=policy,deadline_seconds=deadline_seconds,scheduled=True,session=session)['job']
 
 def claim(engine,job_id=None,lease_seconds=30):
     if type(lease_seconds) is not int or not 1<=lease_seconds<=240:raise ValueError('Lease seconds 1..240')
@@ -94,6 +94,9 @@ def recover(engine,fence):
         cancel(engine,fence.job_id);return service.inspect(engine,run['id'])
     if run['pending_token']:service.recover(engine,run['id'],expected_context=run['context_version'],fence=fence)
     with service.guarded(engine,run['id'],fence) as (c,current,case):
+        if current['contracts'].get('session'):
+            from .adaptive_sessions import recover
+            recover(c,current)
         call=ledger.latest(c,run['id'])
         if call and call['state']=='reserved' and clock(c)>=call['deadline']:
             ledger.expire_reserved(c,call['id']);ledger.disposition(c,call['id'],'stale')

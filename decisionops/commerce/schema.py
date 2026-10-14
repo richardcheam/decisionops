@@ -353,3 +353,30 @@ adaptive_call_events = sa.Table(
     sa.Column('sequence',sa.Integer,primary_key=True),sa.Column('kind',sa.String,nullable=False),
     sa.Column('data',JSONB,nullable=False),sa.Column('created_at',sa.DateTime(timezone=True),nullable=False),
 )
+
+adaptive_sessions = sa.Table(
+    'commerce_adaptive_sessions',metadata,
+    sa.Column('id',sa.String,primary_key=True),sa.Column('run_id',sa.String,sa.ForeignKey('commerce_adaptive_runs.id'),nullable=False),
+    sa.Column('job_id',sa.String,sa.ForeignKey('commerce_adaptive_jobs.id'),nullable=False),sa.Column('token',sa.String,nullable=False),
+    sa.Column('ordinal',sa.Integer,nullable=False),sa.Column('config',JSONB,nullable=False),sa.Column('config_hash',sa.String(64),nullable=False),
+    sa.Column('generation',sa.Integer,nullable=False),sa.Column('case_revision',sa.BigInteger,nullable=False),
+    sa.Column('state',sa.String,nullable=False),sa.Column('retired',sa.Boolean,nullable=False,server_default=sa.false()),
+    sa.Column('reserved_ms',sa.Integer,nullable=False),sa.Column('actual_charge_ms',sa.Integer),
+    sa.Column('waiting_ms',sa.Integer,nullable=False,server_default='0'),sa.Column('load_ms',sa.Integer,nullable=False,server_default='0'),
+    sa.Column('inference_ms',sa.Integer,nullable=False,server_default='0'),sa.Column('total_ms',sa.Integer,nullable=False,server_default='0'),
+    sa.Column('api_charge_usd',sa.Numeric(20,8),nullable=False,server_default='0'),sa.Column('diagnostics',JSONB,nullable=False,server_default=sa.text("'{}'::jsonb")),
+    sa.Column('deadline',sa.DateTime(timezone=True),nullable=False),sa.Column('created_at',sa.DateTime(timezone=True),nullable=False),
+    sa.UniqueConstraint('run_id','ordinal'),
+    sa.CheckConstraint("ordinal BETWEEN 1 AND 3 AND state IN ('waiting','loading','ready','closed','uncertain','failed') AND reserved_ms BETWEEN 1 AND 150000 AND api_charge_usd=0"),
+    sa.CheckConstraint('actual_charge_ms IS NULL OR actual_charge_ms BETWEEN 0 AND reserved_ms'),
+    sa.CheckConstraint('waiting_ms>=0 AND load_ms>=0 AND inference_ms>=0 AND total_ms>=0'),
+    sa.CheckConstraint("state NOT IN ('ready','closed','failed') OR actual_charge_ms IS NOT NULL"),
+)
+sa.Index('uq_adaptive_session_pending',adaptive_sessions.c.run_id,unique=True,
+         postgresql_where=sa.text("NOT retired AND state IN ('waiting','loading','ready','uncertain')"))
+adaptive_session_events = sa.Table(
+    'commerce_adaptive_session_events',metadata,
+    sa.Column('session_id',sa.String,sa.ForeignKey('commerce_adaptive_sessions.id'),primary_key=True),
+    sa.Column('sequence',sa.Integer,primary_key=True),sa.Column('kind',sa.String,nullable=False),
+    sa.Column('data',JSONB,nullable=False),sa.Column('created_at',sa.DateTime(timezone=True),nullable=False),
+)

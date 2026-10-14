@@ -21,6 +21,7 @@ class State(TypedDict,total=False):
     context_version:int
     committed_steps:list
     reservations:list
+    session_phases:list
 
 def checkpoint_url(engine):
     with service.transaction(engine,readonly=True) as c:business=c.exec_driver_sql('SELECT current_schema()').scalar_one()
@@ -87,11 +88,16 @@ def authoritative(engine,job_id):
         from . import schema as db
         import sqlalchemy as sa
         calls=[dict(r) for r in c.execute(sa.select(db.adaptive_calls).where(db.adaptive_calls.c.run_id==run['id'])).mappings()]
-    return dict(job_id=job_id,phase=run['state'],context_version=run['context_version'],
+    phases={}
+    if run['contracts'].get('session'):
+        from .adaptive_sessions import records
+        with service.transaction(engine,readonly=True) as c:
+            phases={'session_phases':[{k:r[k] for k in ('id','ordinal','state','retired','reserved_ms','actual_charge_ms','waiting_ms','load_ms','inference_ms','total_ms','diagnostics')} for r in records(c,run['id'])]}
+    return dict(**phases,job_id=job_id,phase=run['state'],context_version=run['context_version'],
                 committed_steps=[s['sequence'] for s in run['steps']],
                 reservations=[{'id':r['id'],'state':r['state'],'application_status':r['application_status']} for r in calls])
 
-def project(engine,job_id,fence=None,cancel=None,*,advance=True):
+def project(engine,job_id,fence=None,cancel=None,*,advance=True,adapter=None):
     end=time.monotonic()+METADATA_TIMEOUT_SECONDS
     with service.transaction(engine,readonly=True) as c:
         job=jobs.get(c,job_id)
@@ -106,7 +112,7 @@ def project(engine,job_id,fence=None,cancel=None,*,advance=True):
     thread='commerce-adaptive/v1:'+job_id+':'+job['run_id']
     with checkpoint_saver(url,end) as saver:
         def domain(state):
-            if fence is not None and advance:tick(engine,fence,cancel=cancel)
+            if fence is not None and advance:tick(engine,fence,cancel=cancel,adapter=adapter)
             return authoritative(engine,job_id)
         builder=StateGraph(State);builder.add_node('project',domain)
         builder.add_edge(START,'project');builder.add_edge('project',END)
@@ -124,12 +130,21 @@ def resume(engine,job_id,cancel=None):
     owned=jobs.claim(engine,job_id=job_id)
     if owned is None:raise ValueError('Job owned, expired run, or exhausted claims; inspect/recover explicitly')
     fence=jobs.Fence(job_id,owned['token'])
-    for _ in range(34):
-        if cancel is not None and cancel.is_set():return {'event':'worker_stopped',**authoritative(engine,job_id)}
-        projected=project(engine,job_id,fence,cancel=cancel)
-        if cancel is not None and cancel.is_set():return {'event':'worker_stopped',**projected}
-        with service.transaction(engine,readonly=True) as c:call=ledger.latest(c,run['id'])
-        current=service.inspect(engine,run['id'])
-        if current['state']!='active' or current['pending_token'] or call and call['state'] in ('dispatching','uncertain'):return projected
-        jobs.renew(engine,job_id,fence.token,30)
-    return projected
+    from .adaptive_sessions import scope
+    with scope(engine,fence,cancel) as adapter:
+        for _ in range(34):
+            if cancel is not None and cancel.is_set():return {'event':'worker_stopped',**authoritative(engine,job_id)}
+            if adapter is not None:
+                # Session waiting/loading/inference precedes the saver lifetime.
+                # Projection then captures current renewed lease; effects never replay.
+                outcome=tick(engine,fence,cancel=cancel,adapter=adapter)
+                if outcome['event'] not in ('step','stale_recommendation','review_budget'):
+                    return {**authoritative(engine,job_id),**outcome}
+                projected=project(engine,job_id,fence,cancel=cancel,advance=False)
+            else:projected=project(engine,job_id,fence,cancel=cancel)
+            if cancel is not None and cancel.is_set():return {'event':'worker_stopped',**projected}
+            with service.transaction(engine,readonly=True) as c:call=ledger.latest(c,run['id'])
+            current=service.inspect(engine,run['id'])
+            if current['state']!='active' or current['pending_token'] or call and call['state'] in ('dispatching','uncertain'):return projected
+            jobs.renew(engine,job_id,fence.token,30)
+        return projected

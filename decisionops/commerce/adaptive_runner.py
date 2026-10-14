@@ -24,6 +24,20 @@ def tick(engine,fence,adapter=None,fault=None,cancel=None):
     with service.transaction(engine,readonly=True) as c:call=ledger.latest(c,run['id'])
     if call and call['application_status']=='pending' and call['state'] in ('dispatching','uncertain'):
         return {'event':'uncertain_decision','call_id':call['id']}
+    if adapter is not None and hasattr(adapter,'ensure_ready') and run['contracts'].get('session'):
+        needs_new=(call is None or call['application_status']!='pending')
+        fallback=bool(call and (call['application_status']=='stale' or call['result'] and call['result']['status']!='success' or call['request']['configuration'].get('source')=='rules'))
+        if needs_new and not fallback and len(service.policy_request(engine,run['id']).allowed)>1:
+            try:ready=adapter.ensure_ready()
+            except ValueError as error:
+                if cancel is not None and cancel.is_set():return {'event':'worker_stopped','state':run['state']}
+                return {'event':'session_requires_review','reason':str(error)}
+            if cancel is not None and cancel.is_set():return {'event':'worker_stopped','state':run['state']}
+            if not ready and adapter.row is not None:
+                with service.transaction(engine,readonly=True) as c:
+                    from .adaptive_sessions import records
+                    phase=next(r for r in records(c,run['id']) if r['id']==adapter.row['id'])
+                if phase['state']=='uncertain':return {'event':'uncertain_session','session_id':phase['id']}
     if call is None or call['application_status']!='pending':
         try:call=ledger.prepare(engine,run['id'],fence)
         except ValueError as error:
@@ -42,7 +56,7 @@ def tick(engine,fence,adapter=None,fault=None,cancel=None):
             return {'event':'worker_stopped','state':run['state']}
         if fault=='after_dispatch':raise Interrupted(fault)
         request=ledger.request_from(call);shutdown=cancel;call_cancel=Event();queue=Queue(maxsize=1)
-        adapter=adapter or FakeAdapter()
+        adapter=(adapter if adapter is not None and (request.session is not None or not hasattr(adapter,'ensure_ready')) else FakeAdapter())
         if not isinstance(adapter,FakeAdapter):raise ValueError('Stage 3 admits model-free fake adapters only')
         def invoke():
             try:queue.put(('result',adapter.choose(request,call_cancel)))
@@ -88,17 +102,23 @@ def tick(engine,fence,adapter=None,fault=None,cancel=None):
             service.step(c,bound,'recommendation_rejected',{'call_id':call['id'],'reason':'context_or_deadline_changed'})
         return {'event':'stale_recommendation'}
     result=service.advance(engine,run['id'],None,expected_context=current['context_version'],fence=fence,
-                           recommendation_id=call['id'],fallback=call['request']['configuration']['mode']!=current['contracts']['policy'])
+                           recommendation_id=call['id'],fallback=bool(call['request']['configuration'].get('fallback')) or call['request']['configuration']['mode']!=current['contracts']['policy'])
     if fault=='after_application':raise Interrupted(fault)
     if result['state']!='active':jobs.complete(engine,fence)
     return {'event':'step','state':result['state'],'run_id':run['id'],'call_id':call['id']}
 
-def run_until_pause(engine,fence,cancel=None):
+def _run_until_pause(engine,fence,cancel=None,adapter=None):
     for _ in range(34):
-        result=tick(engine,fence,cancel=cancel)
+        result=tick(engine,fence,cancel=cancel,adapter=adapter)
         if result['event'] not in ('step','stale_recommendation','review_budget'):return result
         with service.transaction(engine,readonly=True) as c:job=jobs.get(c,fence.job_id)
         run=service.inspect(engine,job['run_id'])
         if run['state']!='active':return run
         jobs.renew(engine,fence.job_id,fence.token,30)
     return {'event':'bounded_worker_pause'}
+
+
+def run_until_pause(engine,fence,cancel=None):
+    from .adaptive_sessions import scope
+    with scope(engine,fence,cancel) as adapter:
+        return _run_until_pause(engine,fence,cancel,adapter)

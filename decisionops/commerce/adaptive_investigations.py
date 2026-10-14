@@ -240,12 +240,16 @@ def finish(connection,run,case,history,reason, *, blocker=False,stale=False):
     return step(connection,run,'terminal',terminal,state=state,pending_token=None,pending_context=None,terminal=terminal)
 
 
-def start(engine,case_id,report, *, deadline_seconds=240,policy='fixed',scheduled=False):
+def start(engine,case_id,report, *, deadline_seconds=240,policy='fixed',scheduled=False,session=None):
     if not isinstance(report,str) or len(report.encode('utf-8'))>2000:raise ValueError('Report must be at most 2000 UTF-8 bytes')
     if type(deadline_seconds) not in (int,float) or not math.isfinite(deadline_seconds) or not 0<deadline_seconds<=240:
         raise ValueError('Deadline must be positive and at most 240 seconds')
     if policy not in ('fixed','cue','fake-override','fake-invalid','fake-unavailable','fake-refuse'):
         raise ValueError('Unknown model-free policy')
+    if session is not None:
+        from .session_protocol import Config
+        if not scheduled:raise ValueError('Local sessions require opt-in adaptive jobs')
+        config=Config(**session);config.admit();session=config.record()
     with transaction(engine) as c:
         case=lock_case(c,case_id)
         if case['status']=='executed':raise ValueError('Executed cases cannot start adaptive investigation')
@@ -261,7 +265,7 @@ def start(engine,case_id,report, *, deadline_seconds=240,policy='fixed',schedule
         run_id=identifier('ARUN')
         c.execute(db.adaptive_runs.insert().values(id=run_id,case_id=case_id,generation=updated['generation'],
             case_revision=updated['case_revision'],request=json.loads(canonical(case['request'])),report=report,
-            contracts={'observations':CONTRACT,'actions':ACTION_CONTRACT,'policy':policy,**({'executor':'commerce-adaptive-jobs/v1'} if scheduled else {})},
+            contracts={'observations':CONTRACT,'actions':ACTION_CONTRACT,'policy':policy,**({'session':session} if session else {}),**({'executor':'commerce-adaptive-jobs/v1'} if scheduled else {})},
             state='active',created_at=now,deadline=now+timedelta(seconds=deadline_seconds)))
         if scheduled:
             c.execute(db.adaptive_jobs.insert().values(id=identifier('AJOB'),run_id=run_id,created_at=now))
