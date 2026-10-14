@@ -1558,3 +1558,78 @@ to clear its history. Stop the isolated container with `docker compose down` whi
 COMPOSE_PROJECT_NAME still equals decisionops-local-provider-check. Restarting or
 stopping containers preserves the named volume; `down -v` deletes it and is not a
 recovery step. Do not restart or migrate the original stack for this demonstration.
+
+### Pin rotation and historical recovery
+
+New local configurations/requests validate against model-revisions.env and require
+full checkpoint commit SHAs. `ProviderConfig.from_record` and
+`ProviderRequest.from_record` validate the recorded structure, identity and bindings
+without rereading current pins. Inspection and recovery of completed, in-flight or
+forced deterministic calls keep the recorded revision even after pins change.
+They never load a model merely to reconstruct audit history.
+
+Dispatch policy is **current-pin-only admission**. If an eligible reserved request
+is bound to checkpoint A and the configured pin is now B, recovery settles an
+explicit `checkpoint_policy_changed` no-dispatch failure: dispatch_count remains
+zero, actual API charge is zero, the immutable request still says A, and the case
+routes to review. An unreadable policy file produces `checkpoint_policy_unavailable`
+without dispatch. Forced one-choice requests need no model pin consultation.
+Already-dispatched calls retain A; uncertain calls are not automatically repeated.
+
+The worker checks admission again before loading. The admitted revision is passed
+explicitly to the existing cached loaders, so a file rotation during startup cannot
+load B and label it A. Historical diagnostic callers that omit this override retain
+their previous pin-file behavior. No checkpoint is silently substituted or downloaded.
+
+Inspect/recover the SAME run first. For a genuinely new attempt under B, explicitly
+reinvestigate as needed and create a fresh run with the configured policy. Do not
+edit old request JSON, change a reservation's identity or erase request counts.
+The old recorded snapshot remains evidence of what was requested, not permission.
+
+### Bounded subprocess output and diagnosis
+
+The parent concurrently drains binary stdout and stderr (and writes stdin) through
+nonblocking selectors. Each output stream has a fixed **65,536-byte** cap. Limits
+apply during reads, not after buffering or writing an unbounded log. Reading the
+first overflow byte stops consumption: the overflowing stream's consumed count is
+at most 65,537, retained bytes at most 65,536. Multibyte text counts as bytes.
+
+Overflow yields `worker_output_overflow`, an invalid recommendation and explicit
+staff-review fallback. The owned process group is terminated, the direct child is
+reaped, and pipe handles close. Independent deadlines still cover live children
+that close their streams and descendants that retain pipes. Normal nonzero exits,
+malformed JSON and timeout remain distinct outcomes. No `communicate()` accumulation
+or unbounded temporary output file is used in this boundary.
+
+Inspect `trace.result.metadata` for `overflow_stream`, `stream_limits_bytes`,
+`stream_bytes_consumed`, `stream_bytes_retained`, `stream_diagnostics`,
+`process_reaped` and `validation_outcome`. Diagnostics retain only the first 1,024
+raw bytes per stream, decoded with replacement; these are bounded excerpts, not
+complete logs. Native stdout is parsed only after bounded completion. On overflow,
+no truncated/native recommendation is applied. Recovery consumes the saved fallback
+without repeating dispatch; known completed failures settle zero API charge while
+still consuming the request-count reservation.
+
+The smallest response is to inspect the excerpt for unexpected dependency logging,
+wrong entry points or corrupt protocol output. Keep progress/logging off stdout and
+fix the noisy source. Do not weaken caps or retry an old run automatically. These
+POSIX pipe/process-group controls target the supported local Linux environment.
+
+Reproduce both fixes without model packages or checkpoints:
+
+```bash
+python3 -B -S -m unittest discover -s tests -p test_commerce_local_providers.py -v
+# After starting only the isolated database as documented above:
+.venv/bin/python -B -m unittest discover -s tests -p test_commerce_provider_postgres.py -v
+.venv/bin/python -B scripts/commerce_ci_tests.py postgres
+```
+
+Pure tests rotate temporary pin A to B, reject new use of A, hydrate old requests
+without current-pin reads, verify explicit loader revision forwarding with stubs,
+and exercise stdout/stderr overflow, simultaneous streams, malformed output,
+deadlines and descendant cleanup. A noisy child intentionally keeps running for
+30 seconds; overflow is detected and killed well before its deadline. Database
+tests cover old settled/reserved/in-flight/forced calls, controlled no-dispatch,
+new B requests and bounded overflow diagnostics/fallback/recovery. These are
+model-free regression evidence; historical comparison reports and negative model
+results remain unchanged and were not rerun for this patch.

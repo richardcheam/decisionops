@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 
+from .worker_pipes import consume
 from .providers import ProviderResult,validate_result,response_id,thaw
 
 LABELS={'present_replacement':'Present replacement for staff approval',
@@ -52,23 +53,25 @@ class LocalProvider:
                  TOKENIZERS_PARALLELISM='false',LANGSMITH_TRACING='false',LANGCHAIN_TRACING_V2='false')
         payload={'family':request.config.mode,'revision':request.config.model_revision,'features':model_features(request)}
         process=None;metadata=diagnostics(request);status='unavailable';error='worker_start_failed';choice=None;confidence=None
+        captured=None
         try:
             process=subprocess.Popen([self.python,'-B',str(self.worker)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,text=True,env=env,start_new_session=True)
-            out,err=process.communicate(json.dumps(payload),timeout=remaining)
-            if process.returncode:
+                stderr=subprocess.PIPE,env=env,start_new_session=True)
+            captured=consume(process,json.dumps(payload).encode('utf-8'),started+remaining)
+            if captured.outcome=='overflow':
+                status='invalid';error='worker_output_overflow'
+            elif captured.outcome=='timeout':
+                status='timeout';error='deadline_including_load'
+            elif process.returncode:
                 error='worker_exit';metadata['exit_code']=process.returncode
             else:
                 try:
-                    if len(out)>65536:raise ValueError('Oversized worker result')
-                    raw=json.loads(out);metadata=raw['metadata'];status=raw['status'];choice=raw['choice']
+                    raw=json.loads(captured.buffers['stdout']);metadata=raw['metadata'];status=raw['status'];choice=raw['choice']
                     error=raw.get('error_kind');confidence=raw.get('confidence')
                     checked=validate_result(request,local_result(request,choice,status,metadata,error))
                     choice=checked.selected_choice
                 except (ValueError,KeyError,TypeError):
                     status='invalid';choice=None;error='malformed_worker_result';metadata=diagnostics(request)
-        except subprocess.TimeoutExpired:
-            status='timeout';error='deadline_including_load'
         except OSError:
             pass
         finally:
@@ -77,8 +80,11 @@ class LocalProvider:
                 # group is owned by this invocation, so always close it as well.
                 try:os.killpg(process.pid,signal.SIGKILL)
                 except ProcessLookupError:pass
-                process.communicate(timeout=5)
-                metadata['process_reaped']=process.poll() is not None
+                for pipe in (process.stdin,process.stdout,process.stderr):
+                    if pipe is not None:pipe.close()
+                process.wait(timeout=5)
+                metadata['process_reaped']=process.returncode is not None
+            if captured is not None:metadata.update(captured.diagnostics())
         elapsed=time.monotonic()-started
         metadata['validation_outcome']='accepted' if status=='success' else 'rejected' if status=='invalid' else 'failed'
         metadata['wall_seconds']=elapsed

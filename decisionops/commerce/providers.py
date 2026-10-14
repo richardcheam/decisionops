@@ -1,5 +1,5 @@
 """Pure routing contracts and simulated providers. No SDK, model or network access."""
-from dataclasses import dataclass, fields, field
+from dataclasses import dataclass, fields, field, InitVar
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
 import math
@@ -7,8 +7,15 @@ import hashlib
 import re
 import time
 from types import MappingProxyType
+from pathlib import Path
 
 from .eligibility import REQUIREMENTS
+
+REVISION_FILE=Path(__file__).resolve().parents[2]/'model-revisions.env'
+
+def configured_revision(mode):
+    from ..backends import parse_revision_pins,REPOSITORIES
+    return parse_revision_pins(REVISION_FILE)[REPOSITORIES[mode][1]]
 
 QUANTUM = Decimal('0.00000001')
 CHOICES = ('present_replacement', 'staff_review')
@@ -104,23 +111,33 @@ class ProviderConfig:
     scenario: str='success'
     delay_ms: int=0
     model_revision: str | None=None
+    _historical: InitVar[bool]=False
 
-    def __post_init__(self):
+    def __post_init__(self,_historical):
         if self.mode not in ('rules','fake','laya','gliclass'):raise ValueError('Unsupported provider mode')
         expected='rules-v1' if self.mode=='rules' else 'fake-v1' if self.mode=='fake' else self.mode+'-local-v1'
         if self.provider_id is None:object.__setattr__(self,'provider_id',expected)
         if self.provider_id!=expected:raise ValueError('Provider mode/identity mismatch')
         if self.mode in ('laya','gliclass'):
-            from pathlib import Path
-            from ..backends import parse_revision_pins,REPOSITORIES
-            revision=parse_revision_pins(Path(__file__).resolve().parents[2]/'model-revisions.env')[REPOSITORIES[self.mode][1]]
-            if self.model_revision is None:object.__setattr__(self,'model_revision',revision)
-            if self.model_revision!=revision:raise ValueError('Only the committed cached checkpoint pin is supported')
+            if self.model_revision is None and not _historical:
+                object.__setattr__(self,'model_revision',configured_revision(self.mode))
+            if not isinstance(self.model_revision,str) or not re.fullmatch('[0-9a-f]{40}',self.model_revision):
+                raise ValueError('Local checkpoint requires a recorded full commit SHA')
+            if not _historical:self.validate_new()
             if self.scenario!='success' or self.delay_ms!=0:raise ValueError('Fake settings cannot configure real inference')
         elif self.model_revision is not None:raise ValueError('Model revision requires local mode')
         identifier(self.configuration_version)
         if self.scenario not in SCENARIOS or type(self.delay_ms) is not int or not 0<=self.delay_ms<=10000:
             raise ValueError('Invalid fake scenario/delay')
+
+    def validate_new(self):
+        if self.mode in ('laya','gliclass') and self.model_revision!=configured_revision(self.mode):
+            raise ValueError('Only the configured checkpoint pin is supported for new dispatch')
+
+    @classmethod
+    def from_record(cls,record):
+        # Structural validation only; immutable audit history is not current policy.
+        return cls(**record,_historical=True)
 
     def as_record(self):return {f.name:getattr(self,f.name) for f in fields(self) if f.name!='model_revision' or self.model_revision is not None}
 
@@ -141,8 +158,10 @@ class ProviderRequest:
     deadline: datetime
     limits: Limits
     pricing: Pricing
+    _historical: InitVar[bool]=False
 
-    def __post_init__(self):
+    def __post_init__(self,_historical):
+        if not _historical:self.config.validate_new()
         identifier(self.case_id);identifier(self.run_id)
         local=self.config.mode in ('rules','laya','gliclass')
         if local != (self.pricing.charge_kind=='local_no_api_charge'):raise ValueError('Provider/accounting mismatch')
@@ -183,9 +202,9 @@ class ProviderRequest:
     @classmethod
     def from_record(cls,record):
         values=dict(record);values['deadline']=datetime.fromisoformat(values['deadline'])
-        values['limits']=Limits(**values['limits']);values['config']=ProviderConfig(**values['config'])
+        values['limits']=Limits(**values['limits']);values['config']=ProviderConfig.from_record(values['config'])
         pricing=dict(values['pricing']);pricing.pop('simulated');values['pricing']=Pricing(**pricing)
-        return cls(**values)
+        return cls(**values,_historical=True)
 
 
 @dataclass(frozen=True)

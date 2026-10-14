@@ -517,3 +517,32 @@ database/optional checks. Eleven local pure contracts and all eight existing fak
 pure tests pass. Frozen evaluation: 12 passed, zero inference. Browser/backup/worker
 checks are performed by model-free GitHub CI on the published branch, separately
 from the actual cached local model comparison. No owner-run verification is claimed.
+
+## PR #9 checkpoint-provenance and pipe-output review fixes
+
+Richard requested both unresolved P2 findings be fixed on the existing branch,
+with no model runs/downloads/upgrades/OpenAI/AWS. Codex reproduced pin hydration
+failure and stdout/stderr overflows that formerly waited for the deadline.
+Historical deserialization now validates recorded structure independently of new
+request/current-pin policy; old reserved model calls receive explicit no-dispatch
+fallback, while settled/in-flight/forced history remains readable without pins.
+
+Codex added concurrent binary draining with per-stream byte caps and bounded
+prefix diagnostics, preserving deadlines, group termination and direct-child reap.
+Overflow regressions demonstrate detection during consumption (cap+1 byte), not
+post-exit inspection, and database records show fallback without duplicate dispatch.
+
+Independent read-only reviewer ran 16 local pure tests and eight existing provider
+contracts, without models or PostgreSQL. It found an additional pin-file race in
+worker-to-loader startup. Codex added RED-to-GREEN stub regressions and passed the
+admitted revision directly to cached loaders; their default historical behavior is
+unchanged. Historical model reports/negative results remain unmodified, not rerun.
+All patch/test/publication work here is agent-executed. No new Richard-run commands
+or verification are claimed; prior external review attribution remains separate.
+
+Final P2 patch verification (agent-executed, fresh processes): 20 local pure tests;
+32 provider PostgreSQL tests within the required suite of 88 passed/zero skips.
+Full regression: 230 collected, 228 passed/two optional model checks skipped.
+Dependency-free: 140 passed, 90 explicitly reported database/optional skips.
+Frozen evaluation: 12 passed with zero inference. Model-free failure and preserved
+fake walkthroughs passed. No actual model comparison was rerun for these fixes.

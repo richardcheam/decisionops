@@ -105,6 +105,16 @@ def claim(connection,run_id):
         connection.execute(db.provider_calls.update().where(db.provider_calls.c.run_id==run_id).values(
             state='settled',result=result.as_record(),actual_cost_usd=Decimal('0'),finished_at=clock(connection)))
         return None
+    if request.config.mode!='fake':
+        # Current-pin-only dispatch policy. Historical reads never enter this check.
+        try:request.config.validate_new()
+        except (ValueError,OSError) as error:
+            from .local_provider import local_result
+            kind='checkpoint_policy_changed' if isinstance(error,ValueError) else 'checkpoint_policy_unavailable'
+            result=local_result(request,status='unavailable',error=kind)
+            connection.execute(db.provider_calls.update().where(db.provider_calls.c.run_id==run_id).values(
+                state='settled',result=result.as_record(),actual_cost_usd=Decimal('0'),finished_at=clock(connection)))
+            return None
     connection.execute(db.provider_calls.update().where(db.provider_calls.c.run_id==run_id).values(state='dispatching',dispatch_count=1))
     return get_call(connection,run_id)
 

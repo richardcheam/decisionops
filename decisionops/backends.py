@@ -115,8 +115,11 @@ def canonicalize_named_scores(scores: Mapping[str, float], candidate_ids: Sequen
 class GLiClassActionRanker:
     """Reusable offline GLiClass single-label ranker for arbitrary short candidates."""
 
-    def __init__(self, revision_file: Path):
+    def __init__(self, revision_file: Path, model_revision: str | None = None):
         self.revision_file = revision_file
+        if model_revision is not None and not re.fullmatch(r"[0-9a-f]{40}", model_revision):
+            raise ValueError("Explicit checkpoint revision must be a full commit SHA")
+        self.model_revision = model_revision
         self.load_seconds = 0.0
         self._pipeline = None
 
@@ -129,9 +132,11 @@ class GLiClassActionRanker:
         from transformers import AutoTokenizer
 
         torch.set_num_threads(4)
-        pins = parse_revision_pins(self.revision_file)
         repository, revision_key = REPOSITORIES["gliclass"]
-        path = offline_model_path(hf_hub_download, repository, pins[revision_key])
+        # Commerce passes its immutable request revision; historical callers
+        # retain their existing pin-file behaviour when no override is supplied.
+        revision = self.model_revision if self.model_revision is not None else parse_revision_pins(self.revision_file)[revision_key]
+        path = offline_model_path(hf_hub_download, repository, revision)
         model = GLiClassModel.from_pretrained(path, local_files_only=True)
         model.eval()
         tokenizer = AutoTokenizer.from_pretrained(path, local_files_only=True)
@@ -155,8 +160,11 @@ class GLiClassActionRanker:
 class LayaActionAgent:
     """Reusable offline Laya choice agent for the bounded workflow."""
 
-    def __init__(self, revision_file: Path):
+    def __init__(self, revision_file: Path, model_revision: str | None = None):
         self.revision_file = revision_file
+        if model_revision is not None and not re.fullmatch(r"[0-9a-f]{40}", model_revision):
+            raise ValueError("Explicit checkpoint revision must be a full commit SHA")
+        self.model_revision = model_revision
         self.load_seconds = 0.0
         self._agent = None
 
@@ -168,9 +176,11 @@ class LayaActionAgent:
         import laya
 
         torch.set_num_threads(4)
-        pins = parse_revision_pins(self.revision_file)
         repository, revision_key = REPOSITORIES["laya"]
-        path = offline_model_path(hf_hub_download, repository, pins[revision_key])
+        # Commerce passes its immutable request revision; historical callers
+        # retain their existing pin-file behaviour when no override is supplied.
+        revision = self.model_revision if self.model_revision is not None else parse_revision_pins(self.revision_file)[revision_key]
+        path = offline_model_path(hf_hub_download, repository, revision)
         self._agent = laya.load(str(path), device="cpu")
         self.load_seconds = time.perf_counter() - started
 

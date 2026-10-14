@@ -31,7 +31,7 @@ def run(payload):
     try:
         import torch
         torch.set_num_threads(4);torch.set_num_interop_threads(1)
-        model=GLiClassActionRanker(pins) if family=='gliclass' else LayaActionAgent(pins)
+        model=GLiClassActionRanker(pins,model_revision=revision) if family=='gliclass' else LayaActionAgent(pins,model_revision=revision)
         model.load();metadata['load_seconds']=time.perf_counter()-start
         begun=time.perf_counter()
         with torch.inference_mode():

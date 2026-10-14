@@ -388,3 +388,95 @@ class ProviderDatabaseTests(unittest.TestCase):
             r=job.result(timeout=5)
         self.assertEqual(r['trace']['application_status'],'stale');self.assertEqual(r['case']['status'],'needs_review')
         self.assertIsNone(r['case']['approval'])
+
+    def test_historical_local_inspection_and_settled_recovery_ignore_rotated_pins(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from decisionops.commerce import providers
+        from decisionops.commerce.local_provider import LocalProvider,local_result,diagnostics
+        from decisionops.commerce.provider_service import recommend,inspect,recover
+        class RecordedLocal(LocalProvider):
+            def choose(self,req):
+                return local_result(req,'staff_review',metadata=diagnostics(req,scores={'present_replacement':.1,'staff_review':.9},
+                    score_meaning='model-free double',load_seconds=0,inference_seconds=0,peak_rss_kib=0))
+        self.local_budget()
+        with tempfile.TemporaryDirectory() as root:
+            pins=Path(root)/'pins.env';pins.write_text('GLICLASS_REV='+'a'*40+'\nLAYA_REV='+'c'*40+'\n')
+            with patch.object(providers,'REVISION_FILE',pins):
+                result=recommend(self.engine,self.opened()['id'],'HISTORY-A','LOCAL-BUDGET',providers.ProviderConfig(mode='gliclass'),provider=RecordedLocal())
+                saved=result['trace']['request'];pins.write_text('GLICLASS_REV='+'b'*40+'\nLAYA_REV='+'d'*40+'\n')
+                with patch.object(providers,'configured_revision',side_effect=AssertionError('no pin consultation')),patch('subprocess.Popen',side_effect=AssertionError('no worker')):
+                    seen=inspect(self.engine,'HISTORY-A');recovered=recover(self.engine,'HISTORY-A')
+                for r in (seen,recovered):
+                    self.assertEqual(r['trace']['request'],saved)
+                    self.assertEqual(r['trace']['result']['metadata']['model_revision'],'a'*40)
+                    self.assertEqual(r['trace']['dispatch_count'],1)
+
+    def test_reserved_old_checkpoint_is_controlled_no_dispatch_after_rotation(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from decisionops.commerce import providers
+        from decisionops.commerce.provider_service import prepare,inspect,recover
+        self.local_budget()
+        with tempfile.TemporaryDirectory() as root:
+            pins=Path(root)/'pins.env';pins.write_text('GLICLASS_REV='+'a'*40+'\nLAYA_REV='+'c'*40+'\n')
+            with patch.object(providers,'REVISION_FILE',pins):
+                prepare(self.engine,self.opened()['id'],'RESERVED-A','LOCAL-BUDGET',providers.ProviderConfig(mode='gliclass'),deadline_seconds=30)
+                saved=inspect(self.engine,'RESERVED-A')['trace']['request']
+                pins.write_text('GLICLASS_REV='+'b'*40+'\nLAYA_REV='+'d'*40+'\n')
+                with patch('subprocess.Popen',side_effect=AssertionError('old checkpoint must not dispatch')):
+                    result=recover(self.engine,'RESERVED-A')
+                self.assertEqual(result['trace']['request'],saved)
+                self.assertEqual(result['trace']['result']['metadata']['model_revision'],'a'*40)
+                self.assertEqual(result['trace']['dispatch_count'],0)
+                self.assertEqual(result['trace']['result']['error_kind'],'checkpoint_policy_changed')
+                self.assertEqual(result['trace']['state'],'settled')
+                self.assertEqual(result['trace']['application_status'],'fallback')
+                self.assertEqual(result['case']['status'],'escalated')
+                prepare(self.engine,self.opened()['id'],'NEW-B','LOCAL-BUDGET',providers.ProviderConfig(mode='gliclass'),deadline_seconds=30)
+                self.assertEqual(inspect(self.engine,'NEW-B')['trace']['request']['config']['model_revision'],'b'*40)
+
+    def test_inflight_recovery_and_forced_history_remain_pin_independent(self):
+        import tempfile,time
+        from pathlib import Path
+        from unittest.mock import patch
+        from decisionops.commerce import providers,provider_budget as ledger
+        from decisionops.commerce.provider_service import prepare,recover
+        self.local_budget()
+        with tempfile.TemporaryDirectory() as root:
+            pins=Path(root)/'pins.env';pins.write_text('GLICLASS_REV='+'a'*40+'\nLAYA_REV='+'c'*40+'\n')
+            with patch.object(providers,'REVISION_FILE',pins):
+                config=providers.ProviderConfig(mode='gliclass')
+                prepare(self.engine,self.opened('ORD-HISTORY')['id'],'FORCED-A','LOCAL-BUDGET',config,deadline_seconds=30)
+                prepare(self.engine,self.opened()['id'],'INFLIGHT-A','LOCAL-BUDGET',config,deadline_seconds=.1)
+                with self.engine.begin() as c:self.assertEqual(ledger.claim(c,'INFLIGHT-A')['dispatch_count'],1)
+                pins.write_text('GLICLASS_REV='+'b'*40+'\nLAYA_REV='+'d'*40+'\n');time.sleep(.15)
+                with patch.object(providers,'configured_revision',side_effect=AssertionError('no pin consultation')),patch('subprocess.Popen',side_effect=AssertionError('no worker')):
+                    forced=recover(self.engine,'FORCED-A');uncertain=recover(self.engine,'INFLIGHT-A')
+                self.assertTrue(forced['trace']['result']['metadata']['forced_choice'])
+                self.assertEqual(forced['trace']['dispatch_count'],0)
+                self.assertEqual(uncertain['trace']['state'],'uncertain')
+                self.assertEqual(uncertain['trace']['dispatch_count'],1)
+                self.assertEqual(uncertain['trace']['result']['metadata']['model_revision'],'a'*40)
+
+    def test_output_overflow_falls_back_with_bounded_persisted_diagnostics(self):
+        import sys,tempfile
+        from pathlib import Path
+        from decisionops.commerce.providers import ProviderConfig
+        from decisionops.commerce.local_provider import LocalProvider
+        from decisionops.commerce.provider_service import recommend,recover
+        self.local_budget()
+        with tempfile.TemporaryDirectory() as root:
+            worker=Path(root)/'noisy.py';worker.write_text('import os,time\nos.write(2,b"x"*80000);time.sleep(30)\n')
+            result=recommend(self.engine,self.opened()['id'],'OVERFLOW','LOCAL-BUDGET',ProviderConfig(mode='gliclass'),
+                provider=LocalProvider(python=sys.executable,worker=worker))
+        trace=result['trace'];metadata=trace['result']['metadata']
+        self.assertEqual(trace['result']['error_kind'],'worker_output_overflow')
+        self.assertEqual(trace['state'],'settled');self.assertEqual(trace['application_status'],'fallback')
+        self.assertEqual(result['case']['status'],'escalated');self.assertIsNone(result['case']['approval'])
+        self.assertEqual(metadata['stream_bytes_consumed']['stderr'],65537)
+        self.assertEqual(len(metadata['stream_diagnostics']['stderr']),1024)
+        self.assertTrue(metadata['process_reaped'])
+        self.assertEqual(recover(self.engine,'OVERFLOW')['trace']['dispatch_count'],1)

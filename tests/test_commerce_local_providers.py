@@ -109,7 +109,7 @@ class LocalContractTests(unittest.TestCase):
         from types import SimpleNamespace
         from contextlib import nullcontext
         class FailedRanker:
-            def __init__(self,pins):pass
+            def __init__(self,pins,model_revision=None):pass
             def load(self):pass
             def rank(self,*args):raise RuntimeError('inference failed')
         req=self.local_request()
@@ -126,3 +126,120 @@ class LocalContractTests(unittest.TestCase):
         r=validate_result(req,RulesProvider().choose(req))
         self.assertEqual(r.selected_choice,'present_replacement');self.assertFalse(r.simulated)
         self.assertIsNone(r.input_tokens);self.assertIsNone(r.confidence)
+
+    def test_recorded_revision_survives_pin_change_without_reading_current_pins(self):
+        from decisionops.commerce import providers
+        from decisionops.commerce.providers import ProviderRequest
+        with tempfile.TemporaryDirectory() as root:
+            pins=Path(root)/'pins.env';pins.write_text('GLICLASS_REV='+'a'*40+'\nLAYA_REV='+'c'*40+'\n')
+            with patch.object(providers,'REVISION_FILE',pins):
+                old=request(config=ProviderConfig(mode='gliclass'),pricing=Pricing.local())
+                saved=old.as_record();pins.write_text('GLICLASS_REV='+'b'*40+'\nLAYA_REV='+'d'*40+'\n')
+                with patch.object(providers,'configured_revision',side_effect=AssertionError('historical hydration must not read pins')):
+                    hydrated=ProviderRequest.from_record(saved)
+                self.assertEqual(hydrated.config.model_revision,'a'*40)
+                self.assertEqual(hydrated.as_record(),saved)
+                self.assertEqual(ProviderConfig(mode='gliclass').model_revision,'b'*40)
+                with self.assertRaises(ValueError):ProviderConfig(mode='gliclass',model_revision='a'*40)
+                with self.assertRaises(ValueError):request(config=hydrated.config,pricing=Pricing.local())
+                saved['config']['model_revision']='main'
+                with self.assertRaises(ValueError):ProviderRequest.from_record(saved)
+
+    def test_stdout_overflow_is_detected_while_child_is_still_running(self):
+        self.assert_overflow('stdout')
+
+    def test_stderr_overflow_is_detected_while_child_is_still_running(self):
+        self.assert_overflow('stderr')
+
+    def assert_overflow(self,stream):
+        from decisionops.commerce.local_provider import LocalProvider
+        import sys,time
+        with tempfile.TemporaryDirectory() as root:
+            worker=Path(root)/'noisy.py'
+            # Multibyte bytes overflow even though character count is below 64KiB.
+            worker.write_text('import os,time\nos.write('+('1' if stream=='stdout' else '2')+', b"\\xc3\\xa9"*40000)\ntime.sleep(30)\n')
+            begin=time.monotonic();r=LocalProvider(python=sys.executable,worker=worker).choose(self.local_request())
+        self.assertEqual(r.error_kind,'worker_output_overflow')
+        self.assertEqual(r.status,'invalid');self.assertIsNone(r.selected_choice)
+        self.assertLess(time.monotonic()-begin,2)
+        self.assertTrue(r.metadata['process_reaped'])
+        self.assertEqual(r.metadata['overflow_stream'],stream)
+        cap=r.metadata['stream_limits_bytes'][stream]
+        self.assertEqual(r.metadata['stream_bytes_consumed'][stream],cap+1)
+        self.assertLessEqual(r.metadata['stream_bytes_retained'][stream],cap)
+        self.assertLessEqual(len(r.metadata['stream_diagnostics'][stream]),1024)
+
+    def test_simultaneous_stream_overflow_drains_both_without_deadlock(self):
+        from decisionops.commerce.local_provider import LocalProvider
+        import sys
+        with tempfile.TemporaryDirectory() as root:
+            worker=Path(root)/'both.py'
+            worker.write_text('import os,time,threading\ndef noisy(fd):\n for i in range(200):\n  os.write(fd,b"x"*4096);time.sleep(.001)\n time.sleep(30)\nthreading.Thread(target=noisy,args=(2,)).start()\nnoisy(1)\n')
+            r=LocalProvider(python=sys.executable,worker=worker).choose(self.local_request())
+        self.assertEqual(r.error_kind,'worker_output_overflow');self.assertTrue(r.metadata['process_reaped'])
+        for stream in ('stdout','stderr'):
+            self.assertGreater(r.metadata['stream_bytes_consumed'][stream],0)
+            self.assertLessEqual(r.metadata['stream_bytes_retained'][stream],r.metadata['stream_limits_bytes'][stream])
+
+    def test_closed_streams_do_not_hide_a_live_child_from_deadline(self):
+        from decisionops.commerce.local_provider import LocalProvider
+        import sys
+        with tempfile.TemporaryDirectory() as root:
+            worker=Path(root)/'closed.py';worker.write_text('import os,time\nos.close(1);os.close(2);time.sleep(30)\n')
+            req=replace(self.local_request(),deadline=datetime.now(timezone.utc)+timedelta(seconds=.1))
+            r=LocalProvider(python=sys.executable,worker=worker).choose(req)
+        self.assertEqual(r.status,'timeout');self.assertTrue(r.metadata['process_reaped'])
+
+    def test_both_streams_below_caps_are_drained_before_exit(self):
+        from decisionops.commerce.local_provider import LocalProvider
+        import sys
+        with tempfile.TemporaryDirectory() as root:
+            worker=Path(root)/'finite.py'
+            worker.write_text('import os,threading\ndef output(fd):\n for i in range(12):os.write(fd,b"x"*4096)\nt=threading.Thread(target=output,args=(2,));t.start();output(1);t.join()\n')
+            r=LocalProvider(python=sys.executable,worker=worker).choose(self.local_request())
+        self.assertEqual(r.error_kind,'malformed_worker_result');self.assertTrue(r.metadata['process_reaped'])
+        self.assertEqual(r.metadata['stream_bytes_consumed'],{'stdout':49152,'stderr':49152})
+
+    def test_overflow_cleans_up_descendant_after_parent_exits(self):
+        from decisionops.commerce.local_provider import LocalProvider
+        import sys,time
+        with tempfile.TemporaryDirectory() as root:
+            worker=Path(root)/'descendant.py'
+            worker.write_text('import subprocess,sys\nsubprocess.Popen([sys.executable,"-c","import os,time;os.write(2,b\\\"x\\\"*80000);time.sleep(30)"])\n')
+            before=time.monotonic();r=LocalProvider(python=sys.executable,worker=worker).choose(self.local_request())
+        self.assertEqual(r.error_kind,'worker_output_overflow');self.assertTrue(r.metadata['process_reaped'])
+        self.assertLess(time.monotonic()-before,2)
+
+    def test_cached_loaders_use_explicit_recorded_revision_not_rotated_file(self):
+        from decisionops import backends
+        from types import SimpleNamespace
+        called=[]
+        class Model:
+            @classmethod
+            def from_pretrained(cls,*a,**kw):return cls()
+            def eval(self):pass
+        fake_torch=SimpleNamespace(set_num_threads=lambda n:None)
+        fake_hub=SimpleNamespace(hf_hub_download=lambda **kw:called.append(kw['revision']) or '/cached/snapshot/model.safetensors')
+        fake_gli=SimpleNamespace(GLiClassModel=Model,ZeroShotClassificationPipeline=lambda *a,**kw:None)
+        fake_transformers=SimpleNamespace(AutoTokenizer=Model)
+        fake_laya=SimpleNamespace(load=lambda *a,**kw:None)
+        with patch.dict('sys.modules',{'torch':fake_torch,'huggingface_hub':fake_hub,'gliclass':fake_gli,'transformers':fake_transformers,'laya':fake_laya}),patch.object(backends,'parse_revision_pins',side_effect=AssertionError('loader must not reread mutable pins')):
+            backends.GLiClassActionRanker(Path('/configured/pins'),model_revision='a'*40).load()
+            backends.LayaActionAgent(Path('/configured/pins'),model_revision='c'*40).load()
+        self.assertEqual(called,['a'*40,'c'*40])
+
+    def test_worker_forwards_admitted_revision_to_loader(self):
+        from decisionops.commerce import local_model_worker as worker
+        from decisionops.commerce.local_provider import model_features
+        from types import SimpleNamespace
+        from contextlib import nullcontext
+        seen=[]
+        class Ranker:
+            def __init__(self,pins,model_revision=None):seen.append(model_revision)
+            def load(self):pass
+            def rank(self,*a):return {'present_replacement':.8,'staff_review':.2}
+        torch=SimpleNamespace(set_num_threads=lambda n:None,set_num_interop_threads=lambda n:None,inference_mode=nullcontext)
+        with patch.dict('sys.modules',{'torch':torch}),patch.object(worker,'GLiClassActionRanker',Ranker),patch.object(worker,'parse_revision_pins',return_value={'GLICLASS_REV':'a'*40,'LAYA_REV':'c'*40}),patch('importlib.metadata.version',return_value='model-free double'):
+            r=worker.run({'family':'gliclass','revision':'a'*40,'features':model_features(self.local_request())})
+        self.assertEqual(r['status'],'success');self.assertEqual(seen,['a'*40])
+        self.assertEqual(r['metadata']['model_revision'],'a'*40)
