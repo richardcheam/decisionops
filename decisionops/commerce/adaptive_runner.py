@@ -28,23 +28,31 @@ def tick(engine,fence,adapter=None,fault=None,cancel=None):
         try:call=ledger.prepare(engine,run['id'],fence)
         except ValueError as error:
             if isinstance(error,LeaseLost):raise
+            if cancel is not None and cancel.is_set():return {'event':'worker_stopped','state':run['state']}
             current=service.inspect(engine,run['id'])
             service.advance(engine,run['id'],{'kind':'request_review','reason':'manual_review'},expected_context=current['context_version'],fence=fence)
             return {'event':'review_budget'}
+    if cancel is not None and cancel.is_set():return {'event':'worker_stopped','state':run['state']}
     if fault=='after_reservation':raise Interrupted(fault)
     if call['state']=='reserved':
         call=ledger.claim(engine,call['id'],fence)
         if call is None:return {'event':'claimed_elsewhere'}
+        if cancel is not None and cancel.is_set():
+            with service.transaction(engine) as c:ledger.uncertain(c,call['id'],'worker_shutdown_before_adapter')
+            return {'event':'worker_stopped','state':run['state']}
         if fault=='after_dispatch':raise Interrupted(fault)
-        request=ledger.request_from(call);shutdown=cancel;cancel=Event();queue=Queue(maxsize=1)
+        request=ledger.request_from(call);shutdown=cancel;call_cancel=Event();queue=Queue(maxsize=1)
         adapter=adapter or FakeAdapter()
         if not isinstance(adapter,FakeAdapter):raise ValueError('Stage 3 admits model-free fake adapters only')
         def invoke():
-            try:queue.put(('result',adapter.choose(request,cancel)))
+            try:queue.put(('result',adapter.choose(request,call_cancel)))
             except Exception as error:queue.put(('error',type(error).__name__))
+        if shutdown is not None and shutdown.is_set():
+            with service.transaction(engine) as c:ledger.uncertain(c,call['id'],'worker_shutdown_before_adapter')
+            return {'event':'worker_stopped','state':run['state']}
         child=Thread(target=invoke,daemon=True);child.start()
         received=None;reason='interrupted_decision'
-        while not cancel.is_set() and not (shutdown is not None and shutdown.is_set()):
+        while not call_cancel.is_set() and not (shutdown is not None and shutdown.is_set()):
             remaining=(call['deadline']-datetime.now(timezone.utc)).total_seconds()
             if remaining<=0:reason='decision_deadline';break
             try:
@@ -61,16 +69,18 @@ def tick(engine,fence,adapter=None,fault=None,cancel=None):
                         actual=c.execute(sa.select(db.cases).where(db.cases.c.id==current['case_id'])).mappings().one()
                         if not service.matches(current,actual):raise LeaseLost('Staff changed case')
                 except Exception:reason='lease_or_state_lost';break
-        cancel.set();child.join(timeout=1)
+        call_cancel.set();child.join(timeout=1)
         with service.transaction(engine) as c:
             if received is None:ledger.uncertain(c,call['id'],reason)
             else:
                 try:ledger.settle(c,call['id'],received)
                 except ValueError:ledger.uncertain(c,call['id'],'malformed_result')
+        if shutdown is not None and shutdown.is_set():return {'event':'worker_stopped','state':run['state']}
         if received is None:return {'event':'uncertain_decision','call_id':call['id'],'reason':reason}
         if fault=='after_result':raise Interrupted(fault)
         with service.transaction(engine,readonly=True) as c:call=ledger.get(c,call['id'])
     if call['state']!='settled':return {'event':'uncertain_decision','call_id':call['id']}
+    if cancel is not None and cancel.is_set():return {'event':'worker_stopped','state':run['state']}
     current=service.inspect(engine,run['id'])
     if (current['context_version']!=call['context_version'] or datetime.now(timezone.utc)>=call['deadline']):
         with service.guarded(engine,run['id'],fence) as (c,bound,case):

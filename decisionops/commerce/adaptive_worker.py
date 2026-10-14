@@ -30,7 +30,7 @@ def main(argv=None):
             with service.transaction(engine,readonly=True) as c:job=jobs.get(c,args.job)
             result={'job':job,'run':service.inspect(engine,job['run_id']),'graph':graph.inspect(engine,args.job)}
         elif args.command=='cancel':result=jobs.cancel(engine,args.job)
-        elif args.command=='resume' and not args.token:result=graph.resume(engine,args.job)
+        elif args.command=='resume' and not args.token:result=graph.resume(engine,args.job,cancel=stopped)
         else:
             if args.command=='once':owned=jobs.claim(engine)
             elif args.token:
@@ -42,9 +42,13 @@ def main(argv=None):
             if args.command=='recover':result=jobs.recover(engine,fence)
             else:
                 result=run_until_pause(engine,fence,cancel=stopped)
-                graph.project(engine,owned['id'])
+                if not stopped.is_set():graph.project(engine,owned['id'],fence,cancel=stopped,advance=False)
         print(json.dumps(result,indent=2,default=lambda v:str(v) if isinstance(v,Decimal) else v.isoformat()))
         return 0
+    except graph.CheckpointFailure as e:
+        print(json.dumps({'event':'adaptive_checkpoint_error','kind':type(e).__name__,
+                          'message':str(e),'domain_authority':'PostgreSQL','automatic_retry':False}),file=sys.stderr)
+        return 3
     except (ValueError,SQLAlchemyError) as e:
         print(json.dumps({'event':'adaptive_worker_error','kind':type(e).__name__,'message':str(e) if isinstance(e,ValueError) else 'Check isolated database readiness/migrations'}),file=sys.stderr)
         return 4 if isinstance(e,LeaseLost) else 2

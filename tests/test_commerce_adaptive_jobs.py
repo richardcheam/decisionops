@@ -288,4 +288,176 @@ class AdaptiveJobTests(unittest.TestCase):
         self.assertEqual(run['state'],'active');self.assertEqual(run['decision_attempts'],0)
         with self.engine.begin() as c:self.assertEqual(j.get(c,owned['id'])['token'],owned['token'])
 
+    def test_plain_resume_cli_sigterm_stops_fake_without_operator_cancel(self):
+        import signal,subprocess,sys,tempfile,json
+        from pathlib import Path
+        from decisionops.commerce import adaptive_workflow as w,adaptive_accounting as a,adaptive_jobs as j
+        queued=self.queued();w.setup_checkpoints(self.engine)
+        with tempfile.TemporaryDirectory() as tmp:
+            marker=Path(tmp)/'launched'
+            code="""
+import sys
+from pathlib import Path
+from decisionops.commerce.adaptive_recommendations import FakeAdapter
+from decisionops.commerce import adaptive_jobs
+from decisionops.commerce.adaptive_worker import main
+original=FakeAdapter.choose
+def slow(self,request,cancel):
+    Path(sys.argv[2]).write_text('launched')
+    return original(FakeAdapter(delay=5),request,cancel)
+FakeAdapter.choose=slow
+def forbidden(*args,**kwargs):raise AssertionError('Worker obtained operator cancellation authority')
+adaptive_jobs.cancel=forbidden
+raise SystemExit(main(['resume','--job',sys.argv[1]]))
+"""
+            env={**os.environ,'COMMERCE_DATABASE_URL':self.engine.url.render_as_string(hide_password=False)}
+            child=subprocess.Popen([sys.executable,'-B','-c',code,queued['id'],str(marker)],env=env,
+                                   stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            try:
+                end=time.monotonic()+6
+                while not marker.exists() and child.poll() is None and time.monotonic()<end:time.sleep(.02)
+                self.assertTrue(marker.exists(),'Actual plain-resume CLI did not launch its cooperative fake')
+                child.send_signal(signal.SIGTERM)
+                try:out,err=child.communicate(timeout=3)
+                except subprocess.TimeoutExpired:
+                    child.kill();out,err=child.communicate();self.fail('Plain resume ignored SIGTERM during fake work: '+err)
+                self.assertEqual(child.returncode,0,err)
+                self.assertEqual(json.loads(out)['event'],'worker_stopped')
+            finally:
+                if child.poll() is None:child.kill();child.communicate()
+        run=self.s.inspect(self.engine,queued['run_id'])
+        self.assertEqual(run['state'],'active');self.assertEqual(run['decision_attempts'],1);self.assertEqual(run['tool_attempts'],0)
+        with self.engine.begin() as c:
+            call=a.latest(c,run['id']);self.assertEqual(call['state'],'uncertain');self.assertEqual(call['dispatch_count'],1)
+            self.assertIsNone(call['actual_ms']);job=j.get(c,queued['id']);self.assertEqual(job['status'],'running');self.assertIsNotNone(job['token'])
+            calls=c.exec_driver_sql('SELECT count(*) FROM commerce_adaptive_calls WHERE run_id=%s',(run['id'],)).scalar_one()
+            self.assertEqual(calls,1)
+
+    def test_shutdown_after_reservation_or_claim_never_launches_adapter(self):
+        from threading import Event
+        from decisionops.commerce import adaptive_jobs as j,adaptive_accounting as a
+        from decisionops.commerce.adaptive_runner import tick
+        for boundary in ('prepare','claim'):
+            with self.subTest(boundary=boundary):
+                owned=self.claim(self.queued());f=j.Fence(owned['id'],owned['token']);stop=Event();original=getattr(a,boundary)
+                def stopped_after_wait(*args,**kwargs):
+                    result=original(*args,**kwargs);stop.set();return result
+                with patch.object(a,boundary,side_effect=stopped_after_wait),patch('decisionops.commerce.adaptive_recommendations.FakeAdapter.choose',side_effect=AssertionError('Adapter launched after shutdown')):
+                    result=tick(self.engine,f,cancel=stop)
+                self.assertEqual(result['event'],'worker_stopped')
+                run=self.s.inspect(self.engine,owned['run_id']);self.assertEqual(run['state'],'active');self.assertEqual(run['decision_attempts'],1)
+                self.assertEqual(run['tool_attempts'],0)
+                with self.engine.begin() as c:
+                    call=a.latest(c,run['id']);self.assertEqual(call['state'],'reserved' if boundary=='prepare' else 'uncertain')
+                    self.assertEqual(call['dispatch_count'],0 if boundary=='prepare' else 1);self.assertIsNone(call['actual_ms'])
+                    self.assertEqual(j.get(c,owned['id'])['token'],owned['token'])
+
+    def test_checkpoint_lock_is_bounded_after_domain_commit_and_recovery_does_not_repeat(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from decisionops.commerce import adaptive_workflow as w,adaptive_jobs as j,adaptive_accounting as a
+        from decisionops.commerce.adaptive_runner import tick
+        owned=self.claim(self.queued(),1);f=j.Fence(owned['id'],owned['token']);w.setup_checkpoints(self.engine)
+        tick(self.engine,f)
+        before=self.s.inspect(self.engine,owned['run_id']);self.assertEqual(before['tool_attempts'],1)
+        namespace,_=w.checkpoint_url(self.engine)
+        locker=self.admin.connect();tx=locker.begin()
+        locker.exec_driver_sql('LOCK TABLE "'+namespace+'".checkpoints IN ACCESS EXCLUSIVE MODE')
+        def attempt():
+            start=time.monotonic()
+            try:w.project(self.engine,owned['id'],f,advance=False)
+            except Exception as e:return time.monotonic()-start,e
+            return time.monotonic()-start,None
+        try:
+            with ThreadPoolExecutor(1) as pool:
+                pending=pool.submit(attempt)
+                # A real SQL table lock is retained longer than the remaining lease.
+                time.sleep(2);tx.rollback()
+                elapsed,error=pending.result(4)
+            self.assertIsNotNone(error);self.assertLess(elapsed,1.4)
+            self.assertEqual(type(error).__name__,'CheckpointFailure')
+            print({'boundary':'checkpoint_read_lock','elapsed_seconds':round(elapsed,3),'domain_effects_repeated':0})
+        finally:
+            if tx.is_active:tx.rollback()
+            locker.close()
+        after=self.s.inspect(self.engine,owned['run_id'])
+        self.assertEqual(after['context_version'],before['context_version']);self.assertEqual(after['decision_attempts'],1)
+        self.assertEqual(after['tool_attempts'],1)
+        with self.engine.begin() as c:first=a.latest(c,owned['run_id']);self.assertEqual(first['application_status'],'applied')
+        recovered=w.resume(self.engine,owned['id']);self.assertEqual(recovered['phase'],'proposed')
+        final=self.s.inspect(self.engine,owned['run_id']);self.assertEqual(final['decision_attempts'],8);self.assertEqual(final['tool_attempts'],7)
+        with self.engine.begin() as c:
+            same=a.get(c,first['id']);self.assertEqual(same['dispatch_count'],1)
+            self.assertEqual(c.exec_driver_sql('SELECT count(*) FROM commerce_proposals').scalar_one(),1)
+        again=w.resume(self.engine,owned['id']);self.assertEqual(again['context_version'],recovered['context_version'])
+
+    def test_checkpoint_metadata_connection_has_real_statement_and_lock_limits(self):
+        import psycopg
+        from decisionops.commerce import adaptive_workflow as w
+        w.setup_checkpoints(self.engine);_,url=w.checkpoint_url(self.engine)
+        with psycopg.connect(url) as c:
+            self.assertNotEqual(c.execute('SHOW statement_timeout').fetchone()[0],'0')
+            self.assertNotEqual(c.execute('SHOW lock_timeout').fetchone()[0],'0')
+
+    def test_checkpoint_write_timeout_preserves_committed_publication(self):
+        from decisionops.commerce import adaptive_workflow as w,adaptive_jobs as j,adaptive_accounting as a
+        from decisionops.commerce.adaptive_runner import tick
+        owned=self.claim(self.queued());f=j.Fence(owned['id'],owned['token']);w.setup_checkpoints(self.engine)
+        for _ in range(7):tick(self.engine,f)
+        j.renew(self.engine,f.job_id,f.token,1)
+        namespace,_=w.checkpoint_url(self.engine);locker=self.admin.connect();tx=locker.begin()
+        locker.exec_driver_sql('SET LOCAL statement_timeout=2000')
+        def publish_then_lock(*args,**kwargs):
+            result=tick(*args,**kwargs)
+            self.assertEqual(result['state'],'proposed')
+            locker.exec_driver_sql('LOCK TABLE "'+namespace+'".checkpoints IN ACCESS EXCLUSIVE MODE')
+            return result
+        started=time.monotonic()
+        try:
+            with patch.object(w,'tick',side_effect=publish_then_lock):
+                with self.assertRaises(w.CheckpointFailure):w.project(self.engine,owned['id'],f)
+            self.assertLess(time.monotonic()-started,1.5)
+            print({'boundary':'checkpoint_write_after_publication','elapsed_seconds':round(time.monotonic()-started,3),'proposal_committed':True})
+            committed=self.s.inspect(self.engine,owned['run_id'])
+            self.assertEqual(committed['state'],'proposed');self.assertEqual(committed['decision_attempts'],8)
+            with self.engine.begin() as c:
+                self.assertEqual(a.latest(c,owned['run_id'])['application_status'],'applied')
+                self.assertEqual(j.get(c,owned['id'])['status'],'completed')
+        finally:tx.rollback();locker.close()
+        with patch('decisionops.commerce.adaptive_recommendations.FakeAdapter.choose',side_effect=AssertionError('Repeated settled effect')):
+            reconstructed=w.resume(self.engine,owned['id'])
+        self.assertEqual(reconstructed['phase'],'proposed');self.assertEqual(reconstructed['context_version'],committed['context_version'])
+        after=self.s.inspect(self.engine,owned['run_id']);self.assertEqual(after['decision_attempts'],8);self.assertEqual(after['tool_attempts'],7)
+        with self.engine.begin() as c:self.assertEqual(c.exec_driver_sql('SELECT count(*) FROM commerce_proposals').scalar_one(),1)
+
+    def test_shutdown_during_real_reservation_and_claim_lock_waits(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Event
+        from decisionops.commerce import adaptive_jobs as j,adaptive_accounting as a
+        from decisionops.commerce.adaptive_runner import tick
+        for boundary in ('reservation','claim'):
+            with self.subTest(boundary=boundary):
+                owned=self.claim(self.queued());f=j.Fence(owned['id'],owned['token']);stop=Event()
+                if boundary=='claim':a.prepare(self.engine,owned['run_id'],f)
+                run=self.s.inspect(self.engine,owned['run_id']);locker=self.engine.connect();tx=locker.begin()
+                locker.exec_driver_sql('SELECT id FROM commerce_cases WHERE id=%s FOR UPDATE',(run['case_id'],))
+                try:
+                    with ThreadPoolExecutor(1) as pool,patch('decisionops.commerce.adaptive_recommendations.FakeAdapter.choose',side_effect=AssertionError('Dispatch after shutdown in real lock wait')):
+                        pending=pool.submit(tick,self.engine,f,cancel=stop)
+                        waiting=False;end=time.monotonic()+3
+                        while not waiting and time.monotonic()<end:
+                            with self.admin.connect() as c:
+                                waiting=c.exec_driver_sql("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%%commerce_cases%%' AND pid<>pg_backend_pid())").scalar_one()
+                            if not waiting:time.sleep(.01)
+                        stop.set();tx.rollback()
+                        self.assertTrue(waiting,'Worker never reached the actual PostgreSQL reservation/claim lock wait')
+                        result=pending.result(3)
+                    self.assertEqual(result['event'],'worker_stopped')
+                    current=self.s.inspect(self.engine,owned['run_id']);self.assertEqual(current['decision_attempts'],1);self.assertEqual(current['tool_attempts'],0)
+                    with self.engine.begin() as c:
+                        call=a.latest(c,owned['run_id']);self.assertEqual(call['state'],'reserved' if boundary=='reservation' else 'uncertain')
+                        self.assertEqual(j.get(c,owned['id'])['token'],owned['token'])
+                finally:
+                    if tx.is_active:tx.rollback()
+                    locker.close()
+
 if __name__=='__main__':unittest.main()
