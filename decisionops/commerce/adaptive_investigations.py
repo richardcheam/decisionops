@@ -82,6 +82,29 @@ def locked(connection,run_id):
     return row(connection,run_id,True),case
 
 
+def check_fence(connection,run,fence,lock=True):
+    scheduled=run['contracts'].get('executor')=='commerce-adaptive-jobs/v1'
+    if scheduled and fence is None:
+        from .jobs import LeaseLost
+        raise LeaseLost('Scheduled adaptive run requires current job ownership')
+    if fence is not None:
+        job=fence.check(connection,run,lock)
+        if isinstance(connection,DeadlineConnection):
+            connection.end=min(connection.end,time.monotonic()+max(0,(job['lease_until']-clock(connection)).total_seconds()))
+    return True
+
+
+@contextmanager
+def guarded(engine,run_id,fence=None):
+    with transaction(engine) as raw:
+        c=bounded_active(raw,run_id)
+        check_fence(c,row(c,run_id),fence,lock=False)
+        run,case=locked(c,run_id)
+        check_fence(c,run,fence)
+        yield c,run,case
+        if fence is not None:fence.check(raw,row(raw,run_id))
+
+
 def step(connection,run,kind,data,**updates):
     version=run['context_version']+1
     values={'context_version':version,**updates}
@@ -217,7 +240,7 @@ def finish(connection,run,case,history,reason, *, blocker=False,stale=False):
     return step(connection,run,'terminal',terminal,state=state,pending_token=None,pending_context=None,terminal=terminal)
 
 
-def start(engine,case_id,report, *, deadline_seconds=240,policy='fixed'):
+def start(engine,case_id,report, *, deadline_seconds=240,policy='fixed',scheduled=False):
     if not isinstance(report,str) or len(report.encode('utf-8'))>2000:raise ValueError('Report must be at most 2000 UTF-8 bytes')
     if type(deadline_seconds) not in (int,float) or not math.isfinite(deadline_seconds) or not 0<deadline_seconds<=240:
         raise ValueError('Deadline must be positive and at most 240 seconds')
@@ -238,8 +261,10 @@ def start(engine,case_id,report, *, deadline_seconds=240,policy='fixed'):
         run_id=identifier('ARUN')
         c.execute(db.adaptive_runs.insert().values(id=run_id,case_id=case_id,generation=updated['generation'],
             case_revision=updated['case_revision'],request=json.loads(canonical(case['request'])),report=report,
-            contracts={'observations':CONTRACT,'actions':ACTION_CONTRACT,'policy':policy},
+            contracts={'observations':CONTRACT,'actions':ACTION_CONTRACT,'policy':policy,**({'executor':'commerce-adaptive-jobs/v1'} if scheduled else {})},
             state='active',created_at=now,deadline=now+timedelta(seconds=deadline_seconds)))
+        if scheduled:
+            c.execute(db.adaptive_jobs.insert().values(id=identifier('AJOB'),run_id=run_id,created_at=now))
         run=row(c,run_id)
         step(c,run,'started',{'superseded_approval_id':case['approval_id'],'case_revision':updated['case_revision']})
         event(c,case_id,'adaptive_started',{'run_id':run_id,'generation':updated['generation'],
@@ -279,7 +304,9 @@ def inspect(engine,run_id):
     with transaction(engine,readonly=True) as c:
         run=row(c,run_id);history,steps,observations,edges,counts=snapshot(c,run);now=clock(c)
         return {**run,'steps':steps,'observations':[r['record'] for r in observations],
-                'supersessions':edges,'tool_counts':counts,'assessment':history.assess(now)}
+                'supersessions':edges,'tool_counts':counts,'assessment':history.assess(now),
+                **({'job':dict(c.execute(sa.select(db.adaptive_jobs).where(db.adaptive_jobs.c.run_id==run_id)).mappings().one())}
+                   if run['contracts'].get('executor')=='commerce-adaptive-jobs/v1' else {})}
 
 
 def policy_request(engine,run_id):
@@ -339,18 +366,24 @@ def publish(connection,run,case,history):
     return step(bounded,run,'terminal',terminal,state='proposed',pending_token=None,pending_context=None,terminal=terminal)
 
 
-def advance(engine,run_id,raw_action, *, expected_context,fallback=False):
+def advance(engine,run_id,raw_action, *, expected_context,fallback=False,fence=None,recommendation_id=None):
     dispatch=None
-    with transaction(engine) as c:
-        c=bounded_active(c,run_id)
-        run,case=locked(c,run_id)
+    with guarded(engine,run_id,fence) as (c,run,case):
         if run['state']!='active':return inspect(engine,run_id)
         if run['context_version']!=expected_context or run['pending_token']:
             raise ValueError('Stale context or pending read; inspect/recover before advancing')
+        if recommendation_id:
+            from . import adaptive_accounting as ledger
+            call=ledger.get(c,recommendation_id,True)
+            if (call['run_id']!=run_id or call['state']!='settled' or call['application_status']!='pending'
+                or call['context_version']!=expected_context or clock(c)>=call['deadline']):raise ValueError('Recommendation binding is stale or already applied')
+            raw_action=call['result']['action'] if call['result']['status']=='success' else {'kind':'policy_unavailable'}
+            ledger.disposition(c,recommendation_id,'applied' if matches(run,case) else 'stale')
+        charge=0 if recommendation_id else 1
         history,steps,observations,edges,counts=snapshot(c,run);now=clock(c)
         if not matches(run,case):finish(c,run,case,history,'case_changed',stale=True)
         elif now>=run['deadline']:finish(c,run,case,history,'run_deadline')
-        elif run['decision_attempts']>=16:finish(c,run,case,history,'decision_budget_exhausted',
+        elif run['decision_attempts']>=16 and not recommendation_id:finish(c,run,case,history,'decision_budget_exhausted',
             blocker=bool(history.assess(now)['decision']['blockers']))
         elif run['tool_attempts']>=12 and history.assess(now)['decision']['status']!='eligible_to_propose':
             finish(c,run,case,history,'tool_budget_exhausted',blocker=bool(history.assess(now)['decision']['blockers']))
@@ -366,11 +399,11 @@ def advance(engine,run_id,raw_action, *, expected_context,fallback=False):
                 except (ValueError,TypeError):
                     step(c,run,'choice_rejected',{'reason':'policy_unavailable' if isinstance(raw_action,dict) and raw_action.get('kind')=='policy_unavailable' else 'invalid_or_ineligible_action',
                          'submitted_kind':str(raw_action.get('kind',''))[:64] if isinstance(raw_action,dict) else 'typed_action', 'fallback':fallback,
-                         'features':request.features()},decision_attempts=run['decision_attempts']+1)
+                         'features':request.features()},decision_attempts=run['decision_attempts']+charge)
                 else:
                     token=identifier('READ') if action.kind=='read' else None
                     run=step(c,run,'decision_reserved',{'action':action.record(),'fallback':fallback,
-                         'features':request.features(),'token':token},decision_attempts=run['decision_attempts']+1,
+                         'features':request.features(),'token':token},decision_attempts=run['decision_attempts']+charge,
                          tool_attempts=run['tool_attempts']+(action.kind=='read'),pending_token=token,
                          pending_context=run['context_version']+1 if token else None)
                     if action.kind=='read':
@@ -393,11 +426,13 @@ def advance(engine,run_id,raw_action, *, expected_context,fallback=False):
             c.info['adaptive_tool']=tool
             try:
                 now=clock(c)
+                bounded=DeadlineConnection(c,reserved['deadline']) if now<reserved['deadline'] else c
+                check_fence(bounded,reserved,fence,lock=False)
                 if now>=reserved['deadline']:
                     obs=observation(tool,reserved['request'],now,value=None,payload={},status='unavailable',reason='run_deadline',
                                     dependencies=tuple(dep.dependency() for dep in dependencies))
                 else:
-                    obs=read_tool(DeadlineConnection(c,reserved['deadline']),tool,AssessmentRequest(**reserved['request']),
+                    obs=read_tool(bounded,tool,AssessmentRequest(**reserved['request']),
                                   history,now,dependencies=dependencies)
                     if obs.record()['status']=='unavailable':c.rollback()
             finally:
@@ -405,7 +440,9 @@ def advance(engine,run_id,raw_action, *, expected_context,fallback=False):
         with transaction(engine) as c:
             c=bounded_active(c,run_id)
             run,case=locked(c,run_id)
-            owns_claim=(run['state']=='active' and run['pending_token']==reserved['pending_token']
+            try:lease_valid=check_fence(c,run,fence)
+            except ValueError:lease_valid=False
+            owns_claim=(lease_valid and run['state']=='active' and run['pending_token']==reserved['pending_token']
                         and run['pending_context']==reserved['pending_context'])
             applicable=owns_claim and matches(run,case) and clock(c)<run['deadline']
             if run['state']=='active':
@@ -422,6 +459,7 @@ def advance(engine,run_id,raw_action, *, expected_context,fallback=False):
                 history,steps,observations,edges,counts=snapshot(c,run)
                 if owns_claim and not matches(run,case):finish(c,run,case,history,'case_changed',stale=True)
                 elif owns_claim and clock(c)>=run['deadline']:finish(c,run,case,history,'run_deadline')
+                if applicable and fence is not None:fence.check(c.connection if isinstance(c,DeadlineConnection) else c,run)
             else:
                 sequence=c.execute(sa.select(sa.func.max(db.adaptive_steps.c.sequence)).where(
                     db.adaptive_steps.c.run_id==run_id)).scalar_one()+1
@@ -432,11 +470,9 @@ def advance(engine,run_id,raw_action, *, expected_context,fallback=False):
     return inspect(engine,run_id)
 
 
-def recover(engine,run_id, *, expected_context):
+def recover(engine,run_id, *, expected_context,fence=None):
     """Explicit interruption of an abandoned read; no automatic redispatch or reset."""
-    with transaction(engine) as c:
-        c=bounded_active(c,run_id)
-        run,case=locked(c,run_id)
+    with guarded(engine,run_id,fence) as (c,run,case):
         if run['state']!='active' or not run['pending_token']:return inspect(engine,run_id)
         if run['context_version']!=expected_context:raise ValueError('Stale recovery context')
         history,steps,observations,edges,counts=snapshot(c,run)

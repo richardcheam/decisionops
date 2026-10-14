@@ -51,12 +51,12 @@ def claim(connection, lease_seconds=30):
         raise ValueError('Lease seconds must be an integer from 1 to 3600')
     now=clock(connection)
     # Exhausted leases become a visible failure; no infinite retry loop.
-    exhausted=connection.execute(sa.select(db.jobs.c.id).where(sa.and_(db.jobs.c.status=='running',
+    exhausted=connection.execute(sa.select(db.jobs.c.id).where(sa.and_(db.jobs.c.action.in_(('investigate','execute')),db.jobs.c.status=='running',
         db.jobs.c.lease_until<=now,db.jobs.c.attempts>=3)).with_for_update(skip_locked=True).limit(100)).scalars().all()
     if exhausted:
         connection.execute(db.jobs.update().where(db.jobs.c.id.in_(exhausted)).values(status='failed',
             error_kind='AttemptsExhausted',lease_until=None,updated_at=now))
-    row=connection.execute(sa.select(db.jobs).where(sa.and_(db.jobs.c.attempts<3,sa.or_(
+    row=connection.execute(sa.select(db.jobs).where(sa.and_(db.jobs.c.action.in_(('investigate','execute')),db.jobs.c.attempts<3,sa.or_(
         db.jobs.c.status=='queued',sa.and_(db.jobs.c.status=='running',db.jobs.c.lease_until<=now))))
         .order_by(db.jobs.c.created_at,db.jobs.c.id).with_for_update(skip_locked=True).limit(1)).mappings().one_or_none()
     if row is None:
