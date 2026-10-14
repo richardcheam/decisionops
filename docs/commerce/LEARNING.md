@@ -546,3 +546,17 @@ Full regression: 230 collected, 228 passed/two optional model checks skipped.
 Dependency-free: 140 passed, 90 explicitly reported database/optional skips.
 Frozen evaluation: 12 passed with zero inference. Model-free failure and preserved
 fake walkthroughs passed. No actual model comparison was rerun for these fixes.
+
+## External ChatGPT verification of PR #9 fixes (reported by Richard)
+
+Richard reported that ChatGPT reviewed the fixes' source and independently passed
+20 model-free adapter tests. PostgreSQL/browser verification cited by that review
+came from GitHub CI; ChatGPT did not independently run those environments. This
+is separate from Codex's agent-executed regression checks and the independent
+implementation reviewers above. No new Richard-run commands/tests are claimed.
+
+Source integration leaves the original running migration-0004 application,
+containers and persistent volume intact. Optional provider functionality requires
+migration 0005 and the matching source in the intended environment; merging does
+not automatically migrate or restart the original stack. Historical comparison
+reports/negative results remain preserved, with no model reruns during integration.
