@@ -85,11 +85,20 @@ class AdaptiveJobTests(unittest.TestCase):
         from concurrent.futures import ThreadPoolExecutor
         from decisionops.commerce import adaptive_jobs as j,adaptive_accounting as a
         from decisionops.commerce.adaptive_runner import tick
-        from decisionops.commerce.adaptive_recommendations import FakeAdapter
+        from decisionops.commerce.adaptive_recommendations import FakeAdapter,Cancelled
+        from threading import Event
+        entered=Event()
+        class HeldAdapter(FakeAdapter):
+            def choose(self,request,cancel):
+                entered.set()
+                if cancel.wait(5):raise Cancelled("Explicit operator cancellation")
+                raise AssertionError("Cancellation was not observed")
         owned=self.claim(self.queued());f=j.Fence(owned['id'],owned['token'])
         with ThreadPoolExecutor(1) as p:
-            pending=p.submit(tick,self.engine,f,adapter=FakeAdapter(delay=1))
-            time.sleep(.2);j.cancel(self.engine,owned['id']);result=pending.result(3)
+            pending=p.submit(tick,self.engine,f,adapter=HeldAdapter())
+            self.assertTrue(entered.wait(3),'Adapter dispatch boundary not reached')
+            with self.engine.connect() as c:self.assertEqual(a.latest(c,owned['run_id'])['dispatch_count'],1)
+            j.cancel(self.engine,owned['id']);result=pending.result(3)
         self.assertEqual(result['event'],'uncertain_decision')
         run=self.s.inspect(self.engine,owned['run_id']);self.assertEqual(run['state'],'review')
         with self.engine.begin() as c:self.assertEqual(a.latest(c,owned['run_id'])['state'],'uncertain')
@@ -120,15 +129,23 @@ class AdaptiveJobTests(unittest.TestCase):
         from decisionops.commerce.jobs import LeaseLost
         owned=self.claim(self.queued(),30);f=j.Fence(owned['id'],owned['token'])
         for _ in range(7):tick(self.engine,f)
-        j.renew(self.engine,f.job_id,f.token,1)
         original=self.s.publish
         def expire(*args,**kwargs):
-            result=original(*args,**kwargs);time.sleep(1.1);return result
+            result=original(*args,**kwargs)
+            # Reach publication with valid ownership, then expire that owner in
+            # the same transaction before the final fencing check. No sleep.
+            args[0].execute(db.adaptive_jobs.update().where(db.adaptive_jobs.c.id==f.job_id).values(
+                lease_until=args[0].exec_driver_sql("SELECT clock_timestamp() - interval '1 second'").scalar_one()))
+            return result
         with patch.object(self.s,'publish',side_effect=expire):
             with self.assertRaises(LeaseLost):tick(self.engine,f)
         with self.engine.begin() as c:
             self.assertEqual(len(c.execute(db.proposals.select()).all()),0)
             self.assertEqual(a.latest(c,owned['run_id'])['application_status'],'pending')
+            # The injected expiry rolled back with publication. Explicitly retire
+            # the test owner before exercising a new owner's replay.
+            c.execute(db.adaptive_jobs.update().where(db.adaptive_jobs.c.id==f.job_id).values(
+                lease_until=c.exec_driver_sql("SELECT clock_timestamp() - interval '1 second'").scalar_one()))
         newer=self.claim(owned);nf=j.Fence(newer['id'],newer['token'])
         result=tick(self.engine,nf);self.assertEqual(result['state'],'proposed')
         tick(self.engine,nf)
@@ -138,14 +155,24 @@ class AdaptiveJobTests(unittest.TestCase):
         from concurrent.futures import ThreadPoolExecutor
         from decisionops.commerce import adaptive_jobs as j
         from decisionops.commerce.adaptive_runner import tick
-        from decisionops.commerce.adaptive_recommendations import FakeAdapter
+        from decisionops.commerce.adaptive_recommendations import FakeAdapter,Cancelled
+        from threading import Event
+        entered=Event()
+        class HeldAdapter(FakeAdapter):
+            def choose(self,request,cancel):
+                entered.set()
+                if cancel.wait(5):raise Cancelled("Observed staff change")
+                raise AssertionError("Cancellation boundary not reached")
         from decisionops.commerce.cases import investigate_case,review_case,show_case
         from decisionops.commerce.execution import execute
         owned=self.claim(self.queued());f=j.Fence(owned['id'],owned['token'])
         run=self.s.inspect(self.engine,owned['run_id'])
         with ThreadPoolExecutor(1) as p:
-            active=p.submit(tick,self.engine,f,adapter=FakeAdapter(delay=1))
-            time.sleep(.15)
+            active=p.submit(tick,self.engine,f,adapter=HeldAdapter())
+            self.assertTrue(entered.wait(3),"Adapter was never dispatched")
+            from decisionops.commerce import adaptive_accounting as accounting
+            with self.engine.connect() as c:
+                saved=accounting.latest(c,run["id"]);self.assertEqual(saved["state"],"dispatching");self.assertEqual(saved["dispatch_count"],1)
             with self.engine.begin() as c:
                 case=investigate_case(c,run['case_id'])
                 approved=review_case(c,case['id'],case['generation'],case['proposal_id'],case['proposal']['content_hash'],'approve')
@@ -155,6 +182,29 @@ class AdaptiveJobTests(unittest.TestCase):
         j.cancel(self.engine,f.job_id)
         with self.engine.begin() as c:self.assertEqual(show_case(c,run['case_id'])['status'],'executed')
         self.assertEqual(self.s.inspect(self.engine,run['id'])['state'],'stale')
+
+    def test_staff_change_before_dispatch_rejects_without_adapter_work(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Event
+        from decisionops.commerce import adaptive_jobs as j,adaptive_accounting as a,schema as db
+        from decisionops.commerce.adaptive_runner import tick
+        from decisionops.commerce.cases import escalate_case,show_case
+        owned=self.claim(self.queued());f=j.Fence(owned['id'],owned['token'])
+        entered=Event();release=Event();original=a.claim
+        def at_claim(*args,**kwargs):
+            entered.set();self.assertTrue(release.wait(3));return original(*args,**kwargs)
+        try:
+            with ThreadPoolExecutor(1) as pool,patch.object(a,'claim',side_effect=at_claim),patch('decisionops.commerce.adaptive_recommendations.FakeAdapter.choose',side_effect=AssertionError('Stale admission dispatched')):
+                pending=pool.submit(tick,self.engine,f);self.assertTrue(entered.wait(3))
+                with self.engine.begin() as c:
+                    run=self.s.row(c,owned['run_id']);escalate_case(c,run['case_id'],'Staff changed before admission')
+                release.set()
+                with self.assertRaisesRegex(ValueError,'Stale dispatch context'):pending.result(3)
+        finally:release.set()
+        with self.engine.connect() as c:
+            call=a.latest(c,owned['run_id']);self.assertEqual(call['state'],'reserved');self.assertEqual(call['dispatch_count'],0)
+            self.assertIsNone(call['actual_ms']);self.assertEqual(show_case(c,run['case_id'])['status'],'escalated')
+        j.cancel(self.engine,f.job_id)
 
     def test_unknown_resources_and_request_headers_cannot_reset(self):
         from decisionops.commerce import adaptive_jobs as j,adaptive_accounting as a,schema as db
@@ -233,9 +283,12 @@ class AdaptiveJobTests(unittest.TestCase):
         from decisionops.commerce.adaptive_runner import tick,Interrupted
         owned=self.claim(self.queued());f=j.Fence(owned['id'],owned['token']);w.setup_checkpoints(self.engine)
         for _ in range(7):tick(self.engine,f)
-        j.renew(self.engine,f.job_id,f.token,1)
         with self.assertRaises(Interrupted):tick(self.engine,f,fault='after_application')
-        time.sleep(1.1);w.resume(self.engine,f.job_id)
+        with self.engine.begin() as c:
+            self.assertEqual(self.s.row(c,owned['run_id'])['state'],'proposed')
+            # Simulate expiry only after proving the publication committed.
+            c.exec_driver_sql("UPDATE commerce_adaptive_jobs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=%s AND token=%s",(f.job_id,f.token))
+        w.resume(self.engine,f.job_id)
         with self.engine.begin() as c:self.assertEqual(j.get(c,f.job_id)['status'],'completed')
 
     def test_remaining_lease_bounds_case_and_tool_lock_waits(self):
@@ -356,23 +409,44 @@ raise SystemExit(main(['resume','--job',sys.argv[1]]))
         from concurrent.futures import ThreadPoolExecutor
         from decisionops.commerce import adaptive_workflow as w,adaptive_jobs as j,adaptive_accounting as a
         from decisionops.commerce.adaptive_runner import tick
-        owned=self.claim(self.queued(),1);f=j.Fence(owned['id'],owned['token']);w.setup_checkpoints(self.engine)
+        owned=self.claim(self.queued());f=j.Fence(owned['id'],owned['token']);w.setup_checkpoints(self.engine)
         tick(self.engine,f)
         before=self.s.inspect(self.engine,owned['run_id']);self.assertEqual(before['tool_attempts'],1)
         namespace,_=w.checkpoint_url(self.engine)
         locker=self.admin.connect();tx=locker.begin()
         locker.exec_driver_sql('LOCK TABLE "'+namespace+'".checkpoints IN ACCESS EXCLUSIVE MODE')
+        from contextlib import contextmanager
+        from threading import Event
+        entered=Event();observed_pid={};original_saver=w.checkpoint_saver;original_execute=w.BoundedCursor.execute
+        @contextmanager
+        def short_checkpoint_budget(url,end):
+            # Bound the checkpoint phase after committed setup, inside the live lease.
+            with original_saver(url,min(end,time.monotonic()+1)) as saver:yield saver
+        def observed_execute(cursor,query,*args,**kwargs):
+            if 'from checkpoints' in ' '.join(str(query).lower().split()):
+                observed_pid['value']=cursor.cursor.connection.info.backend_pid;entered.set()
+            return original_execute(cursor,query,*args,**kwargs)
         def attempt():
             start=time.monotonic()
-            try:w.project(self.engine,owned['id'],f,advance=False)
+            try:
+                with patch.object(w,'checkpoint_saver',short_checkpoint_budget),patch.object(w.BoundedCursor,'execute',observed_execute):
+                    w.project(self.engine,owned['id'],f,advance=False)
             except Exception as e:return time.monotonic()-start,e
             return time.monotonic()-start,None
         try:
             with ThreadPoolExecutor(1) as pool:
                 pending=pool.submit(attempt)
-                # A real SQL table lock is retained longer than the remaining lease.
-                time.sleep(2);tx.rollback()
+                # Keep the real SQL lock until the bounded checkpoint operation fails.
+                self.assertTrue(entered.wait(3),'Checkpoint SQL boundary never reached')
+                blocked=False;probe_end=time.monotonic()+.6
+                with self.admin.connect().execution_options(isolation_level='AUTOCOMMIT') as probe:
+                    while time.monotonic()<probe_end:
+                        wait=probe.exec_driver_sql('SELECT wait_event_type FROM pg_stat_activity WHERE pid=%s',(observed_pid['value'],)).scalar_one_or_none()
+                        if wait=='Lock':blocked=True;break
+                        time.sleep(.01)
+                self.assertTrue(blocked,'Actual checkpoint SQL lock wait was not established')
                 elapsed,error=pending.result(4)
+                tx.rollback()
             self.assertIsNotNone(error);self.assertLess(elapsed,1.4)
             self.assertEqual(type(error).__name__,'CheckpointFailure')
             print({'boundary':'checkpoint_read_lock','elapsed_seconds':round(elapsed,3),'domain_effects_repeated':0})
@@ -383,6 +457,7 @@ raise SystemExit(main(['resume','--job',sys.argv[1]]))
         self.assertEqual(after['context_version'],before['context_version']);self.assertEqual(after['decision_attempts'],1)
         self.assertEqual(after['tool_attempts'],1)
         with self.engine.begin() as c:first=a.latest(c,owned['run_id']);self.assertEqual(first['application_status'],'applied')
+        with self.engine.begin() as c:c.exec_driver_sql("UPDATE commerce_adaptive_jobs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=%s AND token=%s",(f.job_id,f.token))
         recovered=w.resume(self.engine,owned['id']);self.assertEqual(recovered['phase'],'proposed')
         final=self.s.inspect(self.engine,owned['run_id']);self.assertEqual(final['decision_attempts'],8);self.assertEqual(final['tool_attempts'],7)
         with self.engine.begin() as c:
@@ -403,20 +478,27 @@ raise SystemExit(main(['resume','--job',sys.argv[1]]))
         from decisionops.commerce.adaptive_runner import tick
         owned=self.claim(self.queued());f=j.Fence(owned['id'],owned['token']);w.setup_checkpoints(self.engine)
         for _ in range(7):tick(self.engine,f)
-        j.renew(self.engine,f.job_id,f.token,1)
         namespace,_=w.checkpoint_url(self.engine);locker=self.admin.connect();tx=locker.begin()
         locker.exec_driver_sql('SET LOCAL statement_timeout=2000')
+        from contextlib import contextmanager
+        current={};original_saver=w.checkpoint_saver
+        @contextmanager
+        def observe_saver(url,end):
+            with original_saver(url,end) as saver:
+                current['saver']=saver;yield saver
         def publish_then_lock(*args,**kwargs):
             result=tick(*args,**kwargs)
             self.assertEqual(result['state'],'proposed')
             locker.exec_driver_sql('LOCK TABLE "'+namespace+'".checkpoints IN ACCESS EXCLUSIVE MODE')
+            current['checkpoint_started']=time.monotonic()
+            current['saver'].end=min(current['saver'].end,time.monotonic()+1)
             return result
         started=time.monotonic()
         try:
-            with patch.object(w,'tick',side_effect=publish_then_lock):
+            with patch.object(w,'checkpoint_saver',observe_saver),patch.object(w,'tick',side_effect=publish_then_lock):
                 with self.assertRaises(w.CheckpointFailure):w.project(self.engine,owned['id'],f)
-            self.assertLess(time.monotonic()-started,1.5)
-            print({'boundary':'checkpoint_write_after_publication','elapsed_seconds':round(time.monotonic()-started,3),'proposal_committed':True})
+            self.assertLess(time.monotonic()-current['checkpoint_started'],1.5)
+            print({'boundary':'checkpoint_write_after_publication','elapsed_seconds':round(time.monotonic()-current['checkpoint_started'],3),'full_projection_seconds':round(time.monotonic()-started,3),'proposal_committed':True})
             committed=self.s.inspect(self.engine,owned['run_id'])
             self.assertEqual(committed['state'],'proposed');self.assertEqual(committed['decision_attempts'],8)
             with self.engine.begin() as c:

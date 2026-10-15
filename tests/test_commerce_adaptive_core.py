@@ -224,13 +224,19 @@ class AdaptiveCoreTests(unittest.TestCase):
         import time
         from unittest.mock import patch
         with self.engine.begin() as c:
-            c.exec_driver_sql("INSERT INTO policy_versions VALUES ('expiry-policy','demo-store',3,true,10,1)")
+            c.exec_driver_sql("INSERT INTO policy_versions VALUES ('expiry-policy','demo-store',3,true,10,30)")
             c.exec_driver_sql("UPDATE orders SET policy_id='expiry-policy' WHERE id='ORD-1042'")
             c.exec_driver_sql("UPDATE shipments SET carrier_observed_at=clock_timestamp() WHERE id='SHIP-1042'")
         run=self.read_all(self.begin())
         self.assertTrue(run['assessment']['facts']['loss_confirmed'])
-        time.sleep(1.05)
-        with patch.object(self.s,'safety_check',side_effect=AssertionError('Expired collection invoked safety reads')):
+        from datetime import timedelta
+        from decisionops.commerce.evidence import utc_timestamp
+        carrier=next(o for o in run['observations'] if o['tool']=='carrier_loss')
+        expired=utc_timestamp(carrier['expires_at'])+timedelta(milliseconds=1)
+        self.assertLess(expired,run['deadline'])
+        # Explicit test clock transition after proving complete valid collection.
+        # No production lifetime is raised and no immutable observation is edited.
+        with patch.object(self.s,'clock',return_value=expired),patch.object(self.s,'safety_check',side_effect=AssertionError('Expired collection invoked safety reads')):
             rejected=self.advance(run,{'kind':'propose'})
         self.assertIsNone(rejected['assessment']['facts']['loss_confirmed'])
         self.assertEqual(rejected['steps'][-1]['kind'],'choice_rejected')

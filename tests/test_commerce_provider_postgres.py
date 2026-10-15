@@ -91,15 +91,45 @@ class ProviderDatabaseTests(unittest.TestCase):
 
     def test_real_deadline_returns_before_delayed_fake_finishes(self):
         import time
-        from decisionops.commerce.providers import ProviderConfig
-        from decisionops.commerce.provider_service import recommend
-        self.budget();case=self.opened();start=time.monotonic()
-        result=recommend(self.engine,case['id'],'RUN-1','BUDGET-1',ProviderConfig(delay_ms=400),deadline_seconds=0.05)
-        self.assertEqual(result['trace']['state'],'uncertain')
-        self.assertLess(time.monotonic()-start,0.35)
-        time.sleep(0.45)
-        from decisionops.commerce.provider_service import recover
-        self.assertEqual(recover(self.engine,'RUN-1')['trace']['dispatch_count'],1)
+        from decisionops.commerce.providers import ProviderConfig,FakeProvider
+        from decisionops.commerce.provider_service import prepare,dispatch,recover
+        from decisionops.commerce.provider_budget import get_call
+        entered=Event();release=Event();finished=Event()
+        class HeldProvider(FakeProvider):
+            def choose(self,request):
+                entered.set()
+                if not release.wait(5):raise AssertionError('Test failed to release fake')
+                try:return super().choose(request)
+                finally:finished.set()
+        self.budget();case=self.opened()
+        saved=prepare(self.engine,case['id'],'RUN-1','BUDGET-1',ProviderConfig(),deadline_seconds=2)
+        try:
+            with ThreadPoolExecutor(1) as pool:
+                active=pool.submit(dispatch,self.engine,'RUN-1',HeldProvider())
+                self.assertTrue(entered.wait(1.5),'Dispatch boundary not reached before deadline')
+                with self.engine.connect() as c:
+                    running=get_call(c,'RUN-1');self.assertEqual(running['state'],'dispatching');self.assertEqual(running['dispatch_count'],1)
+                result=active.result(3)
+                self.assertEqual(result['state'],'uncertain');self.assertIsNone(result['actual_cost_usd'])
+                self.assertLess((datetime.now(timezone.utc)-saved['deadline']).total_seconds(),.35)
+                release.set()
+        finally:release.set()
+        self.assertTrue(finished.wait(1),'Late fake did not finish after release')
+        result=recover(self.engine,'RUN-1')
+        self.assertEqual(result['trace']['dispatch_count'],1);self.assertEqual(result['trace']['state'],'uncertain')
+
+    def test_expired_before_dispatch_is_known_zero_work(self):
+        import time
+        from decisionops.commerce.providers import ProviderConfig,FakeProvider
+        from decisionops.commerce.provider_service import prepare,dispatch
+        self.budget();case=self.opened()
+        saved=prepare(self.engine,case['id'],'RUN-1','BUDGET-1',ProviderConfig(),deadline_seconds=.01)
+        while datetime.now(timezone.utc)<saved['deadline']:time.sleep(.002)
+        class MustNotRun(FakeProvider):
+            def choose(self,request):raise AssertionError('Expired reservation dispatched')
+        result=dispatch(self.engine,'RUN-1',MustNotRun())
+        self.assertEqual(result['dispatch_count'],0);self.assertEqual(result['state'],'settled')
+        self.assertEqual(result['actual_cost_usd'],Decimal('0'));self.assertEqual(result['result']['error_kind'],'deadline_before_dispatch')
 
     def test_budget_request_race_reserves_once(self):
         from decisionops.commerce.providers import Limits

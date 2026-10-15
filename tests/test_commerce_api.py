@@ -24,6 +24,33 @@ class APITests(unittest.TestCase):
         self.assertEqual(result.status_code,201,result.text)
         return result.json()
 
+    def test_health_accepts_current_0008_schema_without_migration(self):
+        with self.engine.connect() as c:self.assertEqual(c.exec_driver_sql('SELECT version_num FROM alembic_version').scalar_one(),'0008')
+        response=self.client.get('/health');self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['mode'],'fictional_store_rules')
+
+    def test_health_fails_closed_for_missing_old_new_and_multiple_revisions(self):
+        for versions in ([],['0005'],['0007'],['0009'],['0008','0009']):
+            with self.subTest(versions=versions):
+                with self.engine.begin() as c:
+                    c.exec_driver_sql('DELETE FROM alembic_version')
+                    for version in versions:c.exec_driver_sql('INSERT INTO alembic_version VALUES (%s)',(version,))
+                response=self.client.get('/health');self.assertEqual(response.status_code,503,response.text)
+        with self.engine.begin() as c:c.exec_driver_sql("DELETE FROM alembic_version; INSERT INTO alembic_version VALUES ('0008')")
+
+    def test_health_rejects_missing_or_incompatible_required_schema(self):
+        for change in ('ALTER TABLE commerce_cases RENAME COLUMN case_revision TO absent_revision',
+                       'ALTER TABLE commerce_cases ALTER COLUMN case_revision TYPE text USING case_revision::text',
+                       'ALTER TABLE commerce_cases DISABLE TRIGGER commerce_case_revision',
+                       'DROP TABLE alembic_version'):
+            with self.subTest(change=change):
+                with self.engine.connect() as c:
+                    tx=c.begin();c.exec_driver_sql(change)
+                    from decisionops.commerce.schema_readiness import validate_readiness,SchemaNotReady
+                    with self.assertRaises(SchemaNotReady):validate_readiness(c)
+                    tx.rollback()
+        self.assertEqual(self.client.get('/health').status_code,200)
+
     def test_authentication_and_json_origin_checks(self):
         self.assertEqual(self.client.get('/api/cases',auth=('bad','bad')).status_code,401)
         self.client.auth=None

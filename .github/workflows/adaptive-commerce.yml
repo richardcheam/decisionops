@@ -1,7 +1,7 @@
 name: Verify adaptive commerce without models
 on:
   push:
-    branches: [feat/commerce-adaptive-recovery, feat/commerce-adaptive-sessions]
+    branches: [feat/commerce-adaptive-recovery, feat/commerce-adaptive-sessions, feat/commerce-adaptive-evaluation]
   workflow_dispatch:
 permissions:
   contents: read
@@ -18,6 +18,10 @@ jobs:
         with:
           python-version-file: .python-version
       - run: python -B -S scripts/commerce_ci_tests.py dependency-free
+      - name: Historical viewer export without models
+        run: |
+          python -B -S -m decisionops workflow export-html --report-dir reports/workflow-model-comparison-20260927 --output runs/stage5-viewer/index.html
+          python -c "from pathlib import Path; p=Path('runs/stage5-viewer'); s=(p/'index.html').read_text(); assert len(list(p.iterdir()))==1 and 'Offline synthetic simulation' in s and 'uncalibrated' in s"
   postgres:
     runs-on: ubuntu-latest
     timeout-minutes: 10

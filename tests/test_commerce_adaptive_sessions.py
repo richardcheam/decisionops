@@ -147,12 +147,35 @@ class AdaptiveSessionTests(unittest.TestCase):
                 env={**os.environ,'COMMERCE_DATABASE_URL':self.engine.url.render_as_string(hide_password=False)}
                 child=subprocess.Popen([sys.executable,'-B','-m','decisionops.commerce.adaptive_worker',*args],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
                 try:
-                    end=time.monotonic()+6;call=None
+                    # Start-up/import + slot/preload precede decision dispatch.
+                    # Synchronize on persisted phases, within their existing caps,
+                    # instead of signalling after an unrelated six-second timer.
+                    from datetime import datetime,timezone
+                    from decisionops.commerce.session_protocol import Config
+                    with self.engine.begin() as c:run=self.s.row(c,job['run_id'])
+                    cfg=Config(**run['contracts']['session']);started=time.monotonic()
+                    end=started+min((run['deadline']-datetime.now(timezone.utc)).total_seconds(),
+                                    (cfg.slot_ms+cfg.preload_ms)/1000+20)
+                    call=None;sessions=[]
                     while child.poll() is None and time.monotonic()<end:
-                        with self.engine.begin() as c:call=a.latest(c,job['run_id'])
+                        with self.engine.begin() as c:
+                            call=a.latest(c,job['run_id']);sessions=m.records(c,job['run_id'])
                         if call and call['state']=='dispatching':break
+                        if call and call['state'] in ('settled','uncertain'):break
+                        if sessions and sessions[-1]['state'] in ('failed','uncertain','closed'):break
                         time.sleep(.02)
-                    self.assertIsNotNone(call);self.assertEqual(call['state'],'dispatching');child.send_signal(signal.SIGTERM)
+                    if call is None or call['state']!='dispatching':
+                        child.send_signal(signal.SIGTERM) if child.poll() is None else None
+                        out,err=child.communicate(timeout=4)
+                        with self.engine.begin() as c:
+                            durable={'job':j.get(c,job['id']),'run':self.s.row(c,job['run_id']),'sessions':m.records(c,job['run_id']),'call':a.latest(c,job['run_id'])}
+                        self.fail(repr({'boundary':'before_dispatch','stdout':out,'stderr':err,'durable':durable}))
+                    self.assertEqual(call['dispatch_count'],1)
+                    self.assertTrue(sessions);self.assertEqual(sessions[-1]['state'],'ready')
+                    print({'boundary':'durable_decision_dispatch','command':command,
+                           'setup_seconds':round(time.monotonic()-started,3),'call':call,
+                           'run_deadline':run['deadline'],'session_created':sessions[-1]['created_at']},flush=True)
+                    child.send_signal(signal.SIGTERM)
                     out,err=child.communicate(timeout=4);self.assertEqual(child.returncode,0,err);self.assertEqual(json.loads(out)['event'],'worker_stopped')
                     with self.engine.begin() as c:
                         call=a.latest(c,job['run_id']);self.assertEqual(call['state'],'uncertain');self.assertEqual(call['dispatch_count'],1);self.assertIsNone(call['actual_ms'])

@@ -1,0 +1,12 @@
+{
+  "version": "commerce-adaptive-replay/v1",
+  "source": "Complete passing fixed/cue/fake baseline calls, in frozen manifest and policy order",
+  "selection": "First 16 distinct observation/action/history/count-budget states; preserve exact original six-field features for byte-identical replay to admitted families",
+  "limit": 16,
+  "policy_text_classes_for_counting_only": ["stock", "refund", "payment", "tracking", "instruction_override"],
+  "continuous_seconds": "Excluded only from state deduplication; original value remains in frozen model input",
+  "independent_scenarios": false,
+  "effect": "Replay recommends an allowed action only; no live case transition. Separate end-to-end comparison records actual case effects.",
+  "reference": "FixedOrder action agreement, not independently verified optimal tool choice or model quality",
+  "caps": "One run-owned transport session, <=16 serialized decisions, <=240s; shares existing experiment/family budgets; real models only after successful compatibility pilot"
+}

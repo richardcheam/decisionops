@@ -1,0 +1,1240 @@
+{
+  "version": "commerce-adaptive-replay/v1",
+  "selection_plan_sha256": "d5cba0258a654aea74cae7a968630fe791a3397012a6d987b6bb6fc77a4c2a0b",
+  "all_baseline_meaningful_states": 152,
+  "entries": [
+    {
+      "meaningful_hash": "fac901f3d8af8bcf9914b5d11e5c0a3cfaeade8ce2a9e240110ed5c044e30fed",
+      "exact_hash": "d25db55a61354f2ba7300267f68134d48818cce65f7179c839633ab1cc0fb7e7",
+      "features": {
+        "report": "The shipment did not arrive.",
+        "rejections": [],
+        "observations": {
+          "observations": [],
+          "requested_items": {
+            "shirt-blue-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "read",
+            "tool": "order_manifest"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [],
+        "remaining_budgets": {
+          "tools": 12,
+          "seconds": 239.85072,
+          "decisions": 15
+        }
+      }
+    },
+    {
+      "meaningful_hash": "fff1c78a10b8852812c07031bf0df7fb3b3bbd244b49bb53435e88c467116e06",
+      "exact_hash": "4b4d21a6bd81cc57a1311d24f980f45392812e8e44f7d4f084abdb88e2712153",
+      "features": {
+        "report": "The shipment did not arrive.",
+        "rejections": [],
+        "observations": {
+          "observations": [
+            {
+              "tool": "order_manifest",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            }
+          ],
+          "requested_items": {
+            "shirt-blue-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "read",
+            "tool": "replacement_policy"
+          },
+          {
+            "kind": "read",
+            "tool": "payment"
+          },
+          {
+            "kind": "read",
+            "tool": "fulfilment"
+          },
+          {
+            "kind": "read",
+            "tool": "compensation_history"
+          },
+          {
+            "kind": "read",
+            "tool": "inventory"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [
+          {
+            "tool": "order_manifest",
+            "status": "attempted"
+          }
+        ],
+        "remaining_budgets": {
+          "tools": 11,
+          "seconds": 239.078529,
+          "decisions": 14
+        }
+      }
+    },
+    {
+      "meaningful_hash": "43d8e2b39f0a0e97384a890639a06eb4fd57c010e1bc69f180f2cafa78c8dee3",
+      "exact_hash": "a20671e5c084a3d4d15d09bf2d7b3ce98a947b939888e276e34299641884ee3c",
+      "features": {
+        "report": "The shipment did not arrive.",
+        "rejections": [],
+        "observations": {
+          "observations": [
+            {
+              "tool": "order_manifest",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            },
+            {
+              "tool": "replacement_policy",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            }
+          ],
+          "requested_items": {
+            "shirt-blue-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "read",
+            "tool": "payment"
+          },
+          {
+            "kind": "read",
+            "tool": "fulfilment"
+          },
+          {
+            "kind": "read",
+            "tool": "compensation_history"
+          },
+          {
+            "kind": "read",
+            "tool": "inventory"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [
+          {
+            "tool": "order_manifest",
+            "status": "attempted"
+          },
+          {
+            "tool": "replacement_policy",
+            "status": "attempted"
+          }
+        ],
+        "remaining_budgets": {
+          "tools": 10,
+          "seconds": 238.191616,
+          "decisions": 13
+        }
+      }
+    },
+    {
+      "meaningful_hash": "4474ddeb7858972a87ecf6cc7be853e3ff460c0924ba01963a139a2eb144520c",
+      "exact_hash": "1819981a1b4165e8d4d133894ae3e4e014ea3e82ce48c67b45ac53fbaf1556f5",
+      "features": {
+        "report": "The shipment did not arrive.",
+        "rejections": [],
+        "observations": {
+          "observations": [
+            {
+              "tool": "order_manifest",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            },
+            {
+              "tool": "replacement_policy",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            },
+            {
+              "tool": "payment",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            }
+          ],
+          "requested_items": {
+            "shirt-blue-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "read",
+            "tool": "fulfilment"
+          },
+          {
+            "kind": "read",
+            "tool": "compensation_history"
+          },
+          {
+            "kind": "read",
+            "tool": "inventory"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [
+          {
+            "tool": "order_manifest",
+            "status": "attempted"
+          },
+          {
+            "tool": "replacement_policy",
+            "status": "attempted"
+          },
+          {
+            "tool": "payment",
+            "status": "attempted"
+          }
+        ],
+        "remaining_budgets": {
+          "tools": 9,
+          "seconds": 237.07471,
+          "decisions": 12
+        }
+      }
+    },
+    {
+      "meaningful_hash": "8737571013ca26ace6639e06effb341744e957ad4c987e077e783e7e9891d242",
+      "exact_hash": "fad9542cd85595eec1d6826dc45101c95350546818b7f265f2320d442c6bd780",
+      "features": {
+        "report": "The shipment did not arrive.",
+        "rejections": [],
+        "observations": {
+          "observations": [
+            {
+              "tool": "order_manifest",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            },
+            {
+              "tool": "replacement_policy",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            },
+            {
+              "tool": "payment",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            },
+            {
+              "tool": "fulfilment",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            }
+          ],
+          "requested_items": {
+            "shirt-blue-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "read",
+            "tool": "carrier_loss"
+          },
+          {
+            "kind": "read",
+            "tool": "compensation_history"
+          },
+          {
+            "kind": "read",
+            "tool": "inventory"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [
+          {
+            "tool": "order_manifest",
+            "status": "attempted"
+          },
+          {
+            "tool": "replacement_policy",
+            "status": "attempted"
+          },
+          {
+            "tool": "payment",
+            "status": "attempted"
+          },
+          {
+            "tool": "fulfilment",
+            "status": "attempted"
+          }
+        ],
+        "remaining_budgets": {
+          "tools": 8,
+          "seconds": 236.14467,
+          "decisions": 11
+        }
+      }
+    },
+    {
+      "meaningful_hash": "504d86293fd26c9c499f0a3d61ab39eab57f997a407cb25dcabf075f733d55c1",
+      "exact_hash": "119c5ec52e58172aa7ef3b0839ccd7eb9e75693d9f31c0d43a007c96d18133fb",
+      "features": {
+        "report": "The shipment did not arrive.",
+        "rejections": [],
+        "observations": {
+          "observations": [
+            {
+              "tool": "order_manifest",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            },
+            {
+              "tool": "replacement_policy",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            },
+            {
+              "tool": "payment",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            },
+            {
+              "tool": "fulfilment",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            },
+            {
+              "tool": "carrier_loss",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            }
+          ],
+          "requested_items": {
+            "shirt-blue-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "read",
+            "tool": "compensation_history"
+          },
+          {
+            "kind": "read",
+            "tool": "inventory"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [
+          {
+            "tool": "order_manifest",
+            "status": "attempted"
+          },
+          {
+            "tool": "replacement_policy",
+            "status": "attempted"
+          },
+          {
+            "tool": "payment",
+            "status": "attempted"
+          },
+          {
+            "tool": "fulfilment",
+            "status": "attempted"
+          },
+          {
+            "tool": "carrier_loss",
+            "status": "attempted"
+          }
+        ],
+        "remaining_budgets": {
+          "tools": 7,
+          "seconds": 235.149088,
+          "decisions": 10
+        }
+      }
+    },
+    {
+      "meaningful_hash": "f14135bb276b82043f53a2a1fe2f2f722519b3251632849ba5c64f252ff8652d",
+      "exact_hash": "cc35ef6acc3f26c87e64d54676af00304108f2487e035c68117dbd7deabd9e29",
+      "features": {
+        "report": "The shipment did not arrive.",
+        "rejections": [],
+        "observations": {
+          "observations": [
+            {
+              "tool": "order_manifest",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            },
+            {
+              "tool": "replacement_policy",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            },
+            {
+              "tool": "payment",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            },
+            {
+              "tool": "fulfilment",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            },
+            {
+              "tool": "carrier_loss",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            },
+            {
+              "tool": "compensation_history",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            }
+          ],
+          "requested_items": {
+            "shirt-blue-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "read",
+            "tool": "inventory"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [
+          {
+            "tool": "order_manifest",
+            "status": "attempted"
+          },
+          {
+            "tool": "replacement_policy",
+            "status": "attempted"
+          },
+          {
+            "tool": "payment",
+            "status": "attempted"
+          },
+          {
+            "tool": "fulfilment",
+            "status": "attempted"
+          },
+          {
+            "tool": "carrier_loss",
+            "status": "attempted"
+          },
+          {
+            "tool": "compensation_history",
+            "status": "attempted"
+          }
+        ],
+        "remaining_budgets": {
+          "tools": 6,
+          "seconds": 234.114231,
+          "decisions": 9
+        }
+      }
+    },
+    {
+      "meaningful_hash": "c57b4f959c41e233a46eac525a8c5984642e3e174ce91a010b068e1db440586f",
+      "exact_hash": "f413ef86e674b2d9fd59a47d0382e4eb8b2ef31d37804167a971cfcc2a9104f6",
+      "features": {
+        "report": "The shipment did not arrive.",
+        "rejections": [],
+        "observations": {
+          "observations": [
+            {
+              "tool": "order_manifest",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            },
+            {
+              "tool": "replacement_policy",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            },
+            {
+              "tool": "payment",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            },
+            {
+              "tool": "fulfilment",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            },
+            {
+              "tool": "carrier_loss",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            },
+            {
+              "tool": "compensation_history",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            },
+            {
+              "tool": "inventory",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            }
+          ],
+          "requested_items": {
+            "shirt-blue-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "propose"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [
+          {
+            "tool": "order_manifest",
+            "status": "attempted"
+          },
+          {
+            "tool": "replacement_policy",
+            "status": "attempted"
+          },
+          {
+            "tool": "payment",
+            "status": "attempted"
+          },
+          {
+            "tool": "fulfilment",
+            "status": "attempted"
+          },
+          {
+            "tool": "carrier_loss",
+            "status": "attempted"
+          },
+          {
+            "tool": "compensation_history",
+            "status": "attempted"
+          },
+          {
+            "tool": "inventory",
+            "status": "attempted"
+          }
+        ],
+        "remaining_budgets": {
+          "tools": 5,
+          "seconds": 232.884826,
+          "decisions": 8
+        }
+      }
+    },
+    {
+      "meaningful_hash": "9e283450fdc85e11d1c9ab5fe134b4a1b9807bc80411b057b2b36e65a2ab91c9",
+      "exact_hash": "b18f5c3889a80f37e323ae2cce0cc1576b6c36ef1577ed551cf26f9aaa662349",
+      "features": {
+        "report": "Please check payment for the missing parcel.",
+        "rejections": [],
+        "observations": {
+          "observations": [],
+          "requested_items": {
+            "shirt-blue-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "read",
+            "tool": "order_manifest"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [],
+        "remaining_budgets": {
+          "tools": 12,
+          "seconds": 239.872735,
+          "decisions": 15
+        }
+      }
+    },
+    {
+      "meaningful_hash": "383b3eb2fe9d082dc2b853a8558dfa784c380208914ed260cff7030d2c72b547",
+      "exact_hash": "1a762cdbd9879a088aaba1325fce0c3d94a5b148098d2305bb7a65efc0b81a36",
+      "features": {
+        "report": "Please check payment for the missing parcel.",
+        "rejections": [],
+        "observations": {
+          "observations": [
+            {
+              "tool": "order_manifest",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            }
+          ],
+          "requested_items": {
+            "shirt-blue-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "read",
+            "tool": "replacement_policy"
+          },
+          {
+            "kind": "read",
+            "tool": "payment"
+          },
+          {
+            "kind": "read",
+            "tool": "fulfilment"
+          },
+          {
+            "kind": "read",
+            "tool": "compensation_history"
+          },
+          {
+            "kind": "read",
+            "tool": "inventory"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [
+          {
+            "tool": "order_manifest",
+            "status": "attempted"
+          }
+        ],
+        "remaining_budgets": {
+          "tools": 11,
+          "seconds": 239.298199,
+          "decisions": 14
+        }
+      }
+    },
+    {
+      "meaningful_hash": "350a8af2313afc93e98a731989f706bb69c6293adf496937040b1432935e58b2",
+      "exact_hash": "697502307edd0b5cdd17c77b816f2a4a641a9630921949d6cf7d4fe766fd0a6a",
+      "features": {
+        "report": "Please check payment for the missing parcel.",
+        "rejections": [],
+        "observations": {
+          "observations": [
+            {
+              "tool": "order_manifest",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            },
+            {
+              "tool": "replacement_policy",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            }
+          ],
+          "requested_items": {
+            "shirt-blue-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "read",
+            "tool": "payment"
+          },
+          {
+            "kind": "read",
+            "tool": "fulfilment"
+          },
+          {
+            "kind": "read",
+            "tool": "compensation_history"
+          },
+          {
+            "kind": "read",
+            "tool": "inventory"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [
+          {
+            "tool": "order_manifest",
+            "status": "attempted"
+          },
+          {
+            "tool": "replacement_policy",
+            "status": "attempted"
+          }
+        ],
+        "remaining_budgets": {
+          "tools": 10,
+          "seconds": 238.484425,
+          "decisions": 13
+        }
+      }
+    },
+    {
+      "meaningful_hash": "c52ded2813fbaebd1b067537ef72c100c5cbae148b8cbab94c0eb1518bcab639",
+      "exact_hash": "ea59c68f0fb7b511fcc8c5109484d184e183192fb554bd3f59bd934f729a8d8d",
+      "features": {
+        "report": "Please check payment for the missing parcel.",
+        "rejections": [],
+        "observations": {
+          "observations": [
+            {
+              "tool": "order_manifest",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            },
+            {
+              "tool": "replacement_policy",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            },
+            {
+              "tool": "payment",
+              "value": false,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            }
+          ],
+          "requested_items": {
+            "shirt-blue-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "report_blocker"
+          },
+          {
+            "kind": "read",
+            "tool": "fulfilment"
+          },
+          {
+            "kind": "read",
+            "tool": "compensation_history"
+          },
+          {
+            "kind": "read",
+            "tool": "inventory"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [
+          {
+            "tool": "order_manifest",
+            "status": "attempted"
+          },
+          {
+            "tool": "replacement_policy",
+            "status": "attempted"
+          },
+          {
+            "tool": "payment",
+            "status": "attempted"
+          }
+        ],
+        "remaining_budgets": {
+          "tools": 9,
+          "seconds": 237.28813,
+          "decisions": 12
+        }
+      }
+    },
+    {
+      "meaningful_hash": "149f55ad96da26fa07e28520e2001b14f8a1ae6a39f727b372442182cf0c2c8f",
+      "exact_hash": "62b7ec6f819720d3b32f7012936246ebe9994e3d23f4a13313c2709b67b6a889",
+      "features": {
+        "report": "The parcel is missing.",
+        "rejections": [],
+        "observations": {
+          "observations": [
+            {
+              "tool": "order_manifest",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            },
+            {
+              "tool": "replacement_policy",
+              "value": false,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            }
+          ],
+          "requested_items": {
+            "shirt-blue-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "report_blocker"
+          },
+          {
+            "kind": "read",
+            "tool": "payment"
+          },
+          {
+            "kind": "read",
+            "tool": "fulfilment"
+          },
+          {
+            "kind": "read",
+            "tool": "compensation_history"
+          },
+          {
+            "kind": "read",
+            "tool": "inventory"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [
+          {
+            "tool": "order_manifest",
+            "status": "attempted"
+          },
+          {
+            "tool": "replacement_policy",
+            "status": "attempted"
+          }
+        ],
+        "remaining_budgets": {
+          "tools": 10,
+          "seconds": 238.020726,
+          "decisions": 13
+        }
+      }
+    },
+    {
+      "meaningful_hash": "aee7913b9115587b2557e13c8cc3ada1a9ebffbd967071cae758cfcdaa0851d6",
+      "exact_hash": "13f7bb7f99d94ce1d9ab286e16551939e78e00e80f1216e77350fc4e4f9072b5",
+      "features": {
+        "report": "Can you check stock for my missing red shirt?",
+        "rejections": [],
+        "observations": {
+          "observations": [],
+          "requested_items": {
+            "shirt-red-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "read",
+            "tool": "order_manifest"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [],
+        "remaining_budgets": {
+          "tools": 12,
+          "seconds": 239.761999,
+          "decisions": 15
+        }
+      }
+    },
+    {
+      "meaningful_hash": "8d024d9a3e800263e46441b5e65cbea565bb3ccc763688fefe76038ad6299f3d",
+      "exact_hash": "0308300a887ab236cf904fd73002de629964c22e20bef5e47177b57cd1cd097a",
+      "features": {
+        "report": "Can you check stock for my missing red shirt?",
+        "rejections": [],
+        "observations": {
+          "observations": [
+            {
+              "tool": "order_manifest",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            }
+          ],
+          "requested_items": {
+            "shirt-red-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "read",
+            "tool": "replacement_policy"
+          },
+          {
+            "kind": "read",
+            "tool": "payment"
+          },
+          {
+            "kind": "read",
+            "tool": "fulfilment"
+          },
+          {
+            "kind": "read",
+            "tool": "compensation_history"
+          },
+          {
+            "kind": "read",
+            "tool": "inventory"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [
+          {
+            "tool": "order_manifest",
+            "status": "attempted"
+          }
+        ],
+        "remaining_budgets": {
+          "tools": 11,
+          "seconds": 239.424495,
+          "decisions": 14
+        }
+      }
+    },
+    {
+      "meaningful_hash": "eabb690e1d2e47c0168dd4703ff5987d58bd9c0494d67333b88a7aaec4968afd",
+      "exact_hash": "70b50066c8aca45d984b6de87a1f9fbd0e33659da617ad7db30dcd9867bf43f3",
+      "features": {
+        "report": "Can you check stock for my missing red shirt?",
+        "rejections": [],
+        "observations": {
+          "observations": [
+            {
+              "tool": "order_manifest",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": true,
+              "scope_reasons": []
+            },
+            {
+              "tool": "replacement_policy",
+              "value": true,
+              "reason": null,
+              "status": "success",
+              "scope_known": false,
+              "scope_reasons": []
+            }
+          ],
+          "requested_items": {
+            "shirt-red-M": 1
+          }
+        },
+        "allowed_actions": [
+          {
+            "kind": "read",
+            "tool": "payment"
+          },
+          {
+            "kind": "read",
+            "tool": "fulfilment"
+          },
+          {
+            "kind": "read",
+            "tool": "compensation_history"
+          },
+          {
+            "kind": "read",
+            "tool": "inventory"
+          },
+          {
+            "kind": "request_review",
+            "reason": "unknown_evidence"
+          },
+          {
+            "kind": "request_review",
+            "reason": "manual_review"
+          },
+          {
+            "kind": "request_review",
+            "reason": "policy_refused"
+          }
+        ],
+        "attempted_tools": [
+          {
+            "tool": "order_manifest",
+            "status": "attempted"
+          },
+          {
+            "tool": "replacement_policy",
+            "status": "attempted"
+          }
+        ],
+        "remaining_budgets": {
+          "tools": 10,
+          "seconds": 239.198891,
+          "decisions": 13
+        }
+      }
+    }
+  ],
+  "model_execution": "blocked by readiness correctness failure; zero native replay decisions",
+  "meaningful_algorithm": "observation-history-budget-cues/v2"
+}

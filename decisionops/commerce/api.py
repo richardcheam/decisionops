@@ -126,10 +126,11 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
 
     @app.get('/health')
     def health():
-        with transaction(True) as connection:
-            revision=connection.exec_driver_sql('SELECT version_num FROM alembic_version').scalar_one()
-            if revision!='0005':
-                raise HTTPException(503,'Apply the current business migration before starting this release')
+        from .schema_readiness import validate_readiness,SchemaNotReady
+        try:
+            with transaction(True) as connection:validate_readiness(connection)
+        except SchemaNotReady:
+            raise HTTPException(503,'Business schema is not ready for this release; check migrations and schema compatibility') from None
         return {'status':'ready','mode':'fictional_store_rules'}
 
     router=APIRouter(prefix='/api',dependencies=[Depends(staff)])

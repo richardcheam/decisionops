@@ -560,3 +560,144 @@ containers and persistent volume intact. Optional provider functionality require
 migration 0005 and the matching source in the intended environment; merging does
 not automatically migrate or restart the original stack. Historical comparison
 reports/negative results remain preserved, with no model reruns during integration.
+
+### 2026-10-14 — selectable-read Stage 1
+
+Agent-authored: resolved projections, authority/completeness, active-history and
+version-2 hash contracts; two isolated library modules; focused regression tests
+and opt-in PostgreSQL CI collection. Richard supplied the requirements and approved
+Stage 1; no personally performed command, patch or verification is newly reported.
+Agent checks use dependency-free tests and a SQLAlchemy SQLite record mirror;
+PostgreSQL/browser/CI execution for this change is not claimed. No model, runtime
+migration or original application operation was performed. Earlier attribution,
+Richard's reported fixture/database commands, and historical model results remain
+unchanged. The 64-state parity matrix is deterministic regression evidence, not an
+independent model-performance benchmark.
+
+Final agent-executed Stage 1 verification: focused discovery collected 37 tests,
+32 passed and five opt-in PostgreSQL checks skipped. Dependency-free profile
+collected 267: 152 passed, 115 explicit dependency/database/optional-package skips,
+zero failures/errors. Full local commerce-environment discovery collected 267:
+172 passed, 95 explicit database/optional-package skips, zero failures/errors.
+A fresh agent source review found ambiguous dependency contents could retain old
+payment evidence; the agent reproduced the failure, added a regression and fixed
+assembly to reject it. Subsequent results above include the correction. No CI,
+PostgreSQL integration or browser execution for this slice is claimed. A read-only
+Docker inspection confirmed the original four container IDs remained running.
+
+### 2026-10-14 — Stage 1 acceptance completed after checkpoint reconciliation
+
+Agent fetched origin/main: still b27e2d7cda764ef6e52f99eff3e5a9f30a45d0f5.
+The design worktree already contained the prior uncommitted Stage 1 implementation;
+it was preserved and reconciled, not rebuilt. Agent tightened explicit dependency
+objects, added a bounded policy-visible projection separate from audit rows, made
+dependency hash order canonical, and made differing active leaf contents unknown
+even when their Boolean values agree. Consequential case-revision coverage is
+resolved in the plan for Stage 2, without adding a column, trigger or migration now.
+
+Agent started only a cached-image temporary PostgreSQL test container on 55436,
+with database commerce_stage1_test, user commerce_stage1 and tmpfs storage. Before
+testing, connection identity and empty public schema were checked. Existing
+migrations/seeds ran only in disposable test schemas. Adaptive read-only transaction
+checks and legacy execution/approval/recovery regressions ran in this environment.
+Ten focused PostgreSQL tests passed; required profile passed 120 with zero skips.
+Full local suite: 278 collected, 276 passed, two optional Laya-package skips.
+Dependency-free: 278 collected, 156 passed, 122 explicit optional/database skips.
+Frozen regression: 12 passed, zero failed and zero provider calls. These supersede
+the earlier pending PostgreSQL status; CI/browser checks remain unexecuted.
+
+Richard supplied clarified Stage 1 scope; no Richard-executed command or patch is
+newly claimed. Fresh agent source review ran pure/SQLite tests only, not PostgreSQL;
+no supervisor verification is claimed. The agent's own additional leaf-conflict
+regression and final results are recorded above. Original runtime/worktrees/volume,
+legacy workflow and historical reports remain unchanged. No model inference,
+checkpoint download, paid calls, dependency upgrade or AWS resource was used.
+
+Agent stopped and removed only decisionops-adaptive-stage1-tests after verification;
+its tmpfs data was discarded. Post-test inspection found no remaining app/test
+tables in that database. The original four IDs and named volume were unchanged.
+
+
+### Stage 2 attribution
+
+Richard authorized Stage 2; no new Richard-executed verification was reported.
+The agent preserved the accepted Stage 1 snapshot in local commit fde904f and
+implemented Stage 2 on a separate worktree/branch. Supervisor Stage 1 verification
+covered archive reconstruction/integrity, 16 pure observation tests and 12 frozen
+legacy cases only. PostgreSQL/full-suite results and all Stage 2 commands/demo
+are agent-executed. CI/browser were not executed. A source-only agent review found
+a case-lock deadline gap; a real PostgreSQL regression reproduced a five-second
+wait, then the remaining-deadline patch reduced it below the 1.5-second test bound.
+The isolated demo used port 55437 and disposable schemas, never the original
+migration-0004 stack or volume. This is engineering verification, not model quality.
+
+
+### Stage 3 attribution
+
+Richard authorized Stage 3 and reported no new personally executed commands.
+The agent verified the accepted Stage 2 archives and preserved their exact source
+snapshot in local commit e8a9804, then isolated Stage 3. Supervisor Stage 2 review
+covered patch integrity/reconstruction and isolated terminal/admission logic with
+mocked database operations. The 28 focused and 148 required PostgreSQL passes were
+agent-executed; prior CI/browser were unexecuted. New Stage 3 source review,
+PostgreSQL tests and port-55438 CLI/recovery traces are agent-executed. Actual CI
+results must identify the review SHA and executed jobs separately. No model runs,
+downloads, paid calls, dependency upgrades, AWS or original-runtime changes.
+
+
+### Stage 4 attribution
+
+Richard authorized Stage 4; no additional Richard-executed commands were reported.
+The agent froze the session contract in commit 04c4809, implemented on a separate
+adaptive-sessions worktree, and executed all local fake-child, PostgreSQL and CLI
+verification. Supervisor Stage 3 verification covered archive reconstruction,
+mocked shutdown/checkpoint guards, CI success and source identity. PostgreSQL
+executions remain agent/CI attributed. A fresh source-only reviewer inspected
+Stage 4 and ran no tests, imports, models, database or container operations.
+No checkpoint was loaded; fake scores/phases are simulated integration evidence,
+not performance results. Stage 5 remains pending. Original runtime and historical
+reports were preserved; migration 0008 was used only in the isolated test database.
+
+Stage 4 final verification: agent local 14 pure session and 14 focused PostgreSQL
+passes, required profile 189/zero skips, dependency-free 176/191 explicit skips.
+GitHub CI independently executed both profiles at source SHA 57a6baa048c64796f4534c26b25b9d359a7b1eec
+with the same counts. Browser and real checkpoint loading remain unexecuted.
+
+### Stage 5 partial/blocked attribution
+
+Richard authorized Stage5 and reported no new personally executed commands.
+Supervisor Stage4 verification covered14 fake-child transport tests, archive/patch
+integrity, CI success and changed-source identity. Agent/CI retain PostgreSQL
+attribution; no supervisor real-model/browser execution is claimed.
+
+The agent froze19 fixtures and exact replay inputs, ran57 fixed/cue/fake baseline
+investigations, re-adjudicated48 saved non-proposal traces and additionally verified
+9 proposing pairs to retain v1 attestations. All final57 pairs were admissible;
+138 fake decisions are simulated, not native inference. Raw initial traces remain.
+The agent executed the new6 browser tests, all failed because the head0008 test
+API health requires0005. Local required PostgreSQL also failed; one focused recheck
+retained3 failures/errors. No native pilot, model load or comparison occurred.
+Stage5 is blocked; historical model claims were not reused.
+
+Fresh Stage5 source-only review found evaluator scoring/retention/fingerprint gaps;
+the agent fixed the evaluator with10 pure regressions and reran the full dependency-
+free profile. The reviewer did not independently execute the corrected code.
+Automatic approval review rejected a public GitHub artifact upload, so current-source
+CI remains unexecuted. Full documentation/evidence is local. Only disposable
+Stage5 databases/projects were started/migrated/seeded/removed; original application,
+volume and accepted snapshots remain unchanged. No downloads, upgrades, paid calls,
+AWS, training, release or adaptive-default change.
+
+
+### Stage 5 bounded correctness follow-up (agent executed)
+
+Richard requested correction, not new personally executed commands. The agent
+corrected current-source schema readiness (explicit0008 contract; no migration
+automation), captured PostgreSQL rows/deadlines/dispatch dispositions, and replaced
+timing-only test setup with explicit dispatch/lock/publication boundaries. Legacy
+production dispatch, settlement, freshness, fencing and permission code is unchanged.
+The agent built the current frontend offline from cached dependencies and executed
+all6 isolated browser tests, including actual approval rejection/replacement/history/
+stock assertions. See STAGE5-CORRECTION.md for final profile counts and retained
+failed outputs. Supervisor verification of this correction is not claimed. No
+native model, baseline/evaluation replay, CI publication or original-runtime action.
