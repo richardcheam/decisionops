@@ -4,7 +4,35 @@ from unittest.mock import patch
 import test_commerce_adaptive_core as core
 @unittest.skipUnless(os.environ.get('COMMERCE_TEST_DATABASE_URL'),'Requires isolated shop PostgreSQL')
 class ShopFixtureTests(unittest.TestCase):
-    setUp=core.AdaptiveCoreTests.setUp
+    @classmethod
+    def setUpClass(cls):
+        from sqlalchemy.engine import make_url
+        from decisionops.commerce.database import database_engine
+        url=make_url(os.environ['COMMERCE_TEST_DATABASE_URL'])
+        if not url.database.endswith('_test'):
+            raise ValueError('Shop tests require an explicitly isolated *_test server')
+        cls.fixture_admin=database_engine(url)
+        cls.owns_database=False;cls.owns_role=False
+        cls.addClassCleanup(cls.drop_fixture)
+        with cls.fixture_admin.connect().execution_options(isolation_level='AUTOCOMMIT') as c:
+            exists=c.exec_driver_sql("SELECT EXISTS(SELECT FROM pg_database WHERE datname='shop_fixture') OR EXISTS(SELECT FROM pg_roles WHERE rolname='shop_fixture')").scalar_one()
+            if exists:raise ValueError('Refusing to use an existing shop_fixture database or role')
+            c.exec_driver_sql("CREATE ROLE shop_fixture LOGIN PASSWORD 'fictional-shop-ci-only'")
+            cls.owns_role=True
+            c.exec_driver_sql('CREATE DATABASE shop_fixture OWNER shop_fixture')
+            cls.owns_database=True
+        cls.fixture_url=url.set(database='shop_fixture',username='shop_fixture',password='fictional-shop-ci-only').render_as_string(hide_password=False)
+    @classmethod
+    def drop_fixture(cls):
+        try:
+            with cls.fixture_admin.connect().execution_options(isolation_level='AUTOCOMMIT') as c:
+                if cls.owns_database:c.exec_driver_sql('DROP DATABASE shop_fixture')
+                if cls.owns_role:c.exec_driver_sql('DROP ROLE shop_fixture')
+        finally:cls.fixture_admin.dispose()
+    def setUp(self):
+        # Real guarded identity; retain per-test owned schemas and production guard.
+        with patch.dict(os.environ,COMMERCE_TEST_DATABASE_URL=self.fixture_url):
+            core.AdaptiveCoreTests.setUp(self)
     cleanup=core.AdaptiveCoreTests.cleanup
     def client(self,enabled=True,store='demo-store'):
         from fastapi.testclient import TestClient

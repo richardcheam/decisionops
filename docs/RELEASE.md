@@ -95,3 +95,12 @@ imports),requires source/original/restored revision equality,and records that sa
 revision in configuration-recovery metadata. It neither migrates nor accepts arbitrary
 newer revisions. Focused tests cover0009 success and0005/mismatched/newer rejection.
 Final-source CI results are reported on the PR,not inferred from the earlier pass.
+
+
+The corrected backup/browser CI passed. The broader PostgreSQL full-suite job then
+exposed test setup assumptions outside the required212-test profile:the pilot expiry
+test used host uptime as its clock,and shopper positives used a generic DB despite
+the unchanged strict shop_fixture identity guard. Tests now set an explicit expired
+clock (and forbid native execute calls),and create/drop only their own shop_fixture
+DB/role on an explicitly isolated *_test server,refusing any preexisting fixture.
+No production identity guard,deadline,ledger or business behavior was relaxed.

@@ -19,6 +19,7 @@ class PilotAdmissionTests(unittest.TestCase):
         self.baseline=self.root/'baseline.json';self.baseline.write_text(json.dumps(data))
         self.admin=MagicMock();self.admin.connect.return_value.__enter__.return_value.exec_driver_sql.return_value.one.return_value=('commerce_stage5_test','commerce_stage5',5432)
     def invoke(self,mode='pilot',family='laya',leaf=None,**mocks):
+        mocks.setdefault('execute',MagicMock(side_effect=AssertionError('Native dispatch forbidden in model-free admission tests')))
         args=['pilot-script','--mode',mode,'--family',family,'--baseline-summary',str(self.baseline),'--output',str(self.root/'experiment'/(leaf or family))]
         with patch.object(sys,'argv',args),patch.dict(os.environ,COMMERCE_TEST_DATABASE_URL='postgresql+psycopg://commerce_stage5:x@127.0.0.1:55441/commerce_stage5_test'),patch.object(self.script,'database_engine',return_value=self.admin),(patch.multiple(self.script,**mocks) if mocks else contextlib.nullcontext()):return self.script.main()
     def test_comparison_rejected_before_admission(self):
@@ -54,7 +55,8 @@ class PilotAdmissionTests(unittest.TestCase):
         from decisionops.commerce.adaptive_evaluation import admit_experiment_budget
         admit_experiment_budget(path,Path('/proc/sys/kernel/random/boot_id').read_text().strip(),0.)
         before=path.read_bytes()
-        with self.assertRaises(ValueError):self.invoke()
+        # Fresh CI hosts can have uptime <1200s: use an explicit expired clock.
+        with patch.object(self.script.time,'monotonic',return_value=1201.),self.assertRaises(ValueError):self.invoke()
         self.assertEqual(path.read_bytes(),before)
     def test_resource_sample_handles_exited_child_without_ignoring_live_unknown(self):
         for text,expected in [('State:\tS (sleeping)\nVmRSS:\t100 kB\nVmHWM:\t120 kB\n',120),('State:\tZ (zombie)\n',0)]:
