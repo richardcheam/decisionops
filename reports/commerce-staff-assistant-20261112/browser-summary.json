@@ -1,0 +1,63 @@
+{
+  "mode": "mocked Decisions transport, not real inference",
+  "agent_executed": true,
+  "paid_calls": 0,
+  "investigations": [
+    {
+      "id": "ARUN-a08a2c4e91324e8b8e03eed80baca229",
+      "state": "proposed",
+      "tools": 7,
+      "decisions_including_continuations": 15,
+      "terminal": {
+        "outcome": "proposal",
+        "decision": {
+          "status": "eligible_to_propose",
+          "blockers": [],
+          "unknowns": []
+        },
+        "unknowns": [],
+        "case_status": "awaiting_review",
+        "proposal_id": "PROP-f145506be60e420e9ad2e8b90055d325",
+        "unread_tools": [],
+        "scope_reasons": [],
+        "scope_complete": true,
+        "investigation_id": "INV-a23dfd195f6346cc8e9f7a767c676899",
+        "unresolved_scope": [],
+        "execution_authorized": false
+      }
+    },
+    {
+      "id": "ARUN-4df0540c039e4255a72b244b4daecf1c",
+      "state": "review",
+      "tools": 8,
+      "decisions_including_continuations": 16,
+      "terminal": {
+        "reason": "api_budget_or_admission_unavailable",
+        "outcome": "review",
+        "decision": {
+          "status": "needs_review",
+          "blockers": [],
+          "unknowns": [
+            "no_previous_compensation"
+          ]
+        },
+        "unknowns": [
+          "no_previous_compensation"
+        ],
+        "case_status": "needs_review",
+        "unread_tools": [],
+        "scope_reasons": [],
+        "scope_complete": false,
+        "unresolved_scope": [
+          "compensation_history"
+        ],
+        "execution_authorized": false
+      }
+    }
+  ],
+  "operation_count": 1,
+  "stock_reservation_count": 1,
+  "replacement_count": 1,
+  "browser_result": "2 passed, 0 skipped",
+  "approval_attribution": "Playwright explicitly clicked staff approval and replacement confirmation in fictional fixtures; no model approval and no Richard-performed verification claimed"
+}

@@ -8,10 +8,13 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import sys
 import tempfile
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT))
+from scripts.commerce_schema_contract import validate_restored_revisions
 
 
 def main():
@@ -40,7 +43,8 @@ def main():
                 raise RuntimeError(f'{table}: source changed during verification or restore mismatch; do not use as verified backup')
             checks[table] = {'rows':len(json.loads(restored)), 'sha256':hashlib.sha256(restored).hexdigest()}
         revision = command('psql','-U','commerce','-d',database,'-Atc','SELECT version_num FROM alembic_version',capture_output=True).stdout.decode().strip()
-        assert revision == '0005'
+        original_revision = command('psql','-U','commerce','-d','commerce','-Atc','SELECT version_num FROM alembic_version',capture_output=True).stdout.decode().strip()
+        validate_restored_revisions(original_revision,revision)
         graph = command('psql','-U','commerce','-d',database,'-Atc',"SELECT count(*) FROM information_schema.tables WHERE table_schema='commerce_graph'",capture_output=True).stdout.decode().strip()
         assert int(graph) > 0
         (directory/'verification.json').write_text(json.dumps({'revision':revision,'graph_tables':int(graph),'records':checks},indent=2)+'\n')

@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from psycopg import Error as PsycopgError
 import sqlalchemy as sa
 from sqlalchemy.exc import SQLAlchemyError
@@ -45,13 +45,28 @@ class EscalationRequest(StrictBody):
     reason: Annotated[str,Field(min_length=1,max_length=500)]
 
 
-def create_app(engine=None,*,password=None,username=None,store_id=None,origins=None):
+class ShipmentReport(StrictBody):
+    report: Annotated[str,Field(min_length=1,max_length=2000)]
+    request_id: Annotated[str,Field(min_length=1,max_length=128)]
+    expected_generation: Annotated[int,Field(ge=0)]
+    @field_validator('report')
+    @classmethod
+    def bounded_report(cls,value):
+        if not value.strip() or len(value.encode('utf-8'))>2000:raise ValueError('Report must contain 1..2000 UTF-8 bytes')
+        return value
+
+
+def create_app(engine=None,*,password=None,username=None,store_id=None,origins=None,staff_investigation_mode=None,storefront_fixture=None):
+    from .staff_investigations import MODES
+    staff_investigation_mode=staff_investigation_mode or os.environ.get('COMMERCE_STAFF_INVESTIGATION_MODE','rules')
+    if staff_investigation_mode not in MODES:raise ValueError('Staff investigation mode must be rules, mock-decisions or mock-specialists; paid modes prohibited')
     password=password if password is not None else os.environ.get('COMMERCE_STAFF_PASSWORD','')
     username=username or os.environ.get('COMMERCE_STAFF_USERNAME','operator')
     store_id=store_id or os.environ.get('COMMERCE_STORE_ID','demo-store')
     origins=origins if origins is not None else set(os.environ.get('COMMERCE_ORIGINS','http://127.0.0.1:8080,http://localhost:8080').split(','))
     if len(password)<16 or not 1<=len(username)<=128:
         raise ValueError('Configure a staff password of at least 16 characters and a bounded username before startup')
+    storefront_fixture=(os.environ.get('COMMERCE_STOREFRONT_FIXTURE')=='1') if storefront_fixture is None else storefront_fixture
     owned=engine is None
     engine=engine or database_engine()
 
@@ -126,11 +141,32 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
 
     @app.get('/health')
     def health():
-        with transaction(True) as connection:
-            revision=connection.exec_driver_sql('SELECT version_num FROM alembic_version').scalar_one()
-            if revision!='0005':
-                raise HTTPException(503,'Apply the current business migration before starting this release')
+        from .schema_readiness import validate_readiness,SchemaNotReady
+        try:
+            with transaction(True) as connection:validate_readiness(connection)
+        except SchemaNotReady:
+            raise HTTPException(503,'Business schema is not ready for this release; check migrations and schema compatibility') from None
         return {'status':'ready','mode':'fictional_store_rules'}
+
+    if storefront_fixture:
+        def customer_rows(order_id=None,tracking=False):
+            from .shop_fixture import shopper_orders,ORDER_IDS,require_fixture_database
+            if store_id!='demo-store' or order_id is not None and order_id not in ORDER_IDS:
+                raise HTTPException(404,'Fictional order not found')
+            with transaction(True) as c:
+                try:require_fixture_database(c)
+                except ValueError:raise HTTPException(404,'Fictional storefront is unavailable') from None
+                rows=shopper_orders(c,order_id,tracking)
+            if order_id is None:return rows
+            found=next((row for row in rows if row['id']==order_id),None)
+            if found is None:raise HTTPException(404,'Fictional order not found')
+            return found
+        @app.get('/demo-shop/orders')
+        def customer_orders():return customer_rows()
+        @app.get('/demo-shop/orders/{order_id}')
+        def customer_order(order_id: str):return customer_rows(order_id)
+        @app.get('/demo-shop/orders/{order_id}/tracking')
+        def customer_tracking(order_id: str):return customer_rows(order_id,True)
 
     router=APIRouter(prefix='/api',dependencies=[Depends(staff)])
 
@@ -174,6 +210,24 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
                 result['assessment']=connection.execute(sa.select(db.investigations.c.assessment).where(db.investigations.c.id==result['investigation_id'])).scalar_one()
             operation=connection.execute(sa.select(db.operations.c.id).where(db.operations.c.case_id==case_id)).scalar_one_or_none()
             result['operation']=reconcile(connection,operation) if operation else None
+            from .staff_investigations import view
+            result['shipment_investigation']=view(connection,case_id)
+            if storefront_fixture and result['shipment_investigation']:
+                from .shop_fixture import ORDER_IDS
+                if result['order_id'] in ORDER_IDS:
+                    for evidence in result['shipment_investigation']['evidence']:
+                        source=evidence['source']
+                        if source['order_id']!=result['order_id']:continue
+                        if evidence['tool']=='order_manifest':
+                            evidence['customer_page']='/shop/account/orders/'+result['order_id']
+                        elif (evidence['tool'] in ('fulfilment','carrier_loss')
+                              and source['shipment_id']==result['request']['shipment_id']=='SHIP-'+result['order_id'].removeprefix('ORD-')):
+                            evidence['customer_page']='/shop/account/orders/'+result['order_id']+'/tracking'
+            investigation=result['shipment_investigation']
+            if investigation and (investigation['state']=='active' or not result['assessment']):
+                result['assessment']={'facts':investigation['facts'],'decision':{'unknowns':investigation['unknowns'],'blockers':investigation['blockers'],'status':'needs_review'},'read_tools':[]}
+            if investigation and investigation['state']=='active':
+                result['latest_job']={'id':investigation['id'],'status':investigation['job_status'],'action':'shipment_investigation','error_kind':None}
         return result
 
     @router.post('/cases/{case_id}/investigate',status_code=202,dependencies=[Depends(mutation)])
@@ -183,6 +237,14 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
             result=enqueue(connection,case_id,'investigate')
         result.pop('token',None)
         return result
+
+    @router.post('/cases/{case_id}/shipment-investigation',status_code=202,dependencies=[Depends(mutation)])
+    def shipment_investigation(case_id: str,body: ShipmentReport):
+        from .staff_investigations import enqueue as start
+        with transaction() as connection:
+            authorize_case(connection,case_id,True)
+            result=start(connection,engine,case_id,body.report,body.request_id,body.expected_generation,staff_investigation_mode)
+            return {'run_id':result['id'],'state':result['state']}
 
     @router.post('/cases/{case_id}/review',dependencies=[Depends(mutation)])
     def review(case_id: str,body: ReviewRequest,actor: str=Depends(staff)):

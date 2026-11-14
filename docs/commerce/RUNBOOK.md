@@ -1,5 +1,23 @@
 # Commerce local reproduction
 
+**Staff assistant milestone (2026-11-12):** see [STAFF-ASSISTANT.md](STAFF-ASSISTANT.md)
+for the working report/action/progress UI, safe current demo on loopback 55521,
+readiness, known failure, evidence, exact approval and scoped startup/shutdown.
+Rules remain default; no paid transport is enabled in the staff worker.
+
+
+**Current entry point:** [2026-10-16 handoff](HANDOFF.md),
+[actual Decisions walkthrough](DECISIONS-LIVE-WALKTHROUGH.md), and
+[archive/evidence index](../../reports/commerce-evidence/INDEX.md). Older sections
+below retain historical commands/results. Their runs/... evidence paths now resolve
+under the archived worktree root in that index. Use the handoff's separate project,
+ports and volume for a new stack; never apply current init/migrations to the original
+migration-0004 application. No infrastructure command was run during wrapup.
+
+Offline evidence tools are now scripts/commerce_reconcile_nano.py and
+scripts/commerce_reconcile_decisions.py. The explicit single-use operator sources
+are scripts/commerce_decisions_operator/; no live call is currently authorized.
+
 ## Eligibility function
 
 No dependencies or model calls are needed. Run from the isolated worktree:
@@ -1633,3 +1651,903 @@ tests cover old settled/reserved/in-flight/forced calls, controlled no-dispatch,
 new B requests and bounded overflow diagnostics/fallback/recovery. These are
 model-free regression evidence; historical comparison reports and negative model
 results remain unchanged and were not rerun for this patch.
+
+## Stage 1 adaptive read contracts (library/tests only)
+
+The optional adaptive investigation is not wired into the browser, API, worker or
+case lifecycle in Stage 1. Stage 2 now provides the separate opt-in CLI below. The [resolved Stage 1 contract](../superpowers/specs/2026-10-14-adaptive-commerce-stage1-contract.md)
+lists exact projections, explicit supporting reads and authority rules.
+`adaptive_tools.read_tool` executes one selected read; its dependencies must
+already exist in `adaptive_evidence.History` and be supplied explicitly with
+`dependencies=(...)`. History does not choose dependency objects for the caller. Inspection/assembly performs no SQL. `History.policy_view()` separately returns
+bounded normalized requested observations without audit IDs/hashes/raw records.
+A caller owns a consistent read-only transaction per tool. An unavailable result
+requires rollback of any aborted transaction before a later attempt.
+
+No database/container startup, seed, migration or shutdown is needed for the
+local Stage 1 checks. In an existing commerce-only Python environment, from the
+repository root:
+
+```bash
+python3 -B -S -m unittest discover -s tests -p test_commerce_adaptive_evidence.py
+.venv/bin/python -B -m unittest discover -s tests -p test_commerce_adaptive_tools.py
+python3 -B -S scripts/commerce_ci_tests.py dependency-free
+```
+
+Expected: 16 pure history tests pass; 22 SQLAlchemy tests pass against an in-memory
+SQLite business-record mirror. The latter includes 64 complete supported record
+states agreeing with the bundled reader; this is deterministic regression coverage,
+not model evaluation or PostgreSQL evidence. Without commerce dependencies those
+22 tests skip explicitly. The dependency-free profile reports all individual
+optional/database skips.
+
+Inspect a meaningful failure without affecting a running database:
+
+```bash
+PYTHONPATH=tests .venv/bin/python -B -m unittest \
+  test_commerce_adaptive_tools.AdaptiveToolTests.test_incomplete_or_failed_history_cannot_prove_zero
+PYTHONPATH=tests python3 -B -S -m unittest \
+  test_commerce_adaptive_evidence.AdaptiveEvidenceTests.test_dependency_change_and_expiry_preserve_unknown
+```
+
+The first injects an unavailable lookup and incomplete history. Both yield
+unknown compensation, with bounded reasons `database_error` / `history_incomplete`,
+not permission to replace. The second changes manifest content: the payment
+observation stays in immutable history but becomes dependency-invalid. Tests
+inspect `Observation.record()` and `History.assess()` rather than application
+logs for Stage 1; see the Stage 2 runtime trace guidance below.
+
+The appropriate correction is to restore the source's availability/completeness
+and explicitly refresh the affected tool, naming its same-stream predecessor.
+After a dependency content change, explicitly refresh its dependent tools as well.
+Never set an unknown fact to true, treat unavailable history as empty, or remove
+an independent contradictory observation. Unchanged-content dependency refreshes
+do not invalidate descendants. All records and supersession edges remain inspectable.
+These test fixtures close/dispose their in-memory databases automatically; they
+need no container teardown and cannot delete the application's volume.
+
+Version-2 observations are not version-1 proposal inputs. Legacy readers, source
+hashes and proposal validators remain unchanged. The eventual collected-evidence
+to locked safety-recheck/publication bridge belongs to a later stage.
+
+Opt-in `test_commerce_adaptive_postgres.py` adds ten PostgreSQL checks using the
+existing disposable test-schema fixture; the required PostgreSQL CI profile now
+collects these and the SQLite contract module and fails on any skip. Do not run
+that profile against the original application to verify this slice. PostgreSQL execution against the isolated environment is recorded below; browser
+and CI execution for this uncommitted slice are not claimed.
+
+To undo this isolated slice, leave the design worktree and use the unchanged main
+checkout; nothing is enabled in the running application and there is no migration
+to downgrade. Keep documentation/history until the change is reviewed.
+
+### Completing Stage 1 PostgreSQL acceptance safely
+
+Required PostgreSQL checks run on a separate temporary test database, not port
+55432 or the original Compose project. The verified completion environment was:
+`decisionops-adaptive-stage1-tests`, loopback port `55436`, database
+`commerce_stage1_test`, user `commerce_stage1`, default Docker bridge, and
+512 MiB tmpfs at `/var/lib/postgresql/data` (no persistent volume). It used the
+already-cached PostgreSQL 16.15 digest with `--pull=never`. No app containers ran
+in this test environment. Existing migrations and fictional seeds were applied
+only by test fixtures in disposable schemas; no new migration was introduced.
+
+To reproduce with the cached image only (fail rather than pull if unavailable):
+
+```bash
+docker run -d --pull=never --name decisionops-adaptive-stage1-tests \
+  --label decisionops.test=adaptive-stage1 --memory=512m --cpus=2 \
+  --tmpfs /var/lib/postgresql/data:rw,size=512m \
+  -e POSTGRES_DB=commerce_stage1_test -e POSTGRES_USER=commerce_stage1 \
+  -e POSTGRES_PASSWORD=stage1-fictional-only -p 127.0.0.1:55436:5432 \
+  postgres@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4
+docker exec decisionops-adaptive-stage1-tests pg_isready -U commerce_stage1 -d commerce_stage1_test
+docker inspect decisionops-adaptive-stage1-tests --format '{{json .HostConfig.Tmpfs}} {{json .NetworkSettings.Ports}}'
+```
+
+Wait for readiness before checks. Port/name conflicts are a blocker; never stop
+another container to make room. This command starts PostgreSQL only, with no app
+init service and no public-schema migrations or seed.
+
+From `runs/worktrees/adaptive-design`, with the existing commerce-only interpreter:
+
+```bash
+export COMMERCE_TEST_PYTHON='../local-providers/.venv/bin/python'
+export COMMERCE_TEST_DATABASE_URL='postgresql+psycopg://commerce_stage1:stage1-fictional-only@127.0.0.1:55436/commerce_stage1_test'
+"$COMMERCE_TEST_PYTHON" -B -m unittest discover -s tests -p test_commerce_adaptive_postgres.py -v
+"$COMMERCE_TEST_PYTHON" -B scripts/commerce_ci_tests.py postgres
+"$COMMERCE_TEST_PYTHON" -B -m unittest discover -s tests -v
+python3 -B -S scripts/commerce_ci_tests.py dependency-free
+python3 -B -S -m decisionops.commerce.evaluation --output runs/stage1-verification/commerce-regression-v1-report.json
+```
+
+Use your own existing commerce-profile interpreter when this sibling worktree is
+absent. Verify the container's loopback port/tmpfs and assert the database identity
+before exporting the test URL. The agent verified `(current_database(), current_user,
+inet_server_port()) = (commerce_stage1_test, commerce_stage1, 5432)` on host port
+55436 and an empty public schema before tests. Database fixtures create/drop their
+own test schemas; they do not upgrade an application schema.
+
+Actual agent results: ten focused PostgreSQL tests passed; required PostgreSQL
+profile passed all 120 collected checks with zero skips (includes SQLite contract
+checks); full local commerce suite passed 276 of 278, with only two optional Laya
+package checks skipped. Dependency-free profile passed 156 of 278 and explicitly
+reported 122 optional/database skips. Frozen regression: 12 passed, zero failed,
+zero provider calls. No CI or browser execution is claimed for this slice.
+
+The original four container IDs and named volume were inspected read-only and
+preserved. Stop/remove only the owned test container after checks; its tmpfs data
+is disposable. This is not permission to restart or remove the original Compose
+stack or its volume. No paid inference, model loading/downloads or dependency
+changes are involved. This describes the historical Stage 1 verification; Stage 2 follows below.
+
+Owned-container shutdown after verification:
+
+```bash
+docker stop -t 10 decisionops-adaptive-stage1-tests
+docker rm decisionops-adaptive-stage1-tests
+```
+
+The agent performed this cleanup after verifying no application/test tables
+remained. Logs and actual test summaries are preserved locally under ignored
+`runs/stage1-verification/`; tracked historical reports are unchanged.
+
+
+## Stage 2 opt-in durable model-free investigation
+
+The ordinary browser/API/worker still use the bundled rules workflow. The CLI is
+an explicit separate path. `adaptive_policies.py` selects a typed action;
+`adaptive_investigations.py` serializes its reservation, calls one Stage 1 read in
+a separate read-only transaction, then saves immutable steps/observations.
+Migration `0006_adaptive_core.py` follows 0005. Start revokes any old approval and
+binds the revision returned by the server-side case UPDATE trigger. Every case
+UPDATE (including a no-op/direct SQL) increments revision. A staff edit makes the
+old run stale; its late result cannot overwrite the newer case.
+
+Publication requires seven collected valid true conditions and supported scope.
+Private safety reads compare projected contents/dependencies; they never become
+policy observations or fill a missing collection. Drift records invalidation;
+refresh is an explicit counted read. Only exact confirmation creates a separate
+legacy v1 proposal. Staff must still approve that exact proposal; existing execution
+revalidation, transactional reservation, duplicate prevention and reconciliation
+remain unchanged.
+
+### Isolated reproduction and shutdown
+
+Never use the original port 55432, migration-0004 stack or its volume for this
+walkthrough. From the adaptive-core worktree, reuse a commerce-only interpreter:
+
+```bash
+export COMMERCE_TEST_PYTHON=/home/richard/projects/decisionops/runs/worktrees/local-providers/.venv/bin/python
+docker run -d --pull=never --name decisionops-adaptive-stage2-tests \
+  --label decisionops.test=adaptive-stage2 --memory=512m --cpus=2 \
+  --tmpfs /var/lib/postgresql/data:rw,size=512m \
+  -e POSTGRES_DB=commerce_stage2_test -e POSTGRES_USER=commerce_stage2 \
+  -e POSTGRES_PASSWORD=stage2-fictional-only -p 127.0.0.1:55437:5432 \
+  postgres@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4
+docker exec decisionops-adaptive-stage2-tests pg_isready -U commerce_stage2 -d commerce_stage2_test
+docker inspect decisionops-adaptive-stage2-tests --format '{{json .HostConfig.Tmpfs}} {{json .NetworkSettings.Ports}}'
+export COMMERCE_TEST_DATABASE_URL='postgresql+psycopg://commerce_stage2:stage2-fictional-only@127.0.0.1:55437/commerce_stage2_test'
+"$COMMERCE_TEST_PYTHON" -B scripts/commerce_adaptive_walkthrough.py
+"$COMMERCE_TEST_PYTHON" -B scripts/commerce_ci_tests.py postgres
+python3 -B -S scripts/commerce_ci_tests.py dependency-free
+docker stop -t 10 decisionops-adaptive-stage2-tests
+docker rm decisionops-adaptive-stage2-tests
+```
+
+If group membership is not active, prefix Docker commands with `sg docker -c`
+as in the agent's recorded commands. Do not pull a missing image automatically.
+The script verifies loopback/test database settings, creates its own disposable
+schema, migrates to 0006 and seeds fictional data there. It records actual CLI
+commands and complete start/run/inspect traces under `runs/stage2-walkthrough-*`,
+then drops only its schema. Expected success: proposed, seven tools, eight
+choices, awaiting staff review, execution_authorized false. Injected SQL failure
+in order_manifest: two counted unavailable attempts, review, all seven facts
+unknown; other business tables were not silently queried. The tmpfs database is
+disposable and loses data on container stop; durable service state survives CLI
+processes but this environment is not a persistent deployment.
+
+For a separately prepared persistent demo database migrated to 0006, open a case
+with `case_demo open --order ORD-1042 --shipment SHIP-1042 --item shirt-blue-M:1`.
+Set COMMERCE_DATABASE_URL to that verified isolated environment, then use the IDs
+printed by each command (replace CASE/RUN/CONTEXT below):
+
+```bash
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_demo start --case CASE --report 'Parcel has not arrived' --policy fixed
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_demo run --run RUN
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_demo inspect --run RUN
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_demo advance --run RUN --context CONTEXT --action '{"kind":"read","tool":"order_manifest"}'
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_demo recover --run RUN --context CONTEXT
+```
+
+Start also accepts cue, fake-override, fake-invalid, fake-unavailable and fake-refuse;
+these are model-free policies, not simulated model performance. `run
+--inject-tool-failure order_manifest` is allowed only on isolated *_test/*_demo
+URLs outside port 55432. It injects a real SQL error inside the selected read-only
+transaction. Remove that option to undo the injection; retry only if the run/tool
+budgets permit, otherwise open a new staff-reviewed case/run.
+
+### Inspection, failure diagnosis and smallest recovery
+
+Inspect `steps[].data.features` to see exactly what informed a choice; compare
+`decision_reserved`, `tool_result`, `choice_rejected`, `safety_drift` and terminal
+steps. Raw observation provenance is separate from policy features. SQL inspection
+in the configured schema (psql or database console):
+
+```sql
+SELECT id, case_id, generation, case_revision, state, context_version,
+       decision_attempts, tool_attempts, pending_token, pending_context, deadline
+FROM commerce_adaptive_runs ORDER BY created_at;
+SELECT run_id, sequence, kind, data FROM commerce_adaptive_steps ORDER BY run_id, sequence;
+SELECT run_id, step_sequence, applied, record FROM commerce_adaptive_observations ORDER BY run_id, step_sequence;
+SELECT * FROM commerce_adaptive_active;
+SELECT * FROM commerce_adaptive_supersessions;
+SELECT * FROM commerce_adaptive_tool_counts;
+SELECT id, generation, case_revision, status, approval_id FROM commerce_cases;
+```
+
+An unavailable observation is unknown, never false. Incomplete compensation
+history cannot prove empty history. `safety_drift` names changed tools and keeps
+old evidence; request an eligible explicit refresh, never edit old observations.
+An early blocker includes unread/unknown conditions and unresolved scope. Only
+supported fully established scope can set case status blocked.
+
+Limits are 12 reads, 16 decisions, two attempts/tool and 240 seconds. Invalid
+choices and fallback consume separate decisions. Server statement/lock timeouts
+are min(5 seconds, remaining run time), including active case/run locks and
+persistence. CLI database error exits 3; no fact is invented. Inspect after
+availability/locks recover. A pending token requires explicit recover at the
+current context; this records interruption without automatic redispatch. A retry
+is a new attempt. Expired runs can only record bounded terminal/audit cleanup,
+not continue investigation. `case_changed`/stale exits 4 and preserves newer staff
+state; inspect the newer case rather than rewriting its revision. No counter reset
+or audit-row patch is a safe recovery.
+
+To undo the optional feature, stop using adaptive_demo and retain the bundled
+workflow. Revert only Stage 2 source changes in its isolated worktree if needed;
+extra unused tables do not enable the feature. Do not downgrade an environment
+with evidence to recover: 0006 downgrade destroys adaptive audit history. Never
+migrate or restart the original application as part of this procedure.
+
+
+## Stage 3 opt-in adaptive worker and recovery
+
+Use an isolated environment migrated to 0007. The original migration-0004 stack
+on port 55432 must not be upgraded/restarted for these commands. Browser/API and
+ordinary `decisionops.commerce.worker` stay bundled/rules-only. Adaptive jobs live
+in `commerce_adaptive_jobs`, not the legacy queue. The action namespace is
+`adaptive_investigate/v1`; scheduled runs bind `commerce-adaptive-jobs/v1`.
+
+`adaptive_recommendations.py` is a pure typed model-free contract. Fixed/cue/fake
+adapters see only Stage 2 bounded features/allowed actions. `adaptive_accounting.py`
+reserves a decision and bounded milliseconds before dispatch, storing immutable
+context/configuration/evidence bindings. API cost is exact zero, no_api_charge;
+there are no invented tokens or model-performance measurements. `adaptive_jobs.py`
+claims/renews/fences jobs. `adaptive_runner.py` executes outside transactions and
+cancels cooperative fakes on loss of lease/staff binding. `adaptive_workflow.py`
+projects committed steps/calls into a separate PostgreSQL checkpoint schema and
+`commerce-adaptive/v1:<job>:<run>` thread. Checkpoint values never authorize work.
+
+### Start, verify and reproduce in a disposable database
+
+From the adaptive-recovery worktree, reuse the existing commerce-only interpreter:
+
+```bash
+export COMMERCE_TEST_PYTHON=/home/richard/projects/decisionops/runs/worktrees/local-providers/.venv/bin/python
+docker run -d --pull=never --name decisionops-adaptive-stage3-tests \
+  --label decisionops.test=adaptive-stage3 --memory=512m --cpus=2 \
+  --tmpfs /var/lib/postgresql/data:rw,size=512m \
+  -e POSTGRES_DB=commerce_stage3_test -e POSTGRES_USER=commerce_stage3 \
+  -e POSTGRES_PASSWORD=stage3-fictional-only -p 127.0.0.1:55438:5432 \
+  postgres@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4 \
+  -c shared_buffers=32MB -c max_wal_size=64MB -c min_wal_size=32MB -c checkpoint_timeout=30s
+docker exec decisionops-adaptive-stage3-tests pg_isready -U commerce_stage3 -d commerce_stage3_test
+docker inspect decisionops-adaptive-stage3-tests --format '{{json .HostConfig.Tmpfs}} {{json .NetworkSettings.Ports}}'
+export COMMERCE_TEST_DATABASE_URL='postgresql+psycopg://commerce_stage3:stage3-fictional-only@127.0.0.1:55438/commerce_stage3_test'
+"$COMMERCE_TEST_PYTHON" -B scripts/commerce_adaptive_recovery_walkthrough.py
+"$COMMERCE_TEST_PYTHON" -B scripts/commerce_ci_tests.py postgres
+python3 -B -S scripts/commerce_ci_tests.py dependency-free
+docker stop -t 10 decisionops-adaptive-stage3-tests
+docker rm decisionops-adaptive-stage3-tests
+```
+
+Use `sg docker -c 'docker ...'` if required by group activation. No image pull or
+package upgrade is needed. Verify loopback port/database/user and tmpfs identity.
+The walkthrough owns a disposable business schema, applies migrations/seeds there,
+sets up its separate checkpoint schema and exports CLI commands/full traces before
+dropping both. Expected normal run: proposed, seven tools/eight decisions, job
+completed, awaiting staff approval. Injected crash after dispatch: no known result;
+resume pauses, explicit recover retains that reservation and the fixed fallback
+adds another decision. Expected recovered run: proposed, seven tools/nine decisions,
+one uncertain reservation and zero duplicate dispatches.
+
+The container is disposable tmpfs: stopping it destroys this test database. This
+is separate from a persistent deployment where restarting preserves its volume.
+Never use `docker compose down -v` or delete the original application volume.
+
+### Commands in a separately prepared persistent demo
+
+Set COMMERCE_DATABASE_URL to that verified isolated database. Applying `alembic
+upgrade head` and `decisionops.commerce.seed` is appropriate only during its own
+setup, never on the original runtime. Open a fictional case via `case_demo open`
+(as described above), then replace CASE/JOB/TOKEN with printed values:
+
+```bash
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker setup
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker enqueue --case CASE --report 'Lost parcel' --policy fixed
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker once
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker inspect --job JOB
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker resume --job JOB
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker recover --job JOB --token TOKEN
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker resume --job JOB --token TOKEN
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker cancel --job JOB
+```
+
+Inspect is read-only and works from durable records even without a checkpoint.
+Resume claims only queued/expired ownership; a live owner requires its current
+explicit token or waiting for expiry. Recover interrupts a pending read token or
+retires an unknown recommendation under current ownership. Never edit tokens,
+leases, deadlines, context, counter or evidence rows to recover. A recommendation
+still dispatching with no recorded result is outcome-unknown: repeated resume
+cannot call it again. Recover marks uncertain and preserves reserved milliseconds;
+only a new recorded fallback may proceed. A reserved-but-expired undispatched call
+settles known zero work; recover releases its application gate without refunding
+the consumed decision. A read-only retry is a new tool attempt, maximum two/tool.
+
+Inspect `steps`/`recommendation_reserved` and these SQL records in the correct
+business schema (not the separate checkpoint schema):
+
+```sql
+SELECT id,run_id,status,token,lease_until,claims,error FROM commerce_adaptive_jobs;
+SELECT id,run_id,task,context_version,state,dispatch_count,reserved_ms,actual_ms,
+       pricing_version,reserved_cost_usd,actual_cost_usd,application_status,result
+FROM commerce_adaptive_calls ORDER BY created_at;
+SELECT call_id,sequence,kind,data FROM commerce_adaptive_call_events ORDER BY call_id,sequence;
+```
+
+Immutable request hashes/configurations can be inspected in the calls' request
+column; policy features are separate from case IDs/source hashes. Native elapsed
+milliseconds describe fake adapter work, not model performance. Uncertain calls
+retain resource reservations; original bounds remain 16 decisions, 12 tools,
+two/tool and 240 seconds. Additional recommendation limits are 20 seconds/call,
+240,000 committed/reserved milliseconds/run, and 32KiB serialized requests.
+
+Case/run locks and selected-tool queries use the remaining lease/run deadline,
+never inference-held transactions. Token-fenced renewal cannot revive an expired
+lease or extend the run. Lease loss raises a controlled error or leaves unapplied
+read audit; newer ownership/approval/execution cannot be overwritten. Worker
+SIGINT/SIGTERM stops execution, not operator cancellation authority. Explicit
+cancel ends an active matching run in review (or stale if staff changed it), but
+cannot undo a terminal proposal: use the normal staff rejection/escalation flow.
+
+After checkpoint loss, run `setup`, then `resume`: committed steps/calls are
+reconstructed, settled/applied effects are not replayed. If publication committed
+before job completion, terminal repair after lease expiry completes metadata only;
+it cannot duplicate a proposal. If the database cannot record a result, treat the
+dispatched reservation as unknown and use explicit recovery once available.
+
+Smallest safe rollback: stop opting into adaptive_worker; leave the ordinary
+worker/rules workflow in place. Do not downgrade 0007 to recover evidence:
+downgrade destroys adaptive accounting/jobs. No original-runtime operation is
+part of this Stage 3 procedure. Stage 4 model sessions remain pending.
+
+### Stage 3 shutdown and checkpoint timeout diagnosis
+
+SIGINT/SIGTERM now reaches the plain `resume --job JOB` graph path as well as
+`once` and token-resume. Example in the already prepared isolated environment:
+
+```bash
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker resume --job JOB &
+COMMERCE_ADAPTIVE_PID=$!
+kill -TERM "$COMMERCE_ADAPTIVE_PID"
+wait "$COMMERCE_ADAPTIVE_PID"
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker inspect --job JOB
+```
+
+A cooperative fake stops and reports worker_stopped (exit 0). The job can remain
+running until its lease expires; shutdown never acts as operator cancel. A
+reserved request stays reserved. A committed dispatch intent without a known
+result stays uncertain, even if the signal prevented adapter invocation. Neither
+path refunds attempts or changes a newer owner's token. Inspect before explicit
+recover/resume; do not automatically retry unknown work. A signal may arrive after
+completion, so confirm the actual durable state instead of assuming cancellation.
+
+A checkpoint table lock or query timeout reports adaptive_checkpoint_error,
+CheckpointFailure and exit 3. Connection establishment has connect_timeout=3;
+actual SQL has statement_timeout/lock_timeout, each capped at five seconds and
+recomputed against the active run/lease. Setup and historical/terminal projection
+use a separate five-second metadata budget. SIGTERM does not instantly interrupt
+an already running checkpoint statement; these finite SQL limits bound its wait.
+Stop events and runtime ownership objects are not checkpoint state.
+
+Inspect domain state without checkpoint reads using adaptive_worker inspect, then
+look for database blockers in the correctly isolated database:
+
+```sql
+SELECT pid,wait_event_type,wait_event,pg_blocking_pids(pid),query
+FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock';
+```
+
+Release/finish only the identified owned locking transaction. Do not kill arbitrary
+sessions, change lease tokens, reset budgets, reseed, or downgrade migrations. A
+checkpoint error may follow a successful domain commit: check the run's steps,
+call application_status and proposal before repair. Use setup only if checkpoint
+tables were lost; after readiness/lock recovery, explicitly resume. Settled/applied
+work and an existing proposal must remain unchanged. For an uncertain dispatch,
+use the existing explicit recover procedure first. No automatic database operations
+are required on the original application. Safe rollback is to stop opting into the
+adaptive worker; keep audit tables and the ordinary rules workflow intact.
+
+The correction's actual SIGTERM and real SQL read/write-lock regressions are in
+`test_commerce_adaptive_jobs.py`. Exact commands/results and retained failures
+are recorded in STAGE3-REVIEW.md and the local correction bundle. No model sessions
+or Stage 4 work are introduced.
+
+
+### Stage 4: optional reusable sessions (fake verification; Stage 5 pending)
+
+The ordinary browser, API and worker still use rules. The separate
+`adaptive_worker` can opt into a run-owned session. `session_protocol.py` owns its
+bounded process/stream transport, `session_worker.py` loads one admitted family,
+`adaptive_sessions.py` persists preload phases and maintains fenced ownership,
+and `adaptive_accounting.py` retains each decision reservation. PostgreSQL is
+still authoritative; graph checkpoints are recoverable projections.
+
+Use a separate database, never the original migration-0004 application's port
+55432 or volume. Stage 4 verification used disposable PostgreSQL on loopback
+55440, database commerce_stage4_test, with migration 0008 in disposable schemas.
+No dependencies or models were installed. From the adaptive-sessions worktree:
+
+```bash
+export COMMERCE_TEST_PYTHON=/home/richard/projects/decisionops/runs/worktrees/local-providers/.venv/bin/python
+export COMMERCE_TEST_DATABASE_URL='postgresql+psycopg://commerce_stage4:stage4-fictional-only@127.0.0.1:55440/commerce_stage4_test'
+"$COMMERCE_TEST_PYTHON" -B -m unittest discover -s tests -p test_commerce_sessions.py -v
+"$COMMERCE_TEST_PYTHON" -B -m unittest discover -s tests -p test_commerce_adaptive_sessions.py -v
+"$COMMERCE_TEST_PYTHON" -B scripts/commerce_session_walkthrough.py
+```
+
+The walkthrough refuses another database/port, verifies readiness, creates and
+migrates/seeds its own fictional schema, runs actual CLI commands, exports traces,
+and removes its own schemas. It does not start PostgreSQL: use the isolated
+container command recorded in STAGE4-REVIEW.md. Expected: success has seven tools,
+eight decisions, one fake preload; wrong-correlation case pauses with one uncertain
+call, explicit recovery then fixed fallback completes without duplicate dispatch.
+Inventory stays unchanged. All responses/scores are simulated integration evidence.
+
+For an already prepared isolated case/environment (`COMMERCE_DATABASE_URL` must
+point to that environment, including its schema), the operator entry points are:
+
+```bash
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker setup
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker enqueue --case CASE --report 'Lost parcel' --session fake
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker once
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker inspect --job JOB
+```
+
+Omit `--session` for the unchanged rules path. `--session laya` or `gliclass`
+selects a cached pinned family; these implementations have **not** been run in
+Stage 4. Real loading/comparison is Stage 5 only. No family/revision IDs enter model
+features. Changed pins prevent new or undispatched old requests from loading a
+replacement revision; historical inspection remains valid. Forced single-action
+choices use deterministic validation without reserving or loading a session.
+
+Inspect `graph.session_phases`, sessions, immutable phase events and calls:
+
+```sql
+SELECT id,run_id,ordinal,state,retired,reserved_ms,actual_charge_ms,waiting_ms,load_ms,
+       inference_ms,total_ms,diagnostics FROM commerce_adaptive_sessions ORDER BY created_at;
+SELECT session_id,kind,data FROM commerce_adaptive_session_events ORDER BY created_at;
+SELECT id,state,application_status,request,result FROM commerce_adaptive_calls ORDER BY created_at;
+```
+
+Use the correct isolated schema's search_path. Read counters, correlations,
+configuration revision, process_reaped, consumed/retained bytes and error before
+recovery. Unknown dispatch or preload retains reservations; do not edit rows,
+refund attempts or automatically retry. Current-owner explicit recovery retires
+the lost session and records fallback, not duplicate dispatch:
+
+```bash
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker recover --job JOB --token CURRENT_TOKEN
+"$COMMERCE_TEST_PYTHON" -B -m decisionops.commerce.adaptive_worker resume --job JOB --token CURRENT_TOKEN
+```
+
+An expired owner must first use the documented claim/recover flow; never reuse a
+stale token. Restart after a known committed read can reload only as a new counted
+phase, at most three sessions per run. Calls bound to a dead session are not
+silently rebound. Known errors select recorded rules fallback. Unknown preload
+returns uncertain_session, resource exhaustion session_requires_review.
+
+Timeout/lease-loss/shutdown kill the owned group and bound reaping, including
+pipe-holding descendants. SIGTERM to plain resume, once or token-resume is worker
+shutdown, never operator cancellation. A shared secure per-user host file lock
+limits cooperating families; do not run legacy one-shot or external model processes
+concurrently. Slot <=30s, preload <=120s, decision <=20s, run <=240s; waiting and
+loading count toward run time. stdout/stderr each <=64 KiB per entire session,
+retained diagnostics <=1 KiB each; oversize or wrong-correlation frames are failures.
+The local API charge is exactly zero; no invented token counts or dollar estimates.
+
+For cache errors, inspect the pinned revision and existing cache snapshot paths;
+never follow the weights symlink into a blob directory as the checkpoint root.
+For dependency errors, inspect the documented optional model profile without
+upgrading/downloading automatically. Routine tests import no model libraries.
+Stop the owned CLI with SIGTERM and inspect durable state before explicit recovery.
+Rollback is to omit --session and keep rules; do not downgrade 0008, which destroys
+session audit. Shutdown an isolated test container with `docker rm -f decisionops-adaptive-stage4-tests` only after verifying its name/port/database;
+this disposable tmpfs contains no production records or persistent volume. Never
+use that operation on the original application.
+
+### Stage 5 blocked handoff: isolated evaluation and readiness diagnosis
+
+Stage5 native pilots/comparison/replay are stopped. The current source's API health
+requires0005 while current adaptive migration head is0008; the isolated API returns
+503 and browser cannot start. Required PostgreSQL checks also failed; see
+[the Stage5 review](STAGE5-REVIEW.md). Do not modify the original migration-0004
+application, downgrade a database to hide the mismatch, or enable adaptive defaults.
+
+The agent demonstrated this separate database startup (cached image, no pull):
+
+```bash
+sg docker -c 'docker run --name decisionops-adaptive-stage 5-tests --pull never --memory 384m --cpus 2 --tmpfs /var/lib/postgresql/data:rw,size=512m -e POSTGRES_DB=commerce_stage 5_test -e POSTGRES_USER=commerce_stage 5 -e POSTGRES_PASSWORD=stage 5-fictional-only -p 127.0.0.1:55441:5432 -d postgres@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4 -c shared_buffers=24MB -c max_wal_size=64MB -c min_wal_size=32MB'
+sg docker -c 'docker exec decisionops-adaptive-stage 5-tests pg_isready -U commerce_stage 5 -d commerce_stage 5_test'
+export COMMERCE_TEST_PYTHON=/home/richard/projects/decisionops/runs/worktrees/local-providers/.venv/bin/python
+export COMMERCE_TEST_DATABASE_URL='postgresql+psycopg://commerce_stage 5:stage 5-fictional-only@127.0.0.1:55441/commerce_stage 5_test'
+"$COMMERCE_TEST_PYTHON" -B scripts/commerce_adaptive_evaluation.py --mode baselines --output runs/stage 5-baselines-2
+"$COMMERCE_TEST_PYTHON" -B scripts/commerce_stage 5_walkthrough.py
+```
+
+Wait for accepting connections. Both scripts reject another host/port/database and
+verify actual database/user/server identity. They create/migrate/seed owned schemas
+and remove them afterward. Fictional business snapshots, selected tools, exact
+permitted features, hashes and immutable traces are exported. Do not reuse an output
+path: preserve prior negative results. Baselines use fixed/cue/fake only; the native
+CLI and execution paths explicitly reject real families while this gate is blocked.
+
+The walkthrough actually ran adaptive_worker setup, enqueue --session fake, once,
+inspect, explicit recover --job JOB --token CURRENT_TOKEN and token resume. Saved
+commands/exit codes/stdout are in the stage 5-session directory. Success:7 reads,
+8 decisions,1 simulated load. Injected wrong-request correlation: one uncertain
+reservation, reaped child; explicit current-owner recovery followed by recorded
+fixed fallback,9 total decisions,zero duplicate dispatch. Stock remains10/1.
+Never automatically redispatch uncertain work or reset budget counters. For an
+expired owner use the documented claim/recover flow, not a stale token.
+
+For the browser failure the agent used only runs/stage 5-browser.compose.yaml,
+project decisionops-stage 5-browser, ports55442/8082 and its own network. Its init
+command applied head, seeded and set up legacy checkpoints. Current source was
+mounted read-only into cached app images; existing cached web assets were used.
+These exact diagnostic commands were demonstrated:
+
+```bash
+sg docker -c 'docker compose -f runs/stage 5-browser.compose.yaml ps'
+sg docker -c 'docker compose -f runs/stage 5-browser.compose.yaml logs --tail 15 api'
+sg docker -c 'docker exec decisionops-stage 5-browser-postgres-1 psql -U commerce -d stage 5_browser -c "SELECT version_num FROM alembic_version"'
+```
+
+Output shows0008 and repeated GET /health503. The complete Compose recipe, health
+response, browser command and all6 failures are in the local review bundle. The
+smallest appropriate next correction is to settle the API/schema readiness contract
+and add a positive head-migration health test, then verify browser startup against
+that same isolated environment. Do not patch production/container settings to skip
+health checks. The deadline/cancellation regressions must also be resolved; existing
+agent/CI passes from earlier stages do not waive this red local run.
+
+Cleanup actually performed, ONLY after exporting evidence:
+
+```bash
+sg docker -c 'docker compose -f runs/stage 5-browser.compose.yaml down'
+sg docker -c 'docker rm -f decisionops-adaptive-stage 5-tests'
+```
+
+Both databases were tmpfs, no original persistent volume attached. Container restart
+preserves a persistent volume; deleting a volume destroys its records. These
+commands concern only disposable Stage5 resources and are not a backup/restore
+procedure for the original application. Safe rollback is to stop opting into the
+adaptive CLI and keep the ordinary rules workflow; retain audit tables/reports.
+
+Staff approval remains exact generation/proposal/hash-bound. A recommendation,
+observed blocker or all-true assessment cannot approve/execute. Execution rechecks
+records and takes transactional locks/reserves stock only through the existing
+approved service; duplicate prevention and reconciliation remain mandatory. Stage5
+baseline and fake recovery commands performed no execution or approval.
+
+
+## Stage 5 correctness follow-up: readiness and bounded diagnosis
+
+This source explicitly requires schema 0008, its mapped column shapes and required
+enabled guards. `/health` returns200 with fictional_store_rules only when this
+contract passes. Empty/multiple/older/future revision markers or incompatible
+required objects return503. It does not migrate. Prepare an isolated environment
+with the documented operator migration step; never point these commands at the
+original migration0004 runtime. Full contract/evidence: [STAGE5-CORRECTION.md](STAGE5-CORRECTION.md).
+
+The correction's actual disposable browser recipe and output are preserved in its
+review archive under evidence/correction-browser.compose.yaml and verification/.
+Only cached images were used. Its database is stage 5_correction_browser on55444,
+web8083, Compose project decisionops-stage 5-correction-browser; no original volume.
+The agent actually ran:
+
+```bash
+sg docker -c 'docker compose -f runs/correction-browser.compose.yaml up -d --wait'
+sg docker -c 'docker compose -f runs/correction-browser.compose.yaml logs --no-color init'
+sg docker -c 'docker compose -f runs/correction-browser.compose.yaml exec -T api python -c "import urllib.request; print(urllib.request.urlopen(\"http://127.0.0.1:8000/health\").read().decode())"'
+sg docker -c 'docker compose -f runs/correction-browser.compose.yaml exec -T postgres psql -U commerce -d stage 5_correction_browser -c "SELECT current_database(),current_user; SELECT version_num FROM alembic_version; SELECT count(*) FROM commerce_operations; SELECT status,count(*) FROM commerce_cases GROUP BY status;"'
+sg docker -c 'docker compose -f runs/correction-browser.compose.yaml down'
+```
+
+Init applied head0008, seeded fictional records and set up legacy worker checkpoints
+only in that tmpfs database. Health was ready/rules, browser tests proved one verified
+replacement; SQL showed one operation and executed/needs_review/blocked cases.
+The complete cached offline build/browser invocation and exact raw logs are in the
+correction archive. These ephemeral test commands are not original-stack upgrade
+instructions. Stopping this Compose project removes its tmpfs records; original
+persistent storage is unrelated and must be retained.
+
+For a timeout, inspect durable request deadline, state, dispatch_count and error
+before calling it uncertain: count0 + deadline_before_dispatch + settled/zero is
+known no work; count1 without a known result retains its reservation. Staff changes
+before claim reject admission; staff changes after actual dispatch fence application
+and cancel cooperative work. A lease-expired error before checkpoint SQL does not
+prove checkpoint-lock behavior. Use explicit boundary events and pg_stat_activity
+Lock evidence, as the focused regressions do. Never extend production caps or
+redispatch uncertain work to make a test pass.
+
+Rollback for this source-only health correction means retaining the accepted source
+snapshot and disabling the optional adaptive CLI; do not downgrade a schema containing
+audit evidence. Restore source only in an isolated test environment if needed.
+Ordinary browser/API/workers remain rules-only. Native work is gated on review;
+current-source CI publication remains blocked by the recorded approval rejection.
+
+Worker shutdown tests must first prove a ready session and durable dispatch_count1.
+A fixed6s delay from subprocess launch may expire during imports/preload and
+therefore test pre-dispatch shutdown instead. The corrected test waits on the
+actual persisted phase, bounded by existing slot/preload/decision/run limits;
+its trace logs the reached dispatch and absolute deadlines before SIGTERM.
+No worker or model caps were raised to establish that test boundary.
+
+## Bounded cached compatibility pilot attempt (2026-10-15)
+
+Admission correction is committed locally as4c33e2884b1149533ac797fbd98e0151aacef6bf.
+The next local patch admits only `--mode pilot --family laya|gliclass`; comparison
+is still rejected before database/admission. One eligible fixture per family,
+validated accepted baseline/manifest, one shared persistent experiment ledger.
+Pilot failure stops that ledger; unavailable preflight is a zero-dispatch result,
+not successful compatibility. Never reset/move it to get more time.
+
+The agent actually ran the retained sequential driver:
+
+```bash
+PYTHONPATH=. /home/richard/projects/decisionops/runs/worktrees/local-providers/.venv/bin/python -B runs/pilot-enablement-verification/run-pilots.py
+```
+
+It selected `runs/stage 5-cached-pilots-20261015` once, a disposable database
+commerce_stage 5_test (user commerce_stage 5, loopback55441), the existing root model
+Python and pinned cache under /mnt/hdd/data/hf. Its full arguments/environment are
+in the review bundle. No original stack/volume was operated on. The disposable
+server was removed after export; model PID3453686 was reaped and absent.
+
+Laya:3467MiB available below3584, zero dispatch. GLiClass:one load/three native
+recommendations, two reads then staff review, no fallback, no business writes.
+Raw harness says complete, but a resource-monitor thread exception prevents a clean
+compatibility acceptance. The raw status is preserved; the ledger was annotated
+stopped=resource_monitor_thread_error without altering its clocks/attempts.
+Do not rerun this driver or select another experiment to replace that negative result.
+
+A subsequent model-free patch handles exited-child memory samples and fails closed
+on host/live-child sampling errors; it has not been exercised with native models.
+Eight focused gate tests pass, plus14 evaluation/admission regressions; no new CI,
+browser or full PostgreSQL profile is claimed. See the local pilot review bundle
+for exact native scores, permitted inputs, accounting, diagnostics and limitations.
+Native continuation requires supervisor review. Browser/API/default workers stay
+rules-only; recommendations never provide human approval or execution permission.
+
+
+## Optional OpenAI SDK investigation (local, spending gate)
+
+See [API investigation contract](API-INVESTIGATION.md). Browser/API/
+ordinary workers still use rules. This operator CLI is confined to a separate
+commerce_api_test database on 127.0.0.1:55445 and verifies database/user identity.
+Never point migration or seed commands at the original migration-0004 application.
+The optional SDK group installs no model packages:
+
+```bash
+UV_PROJECT_ENVIRONMENT=.venv-api uv sync --locked --only-group commerce --only-group commerce-api --no-python-downloads
+export COMMERCE_DATABASE_URL='postgresql+psycopg://commerce_api:api-test-fictional@127.0.0.1:55445/commerce_api_test'
+```
+
+The agent started the disposable database with the already cached PostgreSQL image,
+no downloaded image and no persistent volume:
+
+```bash
+sg docker -c 'docker run -d --pull never --name decisionops-api-sdk-tests --memory 512m --cpus 2 -e POSTGRES_DB=commerce_api_test -e POSTGRES_USER=commerce_api -e POSTGRES_PASSWORD=api-test-fictional -p 127.0.0.1:55445:5432 --tmpfs /var/lib/postgresql/data:rw,size=512m postgres@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4 -c shared_buffers=32MB -c max_wal_size=64MB -c min_wal_size=32MB'
+sg docker -c 'docker exec decisionops-api-sdk-tests pg_isready -U commerce_api -d commerce_api_test'
+.venv-api/bin/alembic upgrade head
+.venv-api/bin/python -B -m decisionops.commerce.seed
+```
+
+Readiness expects accepting connections; migration reaches 0008; seed creates only
+fictional records. The already executed mock success/failure commands and outputs
+are retained under runs/api-verification. These case IDs belong to that disposable
+seeded demo; after rebuilding the database create fresh cases with the existing case
+service rather than expecting historical IDs to exist.
+
+```bash
+.venv-api/bin/python -B -m decisionops.commerce.api_investigation start --case CASE-41c54719ed7b4b30b3a965a7f13071b8 --report 'The shipment did not arrive. Please investigate relevant records.' --config runs/api-verification/config-success.json --output runs/api-verification/cli-success
+.venv-api/bin/python -B -m decisionops.commerce.api_investigation start --case CASE-aaf20858bfef42b08f2f7aad33b5ef41 --report 'The shipment did not arrive.' --config runs/api-verification/config-timeout.json --mock-scenario timeout --output runs/api-verification/cli-timeout
+.venv-api/bin/python -B -m decisionops.commerce.api_investigation inspect --run ARUN-a9e07bab5c4a4eca94d29fc131782379
+.venv-api/bin/python -B -m decisionops.commerce.api_investigation inspect --run ARUN-221d7ed8998849229a9999e0b9f14898
+```
+
+Existing output directories are deliberately refused: preserve them, use a fresh
+case/output for a new run. Success trace: seven selected tools, proposed, no action
+executed. Timeout trace: review, zero tools, uncertain money reservation; it is not a
+successful proposal. Inspect decisions.request.features for exactly what the policy
+saw, immutable decisions/result for the choice, run observations for returned facts,
+and monetary_reservations for dispatch_count/state/usage/cost. Mock traces explicitly
+say simulation=true. They are integration evidence, not model-performance results.
+
+A timeout after possible dispatch retains reservation and never automatically retries.
+A known malformed result settles recorded usage but cannot advance a tool/proposal.
+Fix credentials/configuration only for a new explicitly authorized request; do not
+edit an existing budget or erase uncertain calls. For an interrupted active job use
+existing fenced recovery with its current token; then inspect before any explicit
+resume. These command forms are documented, not newly exercised operator recovery:
+
+```bash
+.venv-api/bin/python -B -m decisionops.commerce.api_investigation recover --job JOB_ID --token CURRENT_TOKEN
+.venv-api/bin/python -B -m decisionops.commerce.api_investigation resume --job JOB_ID --token CURRENT_TOKEN
+```
+
+Recovery never dispatches by itself. Resume may create a new counted decision while
+retaining the old uncertain reservation. Live resume additionally requires the exact
+approved configuration hash and external credentials. Lease loss/staff changes fence
+writes; do not use operator cancellation to bypass ownership. A terminal review does
+not need recovery. SIGINT/SIGTERM stops owned work, retains possible-dispatch
+uncertainty and needs explicit inspection/recovery; no automatic SDK retries.
+
+Reproduce the tests (actual agent results: 9 SDK, 9 database, 194 required-profile
+passes, zero skips in those profiles):
+
+```bash
+.venv-api/bin/python -B -m unittest discover -s tests -p test_commerce_api_decisions.py -v
+export COMMERCE_TEST_DATABASE_URL="$COMMERCE_DATABASE_URL"
+.venv-api/bin/python -B -m unittest discover -s tests -p test_commerce_api_accounting.py -v
+.venv-api/bin/python -B scripts/commerce_ci_tests.py postgres
+python3 -B scripts/commerce_ci_tests.py dependency-free
+```
+
+Dependency-free: 190 passed, 222 explicit optional skips. CI/browser unexecuted for
+this new source; SDK checks use mocked HTTP only. To roll back, stop the optional
+CLI and return to rules; no application default or migration changed. Do not alter
+original containers. Disposable database cleanup (destroys only its tmpfs data):
+
+```bash
+sg docker -c 'docker rm -f decisionops-api-sdk-tests'
+```
+
+Real inference requires a separately approved spend plan in the linked contract.
+No live start command is authorized yet. Human approval must still bind the exact
+proposal; deterministic execution/revalidation/reservation and reconciliation remain
+authoritative. This demo has not exercised a human approval or business execution.
+
+
+### Current paid-call admission (supersedes the earlier $0.40 plan)
+
+The unstarted $0.40 authorization is revoked. The only current proposal is
+[the nano configuration](examples/api-nano-proposed.json), capped at $0.03; see
+[the current manual-only contract](API-INVESTIGATION.md#current-manual-only-plan-nano-supersedes-unstarted-040-authorization).
+No live command is authorized until Richard explicitly says RUN LIVE TEST. That
+permits one investigation only; a subsequent run needs a new explicit command.
+Credentials/config presence, startup, tests, CI and workers never grant permission.
+Use no automatic retries, replacement budgets, model switching or limit increases
+after unavailable access/failure. All prior configurations/traces remain historical.
+
+
+### Actual manual nano result (Richard-operated)
+
+The first manual nano investigation ended **needs_review**, after order_manifest,
+fulfilment and then the model's unknown_evidence review choice. Three live requests
+used 934 input/931 output tokens; usage-based estimate $0.00041910. All monetary
+reservations settled; no proposal/approval/execution occurred. Further reads were
+available; this is a negative proposal-completion result. See the
+[live walkthrough](API-LIVE-WALKTHROUGH.md) for exact evidence, file-only inspection
+commands and attribution. Original live files/hash inventory are preserved; the
+isolated container is absent and a JSON/SQL snapshot remains. Do not rerun it.
+
+
+### Current optional API route: actual Decisions endpoint
+
+[Decisions operator contract](OPENAI-DECISIONS.md) supersedes Responses as the proposed
+decision-selection route. It uses SDK 3.26.0 in .venv-decisions, gpt-6-luna, one
+choice question per POST /v1/decisions and input-only pricing. Proposed config:
+[api-decisions-proposed.json](examples/api-decisions-proposed.json). Reserve
+$0.00245760/request, at most $0.02949120 for 12, under $0.03. Existing Responses
+configuration/code and Richard's native nano trace remain historical and unchanged.
+Rules remain default. No Decisions live run is authorized until a new explicit
+RUN LIVE TEST; credentials, startup, tests, CI and workers never grant permission.
+Use only the separate verified 55446 database for this route. The linked guide
+contains setup, inspect, timeout/uncertainty, cleanup and rollback instructions.
+
+
+### Actual live Decisions result (Richard-operated)
+
+Richard ran the single-use SSH operator kit. The retained records show one real
+POST /v1/decisions investigation: seven requests, six reads, then model-selected
+unknown_evidence review with inventory unread. Native usage: 3,628 input tokens,
+zero output/reasoning tokens; $0.00036280 usage-based estimate, all reservations
+settled. No proposal, approval or execution occurred. This is a safe early review
+and negative proposal-completion result. See the
+[Decisions live walkthrough](DECISIONS-LIVE-WALKTHROUGH.md) for the per-choice table,
+exact file-only inspection commands and exercised/unexercised boundaries. The agent
+performed offline reconciliation; it did not execute Richard's live calls. Original
+evidence/SQL snapshot are preserved and the disposable container is absent. Do not
+repeat/resume this investigation or reset its marker/budget. Paused for walkthrough.
+
+### Repeatable staff assistant demo
+
+Use [STAFF-ASSISTANT.md](STAFF-ASSISTANT.md) for the current 55521 URL/login and
+clean-checkout isolated launch/stop commands. The helper's optional `--port` leaves
+an existing demo available; each verification mode uses a fresh owned schema.
+[Repeatability evidence](../../reports/commerce-staff-assistant-repeatability-20261112/README.md)
+separates rules, mocked Decisions and unchanged historical live reviews, including
+actual failures, local passes and optional skips. Exact approval and separate
+execution confirmation remain required. No public CI or new live inference was run.
+
+
+### Fictional portfolio deployment path
+
+Use [PORTFOLIO-DEMO.md](PORTFOLIO-DEMO.md) and standalone compose.portfolio.yaml.
+Always name the portfolio project; only web8091 is published on loopback. PostgreSQL
+is internal with its own named volume. `up --wait` verifies health before handoff;
+`stop`/`down` preserve persistent data. The guide records graceful worker restart
+behavior, exact recovery limits, shared visitor state, proposed operator-only reset
+and the unprovisioned hosting cost/access plan. No paid provider is present in this
+stack. The original compose.yaml runtime and 55521 staff demo remain separate.
+
+
+### Portfolio release access boundary
+
+The current [release handoff](PORTFOLIO-RELEASE.md) supersedes the old public fixture
+login. Public walkthrough is static and disconnected from the VM; invited interaction
+requires explicit configuration. Old 8091/55521 runtimes were preserved, not upgraded.
+Use only the named release project/volume and its separate 8093 port. Missing password
+fails before startup; saved config/logs must redact credentials. Reset is operator-only.
+AWS Free-plan proposal and unexecuted host/HTTPS/teardown checks are documented there.
+
+
+### First clothing-shop browser fixture
+
+Use [CLOTHING-STOREFRONT.md](CLOTHING-STOREFRONT.md) for shop 8095, local staff login,
+new project/volume, guarded one-time seed, both-view demo and stop commands. The
+customer projection is opt-in, DB-identity/allowlist bound and read-only; internal
+stock/history/policy remain staff-only. Tracking links are presentation links, not
+browser-agent visits. Accepted d2f174e release remains on its original branch/runtime.
+
+## Isolated read-only browser fixtures
+
+The two-shop harness is separate from Commerce business evidence and cannot propose,
+approve or execute replacements. See [BROWSER-HARNESS.md](BROWSER-HARNESS.md) for
+cached-image build/start/health/test/stop commands, frozen six-case grading and the
+proposed manual-only API evaluation. Ports 8096/8097 belong to project
+`decisionops-browser-fixtures`; it has no database or private configuration. Do not
+restart/migrate the preserved Commerce runtime to operate these fixtures.
+
+No paid evaluation is authorized by startup or credential presence. The API command
+requires explicit spending approval for the exact clean source/configuration and
+one fresh persistent ledger. LangGraph and Langfuse work is a
+[design only](BROWSER-GRAPH-TRACE-PLAN.md); no browser telemetry is exported.
+
+## Offline portfolio release candidate
+
+[PORTFOLIO-RC.md](PORTFOLIO-RC.md) is the current reviewer entry point, with RC-only
+build/start/health/verify/stop/reset commands, ports8103/8104, trace inspection and
+permission boundaries. No model key or telemetry export is needed. Existing release
+stacks and live ledgers are historical, immutable evidence; do not operate them using
+RC commands. A future browser live evaluation uses a new output directory and needs
+explicit spending approval for the final source/configuration.
+
+
+### Optional mocked specialists
+
+For the separately isolated multi-agent candidate, use [MULTI-AGENT.md](MULTI-AGENT.md).
+It contains the explicit opt-in mode, project/port, bounded recovery, evidence inspection,
+operator-controlled reset and rollback. Do not apply its migration0009 startup to the
+original application. Rules remain the ordinary default; no provider credential is used.

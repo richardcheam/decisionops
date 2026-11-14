@@ -1,0 +1,46 @@
+{
+  "kind": "sanitized_portfolio_evidence_summary",
+  "raw_artifacts_archived": true,
+  "new_paid_calls": 0,
+  "mocked_specialists": {
+    "source": "07904d19e6192560461c0ff84c25a885a1afea31",
+    "success": {
+      "conditions": 7,
+      "reads": 7,
+      "outcome": "proposal",
+      "approval_execution": "separate ordinary browser test"
+    },
+    "partial_failure": {
+      "order_evidence_preserved": true,
+      "shipment": "uncertain",
+      "conditions": 4,
+      "outcome": "review",
+      "proposal": false
+    },
+    "restart": {
+      "reads": 7,
+      "specialist_dispatches": 3,
+      "duplicate_dispatches": 0,
+      "duplicate_proposals": 0,
+      "execution_after_restart": "unverified"
+    }
+  },
+  "historical_decisions": {
+    "live": true,
+    "outcome": "review",
+    "inventory": "unread",
+    "proposal": false,
+    "raw_sha256": "fc42a072225215c4cccd42627a6bb9d858146b721be341facf6c301f9b216bda"
+  },
+  "historical_browser": {
+    "separate_from_staff_workflow": true,
+    "live001": "multiple decisions rejected; other five cases unexecuted",
+    "live002": "two Site A links followed; finish rejected; other five cases unexecuted",
+    "cross_site_live_completion": "unverified"
+  },
+  "limits": [
+    "Mocked choices do not establish live model quality or lower cost.",
+    "Wrong-case final join and actual conflicting database rows through final join unverified.",
+    "No deployment or real-shop connection."
+  ]
+}

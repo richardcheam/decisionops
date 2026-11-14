@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
+import { Shop } from "./shop";
 
 type Order = {
   id: string;
@@ -50,6 +51,13 @@ type Case = {
     action: string;
     error_kind: string | null;
   } | null;
+  shipment_investigation?: {
+    id: string; state: string; report: string; mode: string; reason: string | null;
+    unknowns: string[]; blockers: string[];
+    evidence: {tool: string; value: boolean | null; applicability: string; status: string; reason: string | null; observed_at: string; customer_page?: string; source?: {kind:string;observation_id:string;version:string;order_id:string;shipment_id:string;tables:string[]}}[];
+    steps: {sequence: number; kind: string; data: {specialist?: string; tool?: string; status?: string; chosen_action?: {tool?: string; kind?: string}; reason?: string}; created_at: string}[];
+    specialists?: {name: string; state: string; tools: string[]; reason?: string | null; observations: string[]}[];
+  } | null;
   operation?: {
     status: string;
     replacement_id: string;
@@ -76,8 +84,13 @@ const requirements: Record<string, string> = {
   stock_available: "Replacement stock available",
   policy_permits: "Store policy permits replacement",
 };
+const toolLabels: Record<string,string> = {order_manifest:"Order items", replacement_policy:"Store replacement policy", payment:"Payment", fulfilment:"Shipment", carrier_loss:"Carrier loss confirmation", compensation_history:"Refund and replacement history", inventory:"Available stock"};
 const events: Record<string, string> = {
   opened: "Case opened",
+  adaptive_started: "Shipment investigation started",
+  staff_investigation_requested: "Shipment report received",
+  adaptive_proposed: "Evidence checked — proposal prepared",
+  adaptive_finished: "Shipment investigation finished",
   investigated: "Order checked",
   reviewed: "Review decision saved",
   approval_invalidated: "Information changed — approval needed again",
@@ -154,7 +167,10 @@ function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [orderId, setOrderId] = useState("");
   const [cases, setCases] = useState<Case[]>([]);
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get("case") || "");
+  const [report, setReport] = useState("");
+  const investigationFlight = useRef(false);
+  useEffect(() => { if (selected) window.history.replaceState(null, "", "#case=" + encodeURIComponent(selected)); }, [selected]);
   const [active, setActive] = useState<Case | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -289,6 +305,17 @@ function App() {
     } finally {
       setBusy(false);
     }
+  }
+  async function investigateShipment(event: React.FormEvent) {
+    event.preventDefault();
+    if (!active || investigationFlight.current) return;
+    investigationFlight.current = true;
+    const snapshot = active;
+    try {
+      await perform(() => request("/api/cases/" + snapshot.id + "/shipment-investigation", {
+        report, request_id: crypto.randomUUID(), expected_generation: snapshot.generation,
+      }));
+    } finally { investigationFlight.current = false; }
   }
   const pending =
     active?.latest_job &&
@@ -530,6 +557,47 @@ function App() {
                       ? "Needs confirmation"
                       : labels[active.status] || "Needs review"}
                   </span>
+                </section>
+                <section className="card" aria-label="Shipment investigation">
+                  <h2>Investigate shipment</h2>
+                  <p className="muted">Tell us what happened. We will gather the required evidence before suggesting a replacement. Nothing is replaced without your exact approval.</p>
+                  <form onSubmit={event => void investigateShipment(event)}>
+                    <label htmlFor="shipment-report">Shipment report</label>
+                    <textarea id="shipment-report" rows={3} maxLength={1000} value={report} onChange={e => setReport(e.target.value)} placeholder="For example: the customer says their parcel has not arrived." disabled={locked} required />
+                    {new TextEncoder().encode(report).length > 2000 && <p>Please shorten the report before submitting.</p>}
+                    <button type="submit" className="primary" disabled={locked || !report.trim() || new TextEncoder().encode(report).length > 2000 || active.status === "executed"}>Investigate shipment</button>
+                  </form>
+                  {active.shipment_investigation && <div aria-live="polite">
+                    <p role="status">{active.shipment_investigation.state === "active" ? "Investigation in progress. You can refresh or return later." : active.shipment_investigation.state === "proposed" ? "Investigation complete. Replacement proposal ready for your review." : "Investigation finished. " + (active.shipment_investigation.blockers.length ? "A required condition was not met." : "More information or staff review is needed.")}</p>
+                    <p>{active.shipment_investigation.mode === "mock_specialists" ? "Mocked specialists. No paid calls." : active.shipment_investigation.mode === "simulated_decisions" ? "Demo: simulated Decisions responses. No paid calls." : "Rules investigation. No paid calls."}</p>
+                    {active.shipment_investigation.mode === "mock_specialists" && <section aria-label="Specialist branches">
+                      <h3>Specialist branches</h3>
+                      <p>Each specialist chooses evidence reads within its assigned scope. All branches must finish before the replacement policy checks the combined evidence.</p>
+                      {active.shipment_investigation.specialists?.map(branch => <div key={branch.name}>
+                        <h4>{branch.name.replaceAll("_", " ")}</h4>
+                        <p>Branch status: {branch.state.replaceAll("_", " ")}</p>
+                        <p>Assigned reads: {branch.tools.map(tool => toolLabels[tool] || tool).join(", ")}</p>
+                        {branch.reason && <p>Branch outcome: {branch.reason.replaceAll("_", " ")}</p>}
+                        <p>{branch.observations.length} saved observations</p>
+                      </div>)}
+                      <details><summary>Specialist decisions and read results</summary>
+                        <ol className="timeline">{active.shipment_investigation.steps.filter(step => step.kind === "specialist_decision" || (step.kind === "specialist_read_result" && step.data.specialist)).map(step => <li key={step.sequence}>
+                          <strong>{(step.data.specialist || "Specialist").replaceAll("_", " ")}</strong>: {step.kind === "specialist_decision" ? "Decision choice" : "Read result"}
+                          {step.data.chosen_action?.kind && <span> · {step.data.chosen_action.kind.replaceAll("_", " ")}</span>}
+                          {(step.data.tool || step.data.chosen_action?.tool) && <span> · {toolLabels[step.data.tool || step.data.chosen_action?.tool || ""] || step.data.tool || step.data.chosen_action?.tool}</span>}
+                          {step.data.status && <span> · {step.data.status.replaceAll("_", " ")}</span>}
+                          {step.data.reason && <p>{step.data.reason.replaceAll("_", " ")}</p>}
+                          <time>{time(step.created_at)}</time>
+                        </li>)}</ol>
+                      </details>
+                    </section>}
+                    <p>Saved report: {active.shipment_investigation.report}</p>
+                    <p>{active.shipment_investigation.unknowns.length} checks still unknown</p>
+                    <ol className="timeline">{active.shipment_investigation.evidence.map((row,i) => <li key={i}><strong>{toolLabels[row.tool] || row.tool}</strong>: {row.applicability !== "current" ? "Not used as current evidence" : row.value === true ? "Confirmed" : row.value === false ? "Not met" : "Needs information"}<time>{time(row.observed_at)}</time>{row.source && <details><summary>Evidence source</summary><p>Declared record scope: {row.source.tables.join(", ")}. Order {row.source.order_id}; shipment {row.source.shipment_id}.</p><p>This investigation consulted database records, not browser pages.</p><p>Observation: {row.source.observation_id}<br/>Version: {row.source.version}</p>{row.reason && <p>Evidence limitation: {row.reason.replaceAll("_", " ")}</p>}{row.customer_page && <a href={row.customer_page}>View corresponding customer page ↗</a>}</details>}</li>)}</ol>
+                    {active.shipment_investigation.steps.some(s => s.kind === "deterministic_continuation") && <details><summary>Why evidence gathering continued</summary>{active.shipment_investigation.steps.filter(s => s.kind === "deterministic_continuation").map(s => <p key={s.sequence}>Evidence continuation: the application selected {toolLabels[s.data.chosen_action?.tool || ""] || "the next read"} after a missing-information review choice. This was not a model choice.</p>)}</details>}
+                    {active.shipment_investigation.steps.filter(s => s.kind === "continuation_unavailable").map(s => <p key={s.sequence}>Could not continue gathering evidence: {s.data.reason?.replaceAll("_", " ")}.</p>)}
+                    {active.shipment_investigation.reason && <p>Review outcome: {active.shipment_investigation.reason.replaceAll("_", " ")}</p>}
+                  </div>}
                 </section>
                 <section className="card" aria-label="Next step">
                   <h2>What to do next</h2>
@@ -787,6 +855,6 @@ function App() {
 }
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    {window.location.pathname.startsWith("/shop") ? <Shop /> : <App />}
   </React.StrictMode>,
 );

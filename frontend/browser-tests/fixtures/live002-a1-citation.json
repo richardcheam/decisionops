@@ -1,0 +1,84 @@
+{
+  "provenance": {
+    "source": "776aa6c4039d71ad3fd6ea8ea19b842d83ba1cd5",
+    "run": "live-evaluation-002",
+    "ledger_sha256": "c5566c845512fa303b1c5aadea9d8d4056212243cb2024d962054bd074ca4b11",
+    "case_sha256": "46db454f27fcb3953181cdfd766b4898941b4b8548b32fd7d3ed427a7c48d7b0",
+    "projection": "Necessary exact final action arguments and permitted observation blocks only; provider envelope/IDs/usage removed for publication. Original regression fixture archived."
+  },
+  "goal": {
+    "as_of": "2026-11-13T12:00:00Z",
+    "instruction": "Find recorded shipment evidence for the requested item. Current evidence must be no older than 24 hours at as_of. Report missing evidence honestly; never change anything.",
+    "order_reference": "OR-4821",
+    "quantity": 1,
+    "variant": "shirt-blue-M"
+  },
+  "response": {
+    "output": [
+      {
+        "arguments": "{\"action\":\"finish\",\"url\":null,\"observation\":null,\"reference\":null,\"value\":null,\"result\":{\"outcome\":\"evidence_found\",\"reason\":\"The saved rendered observations establish the requested order and item, and show a current lost carrier update for the matching parcel. The update is recorded 2 hours before as_of.\",\"findings\":{\"order\":{\"observation\":\"1daa2e5c-dfe2-4976-973b-e4b91ac239ee\",\"block\":\"b0\",\"quote\":\"Order OR-4821 1 item(s) Everyday cotton shirt Blue / M \u00b7 Quantity 1 Variant shirt-blue-M $25.00 Total $25.00 View order OR-4821 \u2192\"},\"item\":{\"observation\":\"44fb45fe-c91c-4c29-b155-957370ca228f\",\"block\":\"b0\",\"quote\":\"Order OR-4821 USD \u00b7 fictional purchase Everyday cotton shirt Blue / M \u00b7 Quantity 1 Variant shirt-blue-M $25.00 Shipment Handed to the carrier Reference PK-6204 Track shipment \u2192\"},\"parcel\":{\"observation\":\"e099947b-36b4-4c18-999a-978901707a95\",\"block\":\"b0\",\"quote\":\"Order reference OR-4821 Shipment reference PK-6204 Carrier status lost Update recorded 13 Nov 2026, 10:00 UTC\"},\"claim\":{\"observation\":\"e099947b-36b4-4c18-999a-978901707a95\",\"block\":\"b0\",\"quote\":\"Order reference OR-4821 Shipment reference PK-6204 Carrier status lost Update recorded 13 Nov 2026, 10:00 UTC\"},\"event_time\":{\"observation\":\"e099947b-36b4-4c18-999a-978901707a95\",\"block\":\"b0\",\"quote\":\"Order reference OR-4821 Shipment reference PK-6204 Carrier status lost Update recorded 13 Nov 2026, 10:00 UTC\"}},\"citations\":[],\"unknowns\":[]}}",
+        "name": "browser_action",
+        "status": "completed",
+        "type": "function_call"
+      }
+    ]
+  },
+  "observations": [
+    {
+      "id": "1daa2e5c-dfe2-4976-973b-e4b91ac239ee",
+      "url": "http://127.0.0.1:8096/shop/account/orders",
+      "blocks": [
+        {
+          "reference": "b0",
+          "text": "Order OR-4821 1 item(s) Everyday cotton shirt Blue / M \u00b7 Quantity 1 Variant shirt-blue-M $25.00 Total $25.00 View order OR-4821 \u2192",
+          "truncated": false
+        },
+        {
+          "reference": "b1",
+          "text": "Order OR-7396 1 item(s) Everyday cotton shirt Blue / M \u00b7 Quantity 1 Variant shirt-blue-M $25.00 Total $25.00 View order OR-7396 \u2192",
+          "truncated": false
+        },
+        {
+          "reference": "b2",
+          "text": "Order OR-5928 1 item(s) Everyday cotton shirt Blue / M \u00b7 Quantity 1 Variant shirt-blue-M $25.00 Total $25.00 View order OR-5928 \u2192",
+          "truncated": false
+        },
+        {
+          "reference": "b3",
+          "text": "A fictional clothing store \u00b7 no real purchases or customer data THREAD / STUDY Shop all My account Staff console \u2197 My account Your orders Maya Chen \u00b7 fictional customer preview. No real sign-in or personal data. Order history This demo account contains fictional records only. Order OR-4821 1 item(s) Everyday cotton shirt Blue / M \u00b7 Quantity 1 Variant shirt-blue-M $25.00 Total $25.00 View order OR-4821 \u2192 Order OR-7396 1 item(s) Everyday cotton shirt Blue / M \u00b7 Quantity 1 Variant shirt-blue-M $25.00 Total $25.00 View order OR-7396 \u2192 Order OR-5928 1 item(s) Everyday cotton shirt Blue / M \u00b7 Quantity 1 Variant shirt-blue-M $25.00 Total $25.00 View order OR-5928 \u2192 THREAD / STUDY A local fictional browser fixture. No checkout, real customer account or live carrier connection. View the demo order journey \u2192",
+          "truncated": false
+        }
+      ],
+      "text": "A fictional clothing store \u00b7 no real purchases or customer data THREAD / STUDY Shop all My account Staff console \u2197 My account Your orders Maya Chen \u00b7 fictional customer preview. No real sign-in or personal data. Order history This demo account contains fictional records only. Order OR-4821 1 item(s) Everyday cotton shirt Blue / M \u00b7 Quantity 1 Variant shirt-blue-M $25.00 Total $25.00 View order OR-4821 \u2192 Order OR-7396 1 item(s) Everyday cotton shirt Blue / M \u00b7 Quantity 1 Variant shirt-blue-M $25.00 Total $25.00 View order OR-7396 \u2192 Order OR-5928 1 item(s) Everyday cotton shirt Blue / M \u00b7 Quantity 1 Variant shirt-blue-M $25.00 Total $25.00 View order OR-5928 \u2192 THREAD / STUDY A local fictional browser fixture. No checkout, real customer account or live carrier connection. View the demo order journey \u2192"
+    },
+    {
+      "id": "44fb45fe-c91c-4c29-b155-957370ca228f",
+      "url": "http://127.0.0.1:8096/shop/account/orders/OR-4821",
+      "blocks": [
+        {
+          "reference": "b0",
+          "text": "A fictional clothing store \u00b7 no real purchases or customer data THREAD / STUDY Shop all My account Staff console \u2197 My account Order details Maya Chen \u00b7 fictional customer preview. No real sign-in or personal data. Order history This demo account contains fictional records only. \u2190 Order history Order OR-4821 USD \u00b7 fictional purchase Everyday cotton shirt Blue / M \u00b7 Quantity 1 Variant shirt-blue-M $25.00 Shipment Handed to the carrier Reference PK-6204 Track shipment \u2192 Need help with a missing parcel? Share this order and shipment reference with staff. THREAD / STUDY A local fictional browser fixture. No checkout, real customer account or live carrier connection. View the demo order journey \u2192",
+          "truncated": false
+        }
+      ],
+      "text": "A fictional clothing store \u00b7 no real purchases or customer data THREAD / STUDY Shop all My account Staff console \u2197 My account Order details Maya Chen \u00b7 fictional customer preview. No real sign-in or personal data. Order history This demo account contains fictional records only. \u2190 Order history Order OR-4821 USD \u00b7 fictional purchase Everyday cotton shirt Blue / M \u00b7 Quantity 1 Variant shirt-blue-M $25.00 Shipment Handed to the carrier Reference PK-6204 Track shipment \u2192 Need help with a missing parcel? Share this order and shipment reference with staff. THREAD / STUDY A local fictional browser fixture. No checkout, real customer account or live carrier connection. View the demo order journey \u2192"
+    },
+    {
+      "id": "e099947b-36b4-4c18-999a-978901707a95",
+      "url": "http://127.0.0.1:8096/shop/account/orders/OR-4821/tracking",
+      "blocks": [
+        {
+          "reference": "b0",
+          "text": "Order reference OR-4821 Shipment reference PK-6204 Carrier status lost Update recorded 13 Nov 2026, 10:00 UTC",
+          "truncated": false
+        },
+        {
+          "reference": "b1",
+          "text": "A fictional clothing store \u00b7 no real purchases or customer data THREAD / STUDY Shop all My account Staff console \u2197 My account Track your shipment Maya Chen \u00b7 fictional customer preview. No real sign-in or personal data. Order history This demo account contains fictional records only. \u2190 Order details Order OR-4821 USD \u00b7 fictional purchase Carrier update Parcel reported lost The carrier explicitly reports this shipment as lost. Staff can check which resolutions are available. Order reference OR-4821 Shipment reference PK-6204 Carrier status lost Update recorded 13 Nov 2026, 10:00 UTC This page presents the current fictional shipment record. It does not confirm replacement stock, previous compensation or store permission. Staff must investigate those separately. Back to order details \u2192 THREAD / STUDY A local fictional browser fixture. No checkout, real customer account or live carrier connection. View the demo order journey \u2192",
+          "truncated": false
+        }
+      ],
+      "text": "A fictional clothing store \u00b7 no real purchases or customer data THREAD / STUDY Shop all My account Staff console \u2197 My account Track your shipment Maya Chen \u00b7 fictional customer preview. No real sign-in or personal data. Order history This demo account contains fictional records only. \u2190 Order details Order OR-4821 USD \u00b7 fictional purchase Carrier update Parcel reported lost The carrier explicitly reports this shipment as lost. Staff can check which resolutions are available. Order reference OR-4821 Shipment reference PK-6204 Carrier status lost Update recorded 13 Nov 2026, 10:00 UTC This page presents the current fictional shipment record. It does not confirm replacement stock, previous compensation or store permission. Staff must investigate those separately. Back to order details \u2192 THREAD / STUDY A local fictional browser fixture. No checkout, real customer account or live carrier connection. View the demo order journey \u2192"
+    }
+  ]
+}

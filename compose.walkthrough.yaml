@@ -1,0 +1,20 @@
+# Separate read-only static site; no API/worker/database connection.
+x-logging: &bounded_logs
+  driver: json-file
+  options: {max-size: 10m, max-file: "3"}
+services:
+  walkthrough:
+    image: decisionops-portfolio-walkthrough:release
+    logging: *bounded_logs
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.walkthrough
+      network: none
+    ports: ['127.0.0.1:8094:8080']
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:8080/health]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    mem_limit: 64m
+    restart: unless-stopped
