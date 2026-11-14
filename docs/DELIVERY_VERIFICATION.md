@@ -62,3 +62,44 @@ current, active-source freshness and rules-baseline follow-up gaps, rejected-evi
 status errors, and historical investigation freshness overriding a verified execution.
 Focused regressions cover those fixes. Authority remains Commerce-owned throughout;
 no model or report response can approve or execute.
+
+The durable [independent review record](../reports/delivery-workspace/review.md)
+lists reviewer profiles, pinned scopes, reproduced findings and their corrections.
+
+## Final local check results
+
+A1–A9 are verified. Product review approved `d16f55c`; the final handoff commit adds
+only this evidence record and the durable review summary. The last freshness-count
+change was separately checked by all11 conversation regressions after the broad
+run began. No source changes followed those focused checks.
+
+| Actual command | Result |
+|---|---|
+| `python3 -B -S scripts/commerce_ci_tests.py dependency-free` |579 run;247 passed;332 explicit optional skips;0 failures/errors. |
+| `.venv/bin/python -B scripts/commerce_ci_tests.py postgres` |242 passed;0 skipped/failures/errors;365.303sec. |
+| `.venv/bin/python -B -m unittest discover -s tests -v` |579 run;575 passed;4 explicit skips;0 failures/errors;483.119sec. |
+| `COMMERCE_COMPARISON_POSTGRES=1 .venv/bin/python -m unittest discover -s tests -p test_commerce_comparison.py -v` |4 passed, including33 actual product runs. |
+| `npm --prefix frontend run build` |TypeScript and Vite passed with Node24. |
+| `.venv/bin/python -B scripts/commerce_delivery_browser.py` |3/3 real browser tests passed; direct SQL verified one Lyon operation, replacement, reservation and reserved unit. |
+| `.venv/bin/python -B scripts/commerce_delivery_recovery.py` |Hard process exit73; two committed order steps reused; one proposal/operation/reservation; duplicate confirmation shared one job. |
+| `.venv/bin/python -B scripts/commerce_worker_walkthrough.py` |Execution worker restart/replay verified; no extra reservation. |
+| `.venv/bin/python -B scripts/commerce_execution_walkthrough.py` |Exact approval/execution, stale approval invalidation and reconciliation passed. |
+| `.venv/bin/python -B -m unittest discover -s tests -p test_commerce_conversations.py -v` |11 final focused tests passed, including active source drift, expired observations, stale generation, baseline and rejected-evidence follow-ups. |
+
+The full-suite URL was
+`postgresql+psycopg://commerce_decisions@127.0.0.1:55446/commerce_decisions_test`, with
+the unchanged operator identity guard verified against the local5432 server. The
+required PostgreSQL profile used
+`postgresql+psycopg://richard@127.0.0.1:55479/commerce_delivery_test`. Browser runs set
+`COMMERCE_BROWSER_PATH=/usr/bin/brave-browser`; Node24 was on PATH.
+
+The four full-suite skips are the separately opted-in historical browser-controller
+bridge, the full product comparison opt-in (run separately and passed), and two Laya
+package/ML tests. The required PostgreSQL profile had **no skips**. Initial generic
+local database URLs failed the retained shop/CLI environment guards; the final full
+suite passed on their required isolated identity without relaxing those guards.
+
+No acceptance blocker remains. A Docker image build/start was not run because this
+account cannot access the Docker socket; all app/database/browser evidence above
+comes from the documented direct local launch of the same source. No push, PR,
+deployment, paid product/evaluation model request or real integration was performed.
