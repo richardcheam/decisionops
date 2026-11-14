@@ -106,7 +106,7 @@ comparison and [graph/trace integration](BROWSER-GRAPH-TRACE-PLAN.md) are propos
 separately; live calls require explicit spending approval.
 
 Start the current offline portfolio candidate with the
-[engineer/reviewer walkthrough](PORTFOLIO-RC.md). It distinguishes the rules staff
+[engineer/reviewer walkthrough](https://github.com/richardcheam/decisionops/blob/e311fe0e02a0386e86d400fb417147155847da02/docs/commerce/PORTFOLIO-RC.md). It distinguishes the rules staff
 workflow, separate mocked browser navigation and preserved real protocol failure.
 
 For the opt-in, local mocked specialist integration, see

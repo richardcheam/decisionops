@@ -6,7 +6,7 @@ from that accepted snapshot. Additions are standalone packaging, a stdlib verifi
 harness, configurable browser-test login/timing and static labelled portfolio evidence.
 The original Compose file, runtime and volumes were not modified.
 
-[Single launch/stop path and portfolio walkthrough](../../docs/commerce/PORTFOLIO-DEMO.md).
+[Single launch/stop path and portfolio walkthrough](https://github.com/richardcheam/decisionops/blob/e311fe0e02a0386e86d400fb417147155847da02/docs/commerce/PORTFOLIO-DEMO.md).
 [Actual restart/browser summary](summary.json).
 Screenshots: [progress](progress.png), [proposal](proposal.png),
 [incomplete](incomplete.png), [portfolio page](walkthrough.png).

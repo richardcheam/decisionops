@@ -1,7 +1,7 @@
 # Two fictional shops: model-free gate and proposed API evaluation
 
 Historical preparation record: the current offline release candidate and forced-function
-protocol are documented in [PORTFOLIO-RC.md](PORTFOLIO-RC.md). The old v1 live command
+protocol are documented in [PORTFOLIO-RC.md](https://github.com/richardcheam/decisionops/blob/e311fe0e02a0386e86d400fb417147155847da02/docs/commerce/PORTFOLIO-RC.md). The old v1 live command
 below is superseded; its original configuration/evidence remain historical.
 
 Worktree `runs/worktrees/browser-investigation`, branch `feat/browser-investigation`,

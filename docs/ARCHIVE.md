@@ -42,3 +42,27 @@ branch's unpublished commit ancestry. This preserves all local accepted branches
 avoids publishing raw files from earlier commits that a later commit would remove.
 Only this release branch is pushed;no history rewrite,visibility change,branch deletion,
 merge or deployment is performed.
+
+## Final cleanup — 2026-11-14
+
+The main-based cleanup archive is `$HOME/projects/decisionops-archive/2026-11-14-final-cleanup/`.
+`tracked-file-manifest.json` records the removed milestone/review guides and the
+original diagrams with source commit, paths and SHA-256. Historical links now target
+immutable `e311fe0` versions instead of broken local paths. Current operation is in
+[RELEASE.md](RELEASE.md); specialist architecture is in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+Archived guides: PORTFOLIO-DEMO/RC/RELEASE, STAFF-INVESTIGATION-PLAN,
+STAGE2/3/4-REVIEW, STAGE5-CORRECTION/LEDGER/REVIEW and
+MULTI-AGENT-EVIDENCE/VERIFICATION (all under `docs/commerce/`).
+The original Git history remains available; this removes duplicate instructions,
+not product features. Existing scripts, Compose variants and fixture launchers remain
+where CI, frozen experiments or preserved demos depend on them. Synthetic reports
+remain because the historical viewer and regression tests read them. Raw live traces,
+stopped ledgers and SQL/log exports remain outside the active tree in the earlier
+archive; no frozen input or historical result was regenerated.
+
+The existing `2026-10-16-wrapup/repository.bundle` was refreshed after preserving its
+previous copy. Every inventoried branch tip was recovered in an independent bare
+repository before any ref deletion. `refs-before.json`, `bundle-verification.json`
+and `branch-decisions.json` record ancestry, actual-tree comparisons and retention
+reasons. Open PR branches, active worktrees and unique changes are preserved.

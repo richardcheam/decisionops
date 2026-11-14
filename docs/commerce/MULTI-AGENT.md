@@ -10,7 +10,7 @@ retaining the existing replacement policy, exact staff approval and separate exe
 Rules remain the default. Select `mock-specialists` explicitly to exercise the new path;
 the browser identifies it as **Mocked specialists. No paid calls.** This is a fictional,
 local integration demonstration. It does not demonstrate live model quality, lower cost,
-faster investigations or improved business outcomes. The [verification record](MULTI-AGENT-VERIFICATION.md) separates executed checks and remaining gates.
+faster investigations or improved business outcomes. The [verification record](https://github.com/richardcheam/decisionops/blob/e311fe0e02a0386e86d400fb417147155847da02/docs/commerce/MULTI-AGENT-VERIFICATION.md) separates executed checks and remaining gates.
 
 The [architecture decision](../decisions/2026-11-13-bounded-specialists.md) defines the
 contracts and alternatives. The implementation lives in
@@ -45,20 +45,7 @@ outperform the simpler existing controller.
 
 ## Evidence flow and authority
 
-```mermaid
-flowchart TD
-    M[Coordinator: manifest and applicable policy] --> O[Order: choose fulfilment or payment first]
-    O --> B[Explicit fulfilment binds selected parcel]
-    B --> P[Order branch: remaining payment read]
-    B --> S[Shipment branch: choose carrier read or explicit fulfilment refresh]
-    P --> C[Coordinator: compensation history and inventory]
-    S --> C
-    C --> G[Deterministic gate: seven conditions, scope, dependencies and freshness]
-    G --> R[Explained review or blocker]
-    G --> Q[Replacement proposal]
-    Q --> A[Exact staff approval]
-    A --> E[Separate execution confirmation]
-```
+The current dependency diagram is in [Specialist architecture](../ARCHITECTURE.md).
 
 Only the two branches after parcel binding may overlap. Fulfilment is a dependency of
 carrier evidence. The coordinator owns compensation and inventory reads; neither
@@ -268,7 +255,7 @@ Local evidence (ignored, not intended for public upload) is under `runs/multi-ag
   observation IDs retained after reclaim. No order redispatch or duplicate proposal.
 - `clean-worker-restart/trace.json`: actual container stop, lease expiry and restart.
 - `browser-clean/multi-agent-results/` and `browser-clean/multi-agent-report.json`: actual staff UI, not
-  autonomous browser navigation. See the [evidence index](MULTI-AGENT-EVIDENCE.md) for exact current paths/hashes.
+  autonomous browser navigation. See the [evidence index](https://github.com/richardcheam/decisionops/blob/e311fe0e02a0386e86d400fb417147155847da02/docs/commerce/MULTI-AGENT-EVIDENCE.md) for exact current paths/hashes.
 
 Inspect an existing run without dispatch (inside this isolated container only):
 
