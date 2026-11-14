@@ -1,5 +1,5 @@
 """Staff-only durable investigation; rules default and mock-only optional transport."""
-import argparse,json,signal,time
+import argparse,json,signal,time,os
 from threading import Event
 import sqlalchemy as sa
 from . import schema as db,adaptive_investigations as service,adaptive_jobs as jobs
@@ -73,17 +73,38 @@ def view(c,case_id):
         db.adaptive_runs.c.contracts['staff_ui'].as_boolean()==True)).order_by(db.adaptive_runs.c.created_at.desc()).limit(1)).scalar_one_or_none()
     if not run_id:return None
     run=service.inspect_connection(c,run_id)
+    if run.get('evidence_error'):
+        return {'id':run_id,'state':'review','report':run['report'],'mode':'mock_specialists' if run['contracts'].get('specialists') else 'rules',
+            'reason':run['evidence_error'],'job_status':run['job']['status'],'unknowns':list(run['assessment']['facts']),
+            'blockers':[],'facts':run['assessment']['facts'],'steps':[],'evidence':[],'specialists':[],
+            'evidence_current':False,'planned_checks':[]}
     history,_,audit,_,_=service.snapshot(c,run);now=clock(c)
     active={o.id:o for o in history.active()};evidence=[]
+    changed=set()
+    if run['state']!='active':
+        from .adaptive_evidence import History
+        from .adaptive_tools import DEPENDENCIES,read_tool
+        from .read_tools import AssessmentRequest
+        fresh=History(run['request'])
+        for tool in DEPENDENCIES:
+            if not history.active(tool):continue
+            try:
+                before=history.select(tool,now)
+                current=read_tool(c,tool,AssessmentRequest(**run['request']),fresh,now,
+                    dependencies=tuple(fresh.select(dep,now) for dep in DEPENDENCIES[tool]))
+                fresh.append(current)
+                if before.version!=current.version:changed.add(tool)
+            except ValueError:changed.add(tool)
     for saved in audit:
         record=saved['record'];obs=active.get(record['id'])
         applicability='discarded' if not saved['applied'] else 'superseded' if obs is None else 'current'
         reason=history.invalid_reason(obs,now) if obs is not None else None
+        if record['tool'] in changed:reason='refresh_required'
         if obs is not None and history.content_conflict(record['tool']):reason='conflicting_active_contents'
         if reason:applicability=reason
         evidence.append({'tool':record['tool'],'value':record['value'] if applicability=='current' else None,
             'recorded_value':record['value'],'applicability':applicability,'status':record['status'],
-            'reason':reason or record['reason'],'observed_at':record['observed_at'],
+            'reason':reason or record['reason'],'observed_at':record['observed_at'],'expires_at':record['expires_at'],
             'source':{'kind':'database_read','observation_id':record['id'],
                 'version':record['source_version'],'order_id':record['request']['order_id'],
                 'shipment_id':record['request']['shipment_id'],
@@ -95,10 +116,13 @@ def view(c,case_id):
             rows=calls(c,run['id'],name)
             branches.append({'name':name,'state':result_status(c,run,name),'tools':[r['tool'] for r in rows if r['tool']],
                 'reason':next((r['error'] for r in rows if r['error']),None),'observations':[r['observation']['id'] for r in rows if r['observation']]})
-    return {'specialists':branches,'id':run['id'],'state':run['state'],'report':run['report'],'mode':'mock_specialists' if run['contracts'].get('specialists') else 'simulated_decisions' if run['contracts'].get('api') else 'rules',
+    facts=dict(run['assessment']['facts'])
+    from .adaptive_evidence import TOOLS
+    for tool in changed:facts[TOOLS[tool]]=None
+    return {'evidence_current':not changed,'planned_checks':['Bind order and policy','Check shipment and carrier','Check payment and compensation','Check inventory and join evidence'],'specialists':branches,'id':run['id'],'state':run['state'],'report':run['report'],'mode':'mock_specialists' if run['contracts'].get('specialists') else 'simulated_decisions' if run['contracts'].get('api') else 'rules',
         'job_status':run['job']['status'],'reason':run['terminal'].get('reason') if run['terminal'] else None,
         'unknowns':run['assessment']['decision']['unknowns'],'blockers':run['assessment']['decision']['blockers'],
-        'facts':run['assessment']['facts'],'steps':[{'sequence':s['sequence'],'kind':s['kind'],'data':{k:v for k,v in s['data'].items() if k in ('tool','status','reason','action','chosen_action','requested_action','source','specialist','applied')},'created_at':s['created_at']} for s in run['steps']],
+        'facts':facts,'steps':[{'sequence':s['sequence'],'kind':s['kind'],'data':{k:v for k,v in s['data'].items() if k in ('tool','status','reason','action','chosen_action','requested_action','source','specialist','applied')},'created_at':s['created_at']} for s in run['steps']],
         'evidence':evidence}
 
 def adapter_for(run):
@@ -121,6 +145,9 @@ def adapter_for(run):
 
 def work_once(engine,stop=None,step_delay=0):
     if not 0<=step_delay<=.5:raise ValueError('Step delay must be bounded to 0..0.5s')
+    from .delivery import scan
+    with service.transaction(engine) as c:
+        scan(c,os.environ.get('COMMERCE_STORE_ID','demo-store'))
     reap_expired(engine)
     owned=jobs.claim(engine,staff_only=True)
     if not owned:

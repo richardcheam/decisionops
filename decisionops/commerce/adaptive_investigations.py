@@ -312,8 +312,16 @@ def request_for(run,history,steps,counts,now):
 
 
 def inspect_connection(c,run_id):
-    run=row(c,run_id);history,steps,observations,edges,counts=snapshot(c,run);now=clock(c)
+    run=row(c,run_id);error=None
+    try:history,steps,observations,edges,counts=snapshot(c,run)
+    except (ValueError,KeyError,TypeError):
+        # Corrupt committed evidence is retained for audit but confers no facts.
+        # Inspection must remain available so the owning worker can stop safely.
+        history=History(run['request']);steps=[];observations=[];edges=[];counts={}
+        error='invalid_committed_evidence'
+    now=clock(c)
     return {**run,'steps':steps,'observations':[r['record'] for r in observations],
+            **({'evidence_error':error} if error else {}),
             'supersessions':edges,'tool_counts':counts,'assessment':history.assess(now),
             **({'job':dict(c.execute(sa.select(db.adaptive_jobs).where(db.adaptive_jobs.c.run_id==run_id)).mappings().one())}
                if run['contracts'].get('executor')=='commerce-adaptive-jobs/v1' else {})}

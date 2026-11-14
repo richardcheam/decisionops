@@ -408,3 +408,61 @@ specialist_calls = sa.Table(
     sa.CheckConstraint('elapsed_ms IS NULL OR elapsed_ms >= 0'),
     sa.CheckConstraint("(dispatch_count=0 AND dispatch_token IS NULL AND state NOT IN ('dispatching','uncertain')) OR (dispatch_count=1 AND dispatch_token IS NOT NULL AND state!='reserved')"),
 )
+
+# Delivery operations: immutable source events and parcel-scoped case bindings.
+sa.UniqueConstraint(orders.c.store_id, orders.c.id, name='uq_orders_store_id')
+delivery_parcels = sa.Table(
+    'commerce_delivery_parcels', metadata,
+    sa.Column('shipment_id',sa.String,primary_key=True),
+    sa.Column('order_id',sa.String,nullable=False),sa.Column('store_id',sa.String,nullable=False),
+    sa.Column('city',sa.String,nullable=False),sa.Column('dispatch_origin',sa.String,nullable=False),
+    sa.Column('dispatched_at',sa.DateTime(timezone=True),nullable=False),
+    sa.Column('promised_at',sa.DateTime(timezone=True),nullable=False),
+    sa.Column('feed_available',sa.Boolean,nullable=False,server_default=sa.true()),
+    sa.Column('reported_nonreceipt',sa.Boolean,nullable=False,server_default=sa.false()),
+    sa.ForeignKeyConstraint(['store_id','order_id'],['orders.store_id','orders.id']),
+    sa.ForeignKeyConstraint(['shipment_id','order_id'],['shipments.id','shipments.order_id']),
+    sa.UniqueConstraint('store_id','shipment_id','order_id'),
+    sa.CheckConstraint('promised_at >= dispatched_at'),
+)
+sa.Index('ix_delivery_store_promise', delivery_parcels.c.store_id, delivery_parcels.c.promised_at)
+carrier_events = sa.Table(
+    'commerce_carrier_events',metadata,
+    sa.Column('id',sa.String(64),primary_key=True),
+    sa.Column('shipment_id',sa.String,sa.ForeignKey('commerce_delivery_parcels.shipment_id'),nullable=False),
+    sa.Column('source',sa.String(128),nullable=False),sa.Column('external_id',sa.String(256),nullable=False),
+    sa.Column('event_at',sa.DateTime(timezone=True),nullable=False),sa.Column('received_at',sa.DateTime(timezone=True),nullable=False),
+    sa.Column('status',sa.String,nullable=False),sa.Column('verified',sa.Boolean,nullable=False),
+    sa.Column('original',JSONB,nullable=False),
+    sa.CheckConstraint("status IN ('lost','in_transit','delivered','unknown') AND jsonb_typeof(original)='object'"),
+)
+sa.Index('ix_carrier_source_identity',carrier_events.c.source,carrier_events.c.external_id)
+sa.Index('ix_carrier_parcel_time',carrier_events.c.shipment_id,carrier_events.c.event_at)
+delivery_case_links = sa.Table(
+    'commerce_delivery_case_links',metadata,
+    sa.Column('store_id',sa.String,primary_key=True),sa.Column('shipment_id',sa.String,primary_key=True),
+    sa.Column('order_id',sa.String,nullable=False),sa.Column('case_id',sa.String,nullable=False,unique=True),
+    sa.Column('active',sa.Boolean,nullable=False),
+    sa.ForeignKeyConstraint(['store_id','shipment_id','order_id'],['commerce_delivery_parcels.store_id','commerce_delivery_parcels.shipment_id','commerce_delivery_parcels.order_id']),
+    sa.ForeignKeyConstraint(['case_id','order_id'],['commerce_cases.id','commerce_cases.order_id']),
+)
+delivery_triggers = sa.Table(
+    'commerce_delivery_triggers',metadata,
+    sa.Column('store_id',sa.String,primary_key=True),sa.Column('shipment_id',sa.String,primary_key=True),
+    sa.Column('kind',sa.String,primary_key=True),sa.Column('active',sa.Boolean,nullable=False),
+    sa.Column('updated_at',sa.DateTime(timezone=True),nullable=False),
+    sa.ForeignKeyConstraint(['store_id','shipment_id'],['commerce_delivery_case_links.store_id','commerce_delivery_case_links.shipment_id']),
+    sa.CheckConstraint("kind IN ('overdue','nonreceipt','carrier_conflict')"),
+)
+conversations = sa.Table(
+    'commerce_conversations',metadata,
+    sa.Column('id',sa.String,primary_key=True),sa.Column('actor',sa.String(128),nullable=False),
+    sa.Column('store_id',sa.String,nullable=False),sa.Column('selected_case_id',sa.String,sa.ForeignKey('commerce_cases.id')),
+    sa.Column('created_at',sa.DateTime(timezone=True),nullable=False),
+)
+conversation_messages = sa.Table(
+    'commerce_conversation_messages',metadata,
+    sa.Column('conversation_id',sa.String,sa.ForeignKey('commerce_conversations.id'),primary_key=True),
+    sa.Column('request_id',sa.String(128),primary_key=True),sa.Column('message',sa.String(2000),nullable=False),
+    sa.Column('response',JSONB,nullable=False),sa.Column('created_at',sa.DateTime(timezone=True),nullable=False),
+)

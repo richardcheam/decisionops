@@ -1,13 +1,13 @@
 """Read-only readiness for this source's explicit PostgreSQL schema contract.
 
-Revision 0009 plus mapped column shapes and enabled mutation guards. This is not a
+Revision 0010 plus mapped column shapes and enabled mutation guards. This is not a
 migration engine or a complete adversarial schema-definition integrity verifier.
 """
 import sqlalchemy as sa
 from sqlalchemy.exc import SQLAlchemyError
 from .schema import metadata
 
-SUPPORTED_REVISION='0009'
+SUPPORTED_REVISION='0010'
 class SchemaNotReady(RuntimeError):pass
 
 GUARDS={
@@ -25,7 +25,7 @@ for table in ('commerce_investigations','commerce_proposals','commerce_reviews',
               'commerce_operations','commerce_replacement_orders','commerce_replacement_lines',
               'commerce_reservations','policy_versions','resolutions','commerce_provider_budgets',
               'commerce_adaptive_steps','commerce_adaptive_observations','commerce_adaptive_supersessions',
-              'commerce_adaptive_call_events','commerce_adaptive_session_events'):
+              'commerce_adaptive_call_events','commerce_adaptive_session_events','commerce_carrier_events'):
     GUARDS[(table,'commerce_immutable')]='commerce_reject_audit_mutation'
 
 def expected_type(column):
