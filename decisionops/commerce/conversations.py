@@ -8,6 +8,10 @@ from .cases import clock,identifier,show_case
 
 KINDS=('weekly_deliveries','problems','investigate','status','clarify')
 
+def explicit_orders(message):
+    return tuple(dict.fromkeys(value.upper() for value in re.findall(
+        r'\b(?:ORD|DEMO)-[A-Za-z0-9_-]+\b',message,re.I)))
+
 @dataclass(frozen=True)
 class Intent:
     kind: str
@@ -19,8 +23,9 @@ class Intent:
 class DemoRouter:
     def choose(self,message):
         text=message.lower().replace('’',"'")
-        order=re.search(r'\b(?:ORD|DEMO)-[A-Za-z0-9_-]+\b',message,re.I)
-        bound=order.group().upper() if order else None
+        orders=explicit_orders(message)
+        if len(orders)>1:return Intent('clarify')
+        bound=orders[0] if orders else None
         if 'how many' in text and any(w in text for w in ('deliver','week')):kind='weekly_deliveries'
         elif any(w in text for w in ('problem','exception')):kind='problems'
         elif any(w in text for w in ('fix','investigate')):kind='investigate'
@@ -117,9 +122,18 @@ def message(c,engine,conversation,text,request_id,mode,router=None,now=None):
     if previous:
         if previous['message']!=text:raise ValueError('Message request identity reused')
         return previous['response']
-    intent=(router or DemoRouter()).choose(text)
+    references=explicit_orders(text)
+    # Scope ambiguity is resolved by staff, before any configured router can
+    # choose a case or request an investigation on their behalf.
+    intent=Intent('clarify') if len(references)>1 else (router or DemoRouter()).choose(text)
     selected=conversation['selected_case_id'];links=[];store=conversation['store_id']
-    if intent.order_id:
+    if len(references)>1:
+        matches=c.execute(sa.select(db.cases).join(db.orders,db.orders.c.id==db.cases.c.order_id).where(
+            sa.and_(db.orders.c.store_id==store,db.orders.c.id.in_(references)))
+            .order_by(db.cases.c.order_id,db.cases.c.created_at)).mappings().all()
+        links=[{'case_id':r['id'],'order_id':r['order_id'],'shipment_id':r['request']['shipment_id']} for r in matches]
+        selected=None;select(c,conversation,None)
+    elif intent.order_id:
         matches=c.execute(sa.select(db.cases).join(db.orders,db.orders.c.id==db.cases.c.order_id).where(
             sa.and_(db.orders.c.store_id==store,db.orders.c.id==intent.order_id)).order_by(db.cases.c.created_at)).mappings().all()
         links=[{'case_id':r['id'],'order_id':r['order_id'],'shipment_id':r['request']['shipment_id']} for r in matches]

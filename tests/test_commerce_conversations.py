@@ -151,3 +151,34 @@ class ConversationTests(unittest.TestCase):
         self.assertIsNone(payment['value']);self.assertEqual(payment['applicability'],'refresh_required')
         self.assertIn('paid',investigation['unknowns']);self.assertNotIn('paid',investigation['blockers'])
         self.assertFalse(self.say(client,identity,'status').json()['evidence_current'])
+
+    def test_distinct_order_references_require_authorized_clarification_before_routing(self):
+        from decisionops.commerce import schema as db
+        client=self.client();one=self.case();two=self.case('STOCK',{'shirt-red-M':1})
+        identity=self.conversation(client)
+        # Even an existing selection and an alternative intent router cannot
+        # silently choose between two explicit orders in the staff message.
+        client.post('/api/conversations/'+identity+'/select',json={'case_id':two['id']})
+        result=self.say(client,identity,'Fix ORD-1042 or ORD-STOCK','AMBIGUOUS').json()
+        self.assertEqual(result['intent'],'clarify');self.assertIsNone(result['selected_case_id'])
+        self.assertEqual({r['case_id'] for r in result['case_links']},{one['id'],two['id']})
+        self.assertEqual(self.say(client,identity,'Fix ORD-1042 or ORD-STOCK','AMBIGUOUS').json(),result)
+        self.assertEqual(self.say(client,identity,'Fix this').json()['intent'],'clarify')
+        with self.engine.connect() as c:
+            self.assertEqual(len(c.execute(db.adaptive_runs.select()).all()),0)
+        from decisionops.commerce.conversations import BoundedRouter
+        from decisionops.commerce.api import create_app
+        from fastapi.testclient import TestClient
+        router=BoundedRouter(lambda _: {'kind':'investigate','order_id':'ORD-1042'})
+        routed=TestClient(create_app(self.engine,password='fictional-test-password',conversation_router=router),headers=client.headers)
+        other=self.conversation(routed)
+        response=self.say(routed,other,'Fix ORD-1042 or ORD-STOCK').json()
+        self.assertEqual(response['intent'],'clarify');self.assertIsNone(response['selected_case_id'])
+        outside=self.client(store_id='another-store');foreign=self.conversation(outside)
+        response=self.say(outside,foreign,'Fix ORD-1042 or ORD-STOCK').json()
+        self.assertEqual(response['intent'],'clarify');self.assertEqual(response['case_links'],[])
+
+    def test_repeated_reference_to_one_order_does_not_create_false_ambiguity(self):
+        client=self.client();case=self.case();identity=self.conversation(client)
+        response=self.say(client,identity,'Fix ORD-1042; I mean ord-1042').json()
+        self.assertEqual(response['intent'],'investigate');self.assertEqual(response['selected_case_id'],case['id'])
