@@ -1,0 +1,5 @@
+FROM nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+COPY docker/nginx.walkthrough.conf /etc/nginx/conf.d/default.conf
+COPY frontend/public /usr/share/nginx/html
+# index.html is derived only in this static image, never in the SPA public folder.
+RUN cp /usr/share/nginx/html/portfolio.html /usr/share/nginx/html/index.html

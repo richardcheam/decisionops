@@ -1,0 +1,10 @@
+# Explicit local alternative when locked dependency images already exist.
+services:
+  init:
+    build:
+      dockerfile: docker/Dockerfile.portfolio-app
+      network: none
+  web:
+    build:
+      dockerfile: docker/Dockerfile.portfolio-web
+      network: none

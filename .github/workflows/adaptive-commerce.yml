@@ -1,0 +1,56 @@
+name: Verify adaptive commerce without models
+on:
+  push:
+    branches: [feat/commerce-adaptive-recovery, feat/commerce-adaptive-sessions, feat/commerce-adaptive-evaluation]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: adaptive-commerce-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  dependency-free:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+      - run: python -B -S scripts/commerce_ci_tests.py dependency-free
+      - name: Historical viewer export without models
+        run: |
+          python -B -S -m decisionops workflow export-html --report-dir reports/workflow-model-comparison-20260927 --output runs/stage5-viewer/index.html
+          python -c "from pathlib import Path; p=Path('runs/stage5-viewer'); s=(p/'index.html').read_text(); assert len(list(p.iterdir()))==1 and 'Offline synthetic simulation' in s and 'uncalibrated' in s"
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16.15-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4
+        env:
+          POSTGRES_DB: commerce_decisions_test
+          POSTGRES_USER: commerce_decisions
+          POSTGRES_PASSWORD: ci-fictional-only
+        ports: [55446:5432]
+        options: >-
+          --health-cmd "pg_isready -U commerce_decisions -d commerce_decisions_test"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      COMMERCE_TEST_DATABASE_URL: postgresql+psycopg://commerce_decisions:ci-fictional-only@127.0.0.1:55446/commerce_decisions_test
+      LANGSMITH_TRACING: 'false'
+      LANGCHAIN_TRACING_V2: 'false'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+      - run: python -m pip install 'uv==0.12.19'
+      - run: uv sync --locked --only-group commerce --only-group commerce-api --no-python-downloads
+      - run: .venv/bin/python -B scripts/commerce_ci_tests.py postgres
+
+      - name: Optional API SDK mocks and PostgreSQL accounting (no external requests)
+        run: |
+          .venv/bin/python -B -m unittest discover -s tests -p 'test_commerce_api_*.py' -v
+          .venv/bin/python -B -m unittest discover -s tests -p 'test_commerce_decisions_*.py' -v
+          .venv/bin/python -B -m unittest discover -s tests -p 'test_commerce_staff_investigation.py' -v

@@ -1,0 +1,110 @@
+# Standalone fictional portfolio stack. Always select an explicit project (-p).
+x-logging: &bounded_logs
+  driver: json-file
+  options: {max-size: 10m, max-file: "3"}
+services:
+  postgres:
+    image: ${COMMERCE_PORTFOLIO_POSTGRES_IMAGE:-postgres:16.15-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4}
+    logging: *bounded_logs
+    environment:
+      POSTGRES_DB: portfolio
+      POSTGRES_USER: portfolio
+      POSTGRES_PASSWORD: fictional-portfolio-db-only
+    volumes: [portfolio_pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U portfolio -d portfolio"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    mem_limit: 512m
+    restart: unless-stopped
+  init:
+    image: decisionops-portfolio-app:release
+    logging: *bounded_logs
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.portfolio-app
+      network: none
+    environment: &store
+      COMMERCE_DATABASE_URL: postgresql+psycopg://portfolio:fictional-portfolio-db-only@postgres:5432/portfolio
+      LANGSMITH_TRACING: 'false'
+      LANGCHAIN_TRACING_V2: 'false'
+    command: [sh, -c, "alembic upgrade head && python -B -m decisionops.commerce.seed && python -B -m decisionops.commerce.worker setup"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: 'no'
+    mem_limit: 384m
+  api:
+    image: decisionops-portfolio-app:release
+    logging: *bounded_logs
+    environment:
+      <<: *store
+      COMMERCE_STAFF_USERNAME: visitor
+      COMMERCE_STAFF_PASSWORD: ${COMMERCE_PORTFOLIO_PASSWORD:?Set an explicit invitation password (at least 16 characters)}
+      COMMERCE_STAFF_INVESTIGATION_MODE: rules
+      COMMERCE_ORIGINS: ${COMMERCE_PORTFOLIO_ORIGIN:-http://127.0.0.1:${COMMERCE_PORTFOLIO_PORT:-8093}}
+    depends_on:
+      init: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)"]
+      interval: 2s
+      timeout: 4s
+      retries: 30
+    mem_limit: 256m
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+  worker:
+    image: decisionops-portfolio-app:release
+    logging: *bounded_logs
+    environment: *store
+    command: [python, -B, -m, decisionops.commerce.worker, run]
+    depends_on:
+      init: {condition: service_completed_successfully}
+    mem_limit: 384m
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+  staff-investigator:
+    image: decisionops-portfolio-app:release
+    logging: *bounded_logs
+    environment: *store
+    # Bounded display pacing also makes the worker-restart boundary observable.
+    command: [python, -B, -m, decisionops.commerce.staff_investigations, --step-delay, '0.5']
+    depends_on:
+      init: {condition: service_completed_successfully}
+    mem_limit: 256m
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 5s
+    restart: unless-stopped
+  web:
+    image: decisionops-portfolio-web:release
+    logging: *bounded_logs
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.portfolio-web
+      network: none
+    ports: ['127.0.0.1:${COMMERCE_PORTFOLIO_PORT:-8093}:8080']
+    networks: [default, ingress]
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:8080/health]
+      interval: 2s
+      timeout: 4s
+      retries: 30
+    mem_limit: 64m
+    restart: unless-stopped
+networks:
+  ingress: {}
+  default:
+    internal: true
+volumes:
+  portfolio_pgdata:

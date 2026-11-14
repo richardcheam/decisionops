@@ -1,0 +1,8 @@
+# Existing locked Node dependencies; build remains network-disabled.
+FROM decisionops-commerce-browser:local AS build
+WORKDIR /workspace
+COPY frontend ./
+RUN npm run build
+FROM nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+COPY docker/nginx.shop-fixture.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /workspace/dist /usr/share/nginx/html

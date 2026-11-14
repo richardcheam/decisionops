@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16.15-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4
+    environment:
+      POSTGRES_DB: specialists_test
+      POSTGRES_USER: specialists_test
+      POSTGRES_PASSWORD: fictional-specialists-test
+    ports: ['127.0.0.1:55548:5432']
+    tmpfs: ['/var/lib/postgresql/data']
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U specialists_test -d specialists_test']
+      interval: 1s
+      timeout: 2s
+      retries: 20

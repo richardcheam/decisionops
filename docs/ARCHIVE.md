@@ -1,0 +1,44 @@
+# Archive and curation
+
+Archive ID: **2026-11-14-portfolio-release**, alongside the existing
+**2026-10-16-wrapup** archive. Operator-local location:
+`$HOME/projects/decisionops-archive/2026-11-14-portfolio-release/`.
+`manifest.json` records original paths,accepted source identities,destinations,byte
+sizes and SHA-256. Copies were byte/hash-verified before removing candidate duplicates.
+Archive contents are not published; request them from the owner for a private review.
+
+Archived:790 files /50,259,068 bytes initially,including the accepted multi-agent
+bundle/logs/SQL exports, both browser live runs,prior Commerce live/manual evidence,
+stopped cached-pilot records and candidate raw public exports. The originals in
+accepted historical worktrees remain untouched. Two large generated Docker image
+archives were excluded from copying; their existing originals were preserved.
+No credentials,model weights,environments,caches or original runtime data were copied.
+
+Removed from the new release tree only:
+
+- `frontend/public/evidence/decisions-live-trace.json`
+- `frontend/public/evidence/browser-live-failure-trace.html`
+- `frontend/public/evidence/browser-offline-trace.html`
+
+They are replaced with a small outcome summary. The original citation regression
+fixture was also archived before removing its unnecessary provider envelope,IDs and
+usage;the exact final action arguments and needed fictional observation blocks remain. The static walkthrough and its
+manifest/tests now refer to that summary,not a raw provider trace. Required bounded
+fictional citation-regression excerpts remain test fixtures;they are not live-run
+ledgers or model inputs. Frozen evaluation cases/hashes and historical viewer data
+remain unchanged. The old browser experiment's build-asset freeze is historical;
+this curated release does not satisfy its old live admission identity and does not
+re-authorize an evaluation. No frozen artifact was regenerated.
+
+Retained: application,seven explicit tools,approval/execution/recovery,optional adapters,
+migrations0001–0009,locks,container definitions,CI,tests,fictional records and necessary
+scripts/docs. Existing tracked diagnostic reports remain because the offline viewer
+and regression checks depend on them;they are synthetic project fixtures already in
+the remote base,not newly exported private logs. Historical summaries/screenshots are
+kept where existing guides/tests use them. No unrelated tracked component was removed.
+
+Publication uses one clean delta on remote `main` b27e2d7 rather than the accepted
+branch's unpublished commit ancestry. This preserves all local accepted branches and
+avoids publishing raw files from earlier commits that a later commit would remove.
+Only this release branch is pushed;no history rewrite,visibility change,branch deletion,
+merge or deployment is performed.

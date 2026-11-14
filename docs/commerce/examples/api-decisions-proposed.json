@@ -1,0 +1,14 @@
+{
+  "budget_id": "SDK-DECISIONS-ONE",
+  "endpoint": "https://api.openai.com/v1",
+  "model": "gpt-6-luna",
+  "pricing_version": "openai-decisions-standard-20261016",
+  "input_per_million": "0.10",
+  "max_requests": 12,
+  "max_cost_usd": "0.03",
+  "max_input_tokens": 24576,
+  "request_byte_limit": 20480,
+  "protocol_token_margin": 4096,
+  "version": "commerce-decisions/v1",
+  "execution": "live"
+}

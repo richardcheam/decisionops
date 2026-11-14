@@ -11,5 +11,5 @@
     "allowImportingTsExtensions": true,
     "esModuleInterop": true
   },
-  "include": ["src", "vite.config.ts", "playwright.config.ts", "tests"]
+  "include": ["src", "vite.config.ts", "playwright.config.ts", "playwright.staff.config.ts", "tests", "staff-tests", "shop-tests", "playwright.shop.config.ts"]
 }

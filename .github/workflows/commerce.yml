@@ -37,15 +37,15 @@ jobs:
       postgres:
         image: postgres:16.15-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4
         env:
-          POSTGRES_DB: commerce
-          POSTGRES_USER: commerce
+          POSTGRES_DB: commerce_decisions_test
+          POSTGRES_USER: commerce_decisions
           POSTGRES_PASSWORD: ci-fictional-only
-        ports: [5432:5432]
+        ports: [55446:5432]
         options: >-
-          --health-cmd "pg_isready -U commerce -d commerce"
+          --health-cmd "pg_isready -U commerce_decisions -d commerce_decisions_test"
           --health-interval 2s --health-timeout 3s --health-retries 30
     env:
-      COMMERCE_TEST_DATABASE_URL: postgresql+psycopg://commerce:ci-fictional-only@127.0.0.1:5432/commerce
+      COMMERCE_TEST_DATABASE_URL: postgresql+psycopg://commerce_decisions:ci-fictional-only@127.0.0.1:55446/commerce_decisions_test
       LANGSMITH_TRACING: 'false'
       LANGCHAIN_TRACING_V2: 'false'
     steps:
@@ -56,9 +56,14 @@ jobs:
       - name: Install pinned package manager
         run: python -m pip install 'uv==0.12.19'
       - name: Install locked commerce-only profile
-        run: uv sync --locked --only-group commerce --no-python-downloads
+        run: uv sync --locked --only-group commerce --only-group commerce-api --no-python-downloads
       - name: Required database tests (any skip fails)
         run: .venv/bin/python -B scripts/commerce_ci_tests.py postgres
+      - name: API SDK mocks and PostgreSQL accounting (no external requests)
+        run: |
+          .venv/bin/python -B -m unittest discover -s tests -p 'test_commerce_api_*.py' -v
+          .venv/bin/python -B -m unittest discover -s tests -p 'test_commerce_decisions_*.py' -v
+          .venv/bin/python -B -m unittest discover -s tests -p 'test_commerce_staff_investigation.py' -v
       - name: Historical and pure regressions (optional model skips reported)
         run: .venv/bin/python -B -m unittest discover -s tests -v
       - name: Approved execution and stale-approval recovery
@@ -83,7 +88,7 @@ jobs:
       - name: Install pinned package manager and locked commerce profile
         run: |
           python -m pip install 'uv==0.12.19'
-          uv sync --locked --only-group commerce --no-python-downloads
+          uv sync --locked --only-group commerce --only-group commerce-api --no-python-downloads
       - name: Build locked app, interface and browser runner
         run: |
           python -B scripts/commerce_local_setup.py

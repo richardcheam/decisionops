@@ -490,3 +490,8 @@ footer {
     display: none;
   }
 }
+
+textarea { display:block; width:100%; box-sizing:border-box; padding: .7rem; margin: .5rem 0 1rem; border:1px solid #94a3b8; border-radius:.4rem; font:inherit; }
+
+/* Bounded staff provenance stays readable on narrow screens. */
+.timeline details p { overflow-wrap: anywhere; }

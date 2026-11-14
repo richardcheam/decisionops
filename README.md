@@ -1,54 +1,108 @@
-# DecisionOps
+# DecisionOps Commerce
 
-DecisionOps contains a working local Commerce application and preserved historical
-diagnostic experiments with an offline trace viewer.
+A fictional store's staff assistant for lost shipments: collect evidence, explain what
+is still unknown, and prepare a replacement proposal. **People approve the exact
+proposal and separately confirm execution.** PostgreSQL transactions recheck the
+records, reserve stock and prevent duplicate replacements.
 
-## DecisionOps Commerce: local staff workflow
+![Fictional staff proposal awaiting approval](frontend/public/evidence/rules-proposal.png)
 
-Store staff use a browser to select a fictional order, check a missing shipment,
-review the evidence, approve an exact replacement proposal, and explicitly create
-the replacement. Deterministic rules distinguish failed conditions from missing
-or unsupported evidence. **Commerce is local-only and currently uses no paid
-inference.**
+## Five-minute demo
 
-Replacement creation and stock reservation are real transactional writes to
-fictional business records in PostgreSQL. Execution rechecks the approved proposal
-and current records before committing. Operation reconciliation, worker lease
-fencing and checkpoint recovery support interruption/retry without duplicate
-reservations. The demo does not make real shipments, payments, refunds or customer
-communications. It is not a production deployment.
+Requires Docker Engine and Docker Compose **2.24.4+**, an x86-64 host, approximately
+4 GB available RAM and room for container images. No Python/Node install, sibling
+worktree, private config or API key is required. First image/package retrieval can
+take longer than five minutes. Dependencies and base images are locked.
 
-Start with the [Commerce operator guide](docs/commerce/README.md). Detailed setup
-commands and dependency profiles stay in the operator documentation; staff need
-only the browser and sign-in details supplied by the operator.
+```bash
+git clone https://github.com/richardcheam/decisionops.git
+cd decisionops
+# While this release is a PR, check out release/commerce-portfolio.
+git checkout release/commerce-portfolio
+export COMMERCE_DEMO_PASSWORD='fictional-demo-password-only'
+bash scripts/demo.sh build
+bash scripts/demo.sh start
+bash scripts/demo.sh health
+```
 
-| Audience or task | Guide |
-| --- | --- |
-| Understand and start the local application | [Commerce README](docs/commerce/README.md) |
-| Use the browser as store staff | [Staff guide](docs/commerce/STAFF-GUIDE.md) |
-| Review guarantees, tests and reproducibility | [Source review guide](docs/commerce/REVIEW.md) |
-| Operate, diagnose, patch and recover | [Runbook](docs/commerce/RUNBOOK.md) |
+Open **http://127.0.0.1:8133**. Sign in as **visitor**, using the password above.
+`health` must return `status: ready`; PostgreSQL is internal and is not exposed on
+the host. Use Docker-authorized access on your machine; do not run against another
+Commerce project's database. The dedicated project is `decisionops-github-demo`.
 
-## Historical diagnostic experiments and offline viewer
+1. Select **ORD-1042**, choose **Start review**, enter a short shipment report, and
+   select **Investigate shipment**. Follow persisted evidence, including inventory.
+2. Review the proposal. **Approve replacement → Confirm approval** binds it exactly.
+   **Create replacement → Confirm replacement** is a separate action creating one
+   fictional replacement. No agent may approve or execute it.
+3. Select **ORD-HISTORY** and investigate: incomplete compensation history stays
+   unknown, so review is required and no proposal/replacement is available.
 
-The preserved incident-classification harness compares rules, GLiClass and Laya
-on 48 hand-authored development examples. Its separate bounded diagnostic workflow
-uses 24 synthetic scenarios and recorded fixture observations; it does not contact
-live services or perform operational actions. These limits apply to the historical
-harness, rather than to Commerce's local business-record writes.
+Rules are the default and make no paid calls. To try the opt-in mocked specialists:
 
-The [offline trace viewer](https://richardcheam.github.io/decisionops/) presents the
-committed comparison and replayable traces. Fixed order remains the strongest
-baseline on the inspected synthetic workflow suite. Scores are uncalibrated,
-fixture timing is not live latency, and the inspected examples are not independent
-held-out evidence or proof of production accuracy. Historical model results do not
-establish model usefulness for Commerce.
+```bash
+export COMMERCE_DEMO_MODE=mock-specialists
+bash scripts/demo.sh start
+# Start a new, unexecuted case. The UI says “Mocked specialists. No paid calls.”
+```
 
-Read [FINDINGS.md](FINDINGS.md) for measured results and limitations,
-[reports/README.md](reports/README.md) for preserved evidence, and the
-[five-minute viewer walkthrough](docs/WORKFLOW-DEMO-WALKTHROUGH.md) to explore it.
-Full historical setup, model smoke checks, evaluation and replay commands are in
-[the historical diagnostic guide](docs/HISTORICAL-DIAGNOSTICS.md); the
-[portfolio handoff](docs/PORTFOLIO-HANDOFF.md) retains project context and source
-links. Offline replay/export requires no model weights or paid inference; optional
-cached-model experiments remain separate from Commerce's model-free operation.
+An executed order remains compensated; changing modes does not erase that history.
+Use an operator-controlled reset only after preserving evidence when a fresh demo
+is needed. `reset` deletes **only this demo's fictional volume**:
+
+```bash
+bash scripts/demo.sh stop                         # retains data
+# Optional fresh fictional records, never a routine restart:
+COMMERCE_DEMO_RESET=decisionops-github-demo bash scripts/demo.sh reset
+bash scripts/demo.sh start
+# When finished:
+bash scripts/demo.sh stop
+```
+
+**Verification limits:** the standard Dockerfiles and cached local build/start/browser
+flow are tested as recorded in [release verification](docs/RELEASE.md). A completely
+uncached host's registry/package retrieval is a separate requirement; no dependencies
+are silently installed from another worktree. If the documented locked runtime images
+already exist locally, `bash scripts/demo.sh build-cached` is an explicit network-free
+build alternative, not a fresh-host verification claim.
+
+## What is demonstrated
+
+The optional typed LangGraph workflow coordinates bounded Order and Shipment
+specialists. Mocked choices select scoped reads; PostgreSQL owns durable evidence,
+leases and recovery. The deterministic join owns eligibility and proposal safety.
+
+Saved local evidence demonstrates a valid proposal, partial failure routed to review
+with peer evidence retained, and restart without specialist redispatch or a duplicate
+proposal. Exact approval and separate execution were verified in the ordinary browser
+flow. **Wrong-case evidence and actual conflicting database rows through the final
+multi-agent join, and execution after restart, remain unverified.**
+
+- [Architecture and two diagrams](docs/ARCHITECTURE.md)
+- [Sanitized evidence and honest limits](docs/EVIDENCE.md)
+- [Operator/deployment/rollback instructions](docs/RELEASE.md)
+- [Detailed specialist review map](docs/commerce/MULTI-AGENT.md)
+- [Staff guide](docs/commerce/STAFF-GUIDE.md) and [operational runbook](docs/commerce/RUNBOOK.md)
+
+The real OpenAI adapters are preserved for separately authorized, manual-only
+experiments. Startup, ordinary tests, CI and workers do not initiate paid calls.
+Historical live Decisions investigations ended in review, not successful proposals.
+The separate two-storefront browser benchmark does **not** drive this staff workflow;
+its live Site A navigation ended with a rejected finish and five unexecuted cases.
+No public Commerce deployment, real-shop connector or live multi-agent quality is claimed.
+
+## Tests and preserved research
+
+```bash
+python3 -B -S scripts/commerce_ci_tests.py dependency-free
+```
+
+This reports every optional skip. PostgreSQL and browser tests run separately; a skip
+is not a pass. See [release verification](docs/RELEASE.md) for their exact commands and
+local versus CI results. No model weights are needed for routine checks.
+
+The [historical diagnostic guide](docs/HISTORICAL-DIAGNOSTICS.md),
+[findings](FINDINGS.md), and [offline viewer](https://richardcheam.github.io/decisionops/)
+remain available. These synthetic development experiments do not establish Commerce
+model quality or held-out generalization. Pages deploys that historical viewer, not
+this application. [Archive index](docs/ARCHIVE.md) explains raw evidence retention.

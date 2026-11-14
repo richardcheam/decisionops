@@ -1,0 +1,19 @@
+# Public read-only static rehearsal. No API, staff credentials or database network.
+services:
+  walkthrough:
+    image: decisionops-portfolio-walkthrough:rc
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.walkthrough
+      network: none
+    ports: ['127.0.0.1:8104:8080']
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:8080/health]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    mem_limit: 64m
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+    restart: unless-stopped

@@ -6,8 +6,9 @@ dist/
 wheels/
 *.egg-info
 
-# Virtual environments
-.venv
+# Virtual environments (optional SDK/model profiles remain disposable)
+.venv/
+.venv-*/
 
 # Local evaluation outputs
 /runs/
@@ -24,5 +25,10 @@ frontend/artifacts/
 *.dump
 *.log
 
-# Optional cached local model environment
-.venv-models
+
+# Reproducible local test/coverage output
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/

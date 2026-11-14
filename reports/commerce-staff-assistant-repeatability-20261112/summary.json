@@ -1,0 +1,134 @@
+{
+  "rules": {
+    "agent_executed": true,
+    "paid_calls": 0,
+    "browser_passed": 2,
+    "browser_skipped": 0,
+    "runs": [
+      {
+        "id": "ARUN-90387736adb8457484b6e6ef37f1e566",
+        "state": "proposed",
+        "tool_attempts": 7,
+        "decision_attempts": 8,
+        "terminal": {
+          "outcome": "proposal",
+          "decision": {
+            "status": "eligible_to_propose",
+            "blockers": [],
+            "unknowns": []
+          },
+          "unknowns": [],
+          "case_status": "awaiting_review",
+          "proposal_id": "PROP-1f4602edec554c52934b917fbfb51f45",
+          "unread_tools": [],
+          "scope_reasons": [],
+          "scope_complete": true,
+          "investigation_id": "INV-667c2d1b12d9483e856c765c5ed893b5",
+          "unresolved_scope": [],
+          "execution_authorized": false
+        },
+        "provider_calls": 8,
+        "deterministic_continuations": 0
+      },
+      {
+        "id": "ARUN-38b3f074aecf460e95c380813972f23c",
+        "state": "review",
+        "tool_attempts": 8,
+        "decision_attempts": 9,
+        "terminal": {
+          "reason": "unknown_evidence",
+          "outcome": "review",
+          "decision": {
+            "status": "needs_review",
+            "blockers": [],
+            "unknowns": [
+              "no_previous_compensation"
+            ]
+          },
+          "unknowns": [
+            "no_previous_compensation"
+          ],
+          "case_status": "needs_review",
+          "unread_tools": [],
+          "scope_reasons": [],
+          "scope_complete": false,
+          "unresolved_scope": [
+            "compensation_history"
+          ],
+          "execution_authorized": false
+        },
+        "provider_calls": 9,
+        "deterministic_continuations": 0
+      }
+    ],
+    "operations": 1,
+    "reservations": 1,
+    "replacements": 1
+  },
+  "mock": {
+    "agent_executed": true,
+    "paid_calls": 0,
+    "browser_passed": 2,
+    "browser_skipped": 0,
+    "runs": [
+      {
+        "id": "ARUN-10cbd40d386f49359b9df5efbc2f5863",
+        "state": "proposed",
+        "tool_attempts": 7,
+        "decision_attempts": 15,
+        "terminal": {
+          "outcome": "proposal",
+          "decision": {
+            "status": "eligible_to_propose",
+            "blockers": [],
+            "unknowns": []
+          },
+          "unknowns": [],
+          "case_status": "awaiting_review",
+          "proposal_id": "PROP-4a814f395fe146f3ad8d35993caaa614",
+          "unread_tools": [],
+          "scope_reasons": [],
+          "scope_complete": true,
+          "investigation_id": "INV-f770bdfc044c4910b01df3c518dd1793",
+          "unresolved_scope": [],
+          "execution_authorized": false
+        },
+        "provider_calls": 8,
+        "deterministic_continuations": 7
+      },
+      {
+        "id": "ARUN-3ebb4ddde2f74a3a8681621582f0936c",
+        "state": "review",
+        "tool_attempts": 8,
+        "decision_attempts": 16,
+        "terminal": {
+          "reason": "api_budget_or_admission_unavailable",
+          "outcome": "review",
+          "decision": {
+            "status": "needs_review",
+            "blockers": [],
+            "unknowns": [
+              "no_previous_compensation"
+            ]
+          },
+          "unknowns": [
+            "no_previous_compensation"
+          ],
+          "case_status": "needs_review",
+          "unread_tools": [],
+          "scope_reasons": [],
+          "scope_complete": false,
+          "unresolved_scope": [
+            "compensation_history"
+          ],
+          "execution_authorized": false
+        },
+        "provider_calls": 8,
+        "deterministic_continuations": 8
+      }
+    ],
+    "operations": 1,
+    "reservations": 1,
+    "replacements": 1
+  }
+}
