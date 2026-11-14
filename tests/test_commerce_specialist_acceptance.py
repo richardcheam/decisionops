@@ -75,7 +75,10 @@ class SpecialistAcceptanceTests(unittest.TestCase):
         from decisionops.commerce import multi_agent as multi, schema as db
         from decisionops.commerce.adaptive_evidence import Observation, canonical
         import json
-        run, fence = self.owned()
+        from decisionops.commerce import adaptive_jobs as jobs
+        run = multi.start(self.engine, self.case()['id'], 'Lost parcel', staff_ui=True)
+        job = jobs.claim(self.engine, job_id=run['job']['id'], action=jobs.SPECIALIST_ACTION)
+        fence = jobs.Fence(job['id'], job['token'])
         multi.support(self.engine, fence)
         multi.branch(self.engine, fence, 'order')
         multi.branch(self.engine, fence, 'shipment')
@@ -99,6 +102,12 @@ class SpecialistAcceptanceTests(unittest.TestCase):
         with self.engine.begin() as c:
             self.assertEqual(c.exec_driver_sql('SELECT count(*) FROM commerce_proposals').scalar_one(), 0)
             self.assertEqual(c.exec_driver_sql('SELECT status FROM commerce_cases WHERE id=%s', (run['case_id'],)).scalar_one(), 'needs_review')
+            from decisionops.commerce.conversations import status
+            case=c.execute(db.cases.select().where(db.cases.c.id==run['case_id'])).mappings().one()
+            followup=status(c,case)
+            self.assertFalse(followup['evidence_current'])
+            self.assertIn('requires staff review',followup['text'])
+            self.assertEqual(followup['investigation']['reason'],'invalid_committed_evidence')
 
     def test_actual_conflicting_carrier_events_force_review_at_join(self):
         from datetime import datetime, timezone

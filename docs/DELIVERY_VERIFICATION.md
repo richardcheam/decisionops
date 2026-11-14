@@ -58,6 +58,7 @@ other worktrees, remote branches and external systems were preserved.
 
 Independent review reproduced and prompted fixes for scanner lock inversion, a
 missing shipment manifest starving workers, old-generation evidence displayed as
-current, and historical investigation freshness overriding a verified execution.
+current, active-source freshness and rules-baseline follow-up gaps, rejected-evidence
+status errors, and historical investigation freshness overriding a verified execution.
 Focused regressions cover those fixes. Authority remains Commerce-owned throughout;
 no model or report response can approve or execute.

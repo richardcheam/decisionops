@@ -41,13 +41,14 @@ database** to reset or start another reporting week, then repeat migration/seed.
 
 ## Verification
 
-Use another disposable PostgreSQL database for tests. Test classes create unique
+Use another disposable PostgreSQL database ending in `_test` for the full suite
+(the retained shop fixture enforces this name before creating its own database/role). Test classes create unique
 schemas, migrate them, and remove only their own schemas. Migration coverage includes
 both fresh head and a separate supported0009-to0010 upgrade preserving legacy rows.
 
 ```bash
 mkdir -p runs
-export COMMERCE_TEST_DATABASE_URL='postgresql+psycopg://USER@127.0.0.1:PORT/TEST_DATABASE'
+export COMMERCE_TEST_DATABASE_URL='postgresql+psycopg://USER@127.0.0.1:PORT/commerce_delivery_test'
 python3 -B -S scripts/commerce_ci_tests.py dependency-free
 .venv/bin/python -B scripts/commerce_ci_tests.py postgres
 .venv/bin/python -B -m unittest discover -s tests -v

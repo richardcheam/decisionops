@@ -84,20 +84,19 @@ def view(c,case_id):
     case=c.execute(sa.select(db.cases).where(db.cases.c.id==case_id)).mappings().one()
     if run['generation']!=case['generation'] or run['request']!=case['request'] or run['request']['order_id']!=case['order_id']:
         changed.update(PROJECTIONS)
-    if run['state']!='active':
-        from .adaptive_evidence import History
-        from .adaptive_tools import DEPENDENCIES,read_tool
-        from .read_tools import AssessmentRequest
-        fresh=History(run['request'])
-        for tool in DEPENDENCIES:
-            if not history.active(tool):continue
-            try:
-                before=history.select(tool,now)
-                current=read_tool(c,tool,AssessmentRequest(**run['request']),fresh,now,
-                    dependencies=tuple(fresh.select(dep,now) for dep in DEPENDENCIES[tool]))
-                fresh.append(current)
-                if before.version!=current.version:changed.add(tool)
-            except ValueError:changed.add(tool)
+    from .adaptive_evidence import History
+    from .adaptive_tools import DEPENDENCIES,read_tool
+    from .read_tools import AssessmentRequest
+    fresh=History(run['request'])
+    for tool in DEPENDENCIES:
+        if not history.active(tool):continue
+        try:
+            before=history.select(tool,now)
+            current=read_tool(c,tool,AssessmentRequest(**run['request']),fresh,now,
+                dependencies=tuple(fresh.select(dep,now) for dep in DEPENDENCIES[tool]))
+            fresh.append(current)
+            if before.version!=current.version:changed.add(tool)
+        except ValueError:changed.add(tool)
     for saved in audit:
         record=saved['record'];obs=active.get(record['id'])
         applicability='discarded' if not saved['applied'] else 'superseded' if obs is None else 'current'

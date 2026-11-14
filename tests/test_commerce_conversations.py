@@ -106,3 +106,47 @@ class ConversationTests(unittest.TestCase):
         reply=self.say(client,identity,'status').json()
         self.assertFalse(reply['evidence_current']);self.assertFalse(reply['investigation']['evidence_current'])
         self.assertTrue(all(v is None for v in reply['investigation']['facts'].values()))
+
+    def test_expired_persisted_evidence_is_explicit_in_followup(self):
+        from datetime import datetime,timedelta,timezone
+        from unittest.mock import patch
+        from decisionops.commerce.staff_investigations import work_once
+        client=self.client();case=self.case();identity=self.conversation(client)
+        client.post('/api/conversations/'+identity+'/select',json={'case_id':case['id']})
+        self.say(client,identity,'Fix this');work_once(self.engine)
+        before=client.get('/api/cases/'+case['id']).json()
+        future=datetime.now(timezone.utc)+timedelta(days=2)
+        with patch('decisionops.commerce.conversations.clock',return_value=future),patch('decisionops.commerce.staff_investigations.clock',return_value=future):
+            response=self.say(client,identity,"What's still missing?").json()
+        self.assertFalse(response['evidence_current']);self.assertIn('expired',response['text'])
+        self.assertTrue(all(e['value'] is None for e in response['investigation']['evidence']))
+        after=client.get('/api/cases/'+case['id']).json()
+        self.assertEqual(before['generation'],after['generation']);self.assertEqual(before['proposal'],after['proposal'])
+
+    def test_baseline_proposal_and_approval_are_recognized_without_new_run(self):
+        from decisionops.commerce.cases import investigate_case,review_case
+        from decisionops.commerce import schema as db
+        client=self.client();case=self.case();identity=self.conversation(client)
+        with self.engine.connect().execution_options(isolation_level='READ COMMITTED') as c,c.begin():saved=investigate_case(c,case['id'])
+        client.post('/api/conversations/'+identity+'/select',json={'case_id':case['id']})
+        response=self.say(client,identity,'status').json()
+        self.assertIn('proposal ready',response['text']);self.assertTrue(response['evidence_current'])
+        with self.engine.connect().execution_options(isolation_level='READ COMMITTED') as c,c.begin():
+            review_case(c,saved['id'],saved['generation'],saved['proposal_id'],saved['proposal']['content_hash'],'approve')
+        response=self.say(client,identity,'status').json()
+        self.assertIn('Separate confirmation',response['text'])
+        with self.engine.connect() as c:self.assertEqual(len(c.execute(db.adaptive_runs.select()).all()),0)
+
+    def test_active_progress_never_labels_changed_payment_current(self):
+        from decisionops.commerce import adaptive_jobs as jobs,multi_agent as multi,schema as db
+        client=self.client();case=self.case();identity=self.conversation(client)
+        client.post('/api/conversations/'+identity+'/select',json={'case_id':case['id']})
+        self.say(client,identity,'Fix this')
+        owned=jobs.claim(self.engine,staff_only=True,action=jobs.SPECIALIST_ACTION)
+        fence=jobs.Fence(owned['id'],owned['token']);multi.support(self.engine,fence);multi.branch(self.engine,fence,'order')
+        with self.engine.begin() as c:c.execute(db.payments.update().where(db.payments.c.order_id=='ORD-1042').values(status='failed'))
+        investigation=client.get('/api/cases/'+case['id']).json()['shipment_investigation']
+        self.assertEqual(investigation['state'],'active');self.assertFalse(investigation['evidence_current'])
+        payment=next(e for e in investigation['evidence'] if e['tool']=='payment')
+        self.assertIsNone(payment['value']);self.assertEqual(payment['applicability'],'refresh_required')
+        self.assertFalse(self.say(client,identity,'status').json()['evidence_current'])

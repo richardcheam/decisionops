@@ -41,11 +41,20 @@ def main():
         config=Config(str(ROOT/'alembic.ini'))
         with engine.begin() as c:config.attributes['connection']=c;command.upgrade(config,'head')
         seed(engine);delivery_seed(engine);setup_checkpoints(engine)
+        # Existing foreign-store case proves authorization, not merely unknown-ID404.
+        from decisionops.commerce import schema as db
+        from decisionops.commerce.cases import open_case
+        from decisionops.commerce.read_tools import AssessmentRequest
+        with engine.begin() as c:
+            c.execute(db.policies.insert().values(id='foreign-policy',store_id='foreign-store',version=1,
+                allow_confirmed_loss=True,max_units=10,carrier_max_age_seconds=86400))
+            c.execute(db.orders.insert().values(id='FOREIGN-ORDER',store_id='foreign-store',policy_id='foreign-policy',currency='EUR',resolution_history_complete=True))
+            foreign=open_case(c,AssessmentRequest('FOREIGN-ORDER','FOREIGN-PARCEL',{'fictional-item':1}))
         specialist_schema=checkpoint_url(engine)[0]
         subprocess.run(['npm','--prefix','frontend','run','build'],cwd=ROOT,check=True)
         env=dict(os.environ,COMMERCE_DATABASE_URL=scoped.render_as_string(hide_password=False),
             COMMERCE_STAFF_USERNAME='operator',COMMERCE_STAFF_PASSWORD='fictional-browser-demo-only',
-            COMMERCE_HELPER_PASSWORD='fictional-helper-demo-only',COMMERCE_WEB_URL=f'http://127.0.0.1:{args.port}',
+            COMMERCE_HELPER_PASSWORD='fictional-helper-demo-only',COMMERCE_FOREIGN_CASE_ID=foreign['id'],COMMERCE_WEB_URL=f'http://127.0.0.1:{args.port}',
             LANGSMITH_TRACING='false',LANGCHAIN_TRACING_V2='false')
         with open(ROOT/'runs/delivery-browser-server.log','w') as output:
             child=subprocess.Popen([sys.executable,'-B','scripts/commerce_delivery_local.py','--port',str(args.port)],

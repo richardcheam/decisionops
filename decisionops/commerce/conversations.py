@@ -76,34 +76,29 @@ def select(c,conversation,case_id):
 
 def status(c,case):
     from .staff_investigations import view
-    from .adaptive_investigations import snapshot,row
-    from .adaptive_tools import read_tool,DEPENDENCIES
-    from .adaptive_evidence import History
-    from .read_tools import AssessmentRequest
     from .execution import reconcile
     operation=c.execute(sa.select(db.operations.c.id).where(db.operations.c.case_id==case['id'])).scalar_one_or_none()
     if operation:
         verified=reconcile(c,operation)
         return {'intent':'status','text':'Replacement verified.' if verified['status']=='verified' else 'Replacement requires reconciliation.', 'operation':verified}
     investigation=view(c,case['id'])
-    if not investigation:return {'intent':'status','text':'No saved investigation. Choose Fix this to start.'}
-    run=row(c,investigation['id']);history=snapshot(c,run)[0];now=clock(c)
-    # Terminal case statuses legitimately differ from active run state, so compare
-    # generation/request, then verify evidence and source versions without writes.
-    stale=(run['generation']!=case['generation'] or run['request']!=case['request'])
-    invalid=[o.id for o in history.active() if history.invalid_reason(o,now) or history.content_conflict(o.record()['tool'])]
-    fresh=History(run['request'])
-    for tool in DEPENDENCIES:
-        active=history.active(tool)
-        if not active:continue
-        try:
-            original=history.select(tool,now)
-            current=read_tool(c,tool,AssessmentRequest(**run['request']),fresh,now,
-                dependencies=tuple(fresh.select(dep,now) for dep in DEPENDENCIES[tool]))
-            fresh.append(current)
-            if original.version!=current.version:invalid.extend(o.id for o in active)
-        except ValueError:invalid.extend(o.id for o in active)
-    stale=stale or bool(invalid)
+    if not investigation:
+        if case['proposal_id']:
+            from .investigations import recheck
+            check=recheck(c,case['proposal_id'],clock(c))
+            current=check['status']=='valid_for_review'
+            text=('Exact proposal approved. Separate confirmation is required to create the replacement.'
+                if case['status']=='approved' else 'Replacement proposal ready for exact staff approval.') if current else 'Saved proposal evidence expired or source records changed. Explicitly refresh before relying on it.'
+            return {'intent':'status','text':text,'proposal_id':case['proposal_id'],'evidence_current':current}
+        if case['investigation_id']:
+            return {'intent':'status','text':'Saved rules investigation requires review. Open the case for its recorded findings; explicitly refresh to establish current evidence.', 'evidence_current':False}
+        return {'intent':'status','text':'No saved investigation. Choose Fix this to start.'}
+    if investigation['reason']=='invalid_committed_evidence':
+        return {'intent':'status','text':'Saved evidence failed validation and requires staff review. No replacement proposal is authorized.',
+            'investigation':investigation,'evidence_current':False}
+    # The shared view reauthorizes generation/scope and compares every committed
+    # observation with current sources for active and terminal runs alike.
+    stale=not investigation['evidence_current']
     if stale:
         for evidence in investigation['evidence']:
             evidence['value']=None;evidence['applicability']='refresh_required'

@@ -22,7 +22,7 @@ async function ask(page: Page, message: string) {
   return response.json();
 }
 
-test('delivery questions expose computed totals and explicit links; Lyon investigation needs exact approval then confirmation', async ({ page, request }) => {
+test('delivery questions expose computed totals and explicit links; Lyon investigation needs exact approval then confirmation', async ({ page, request, browser }) => {
   await login(page);
   const report = await (await request.get('/api/deliveries', { headers })).json();
   expect({ completed: report.completed, open: report.open, overdue: report.overdue, exceptions: report.exceptions }).toEqual({ completed: 3, open: 9, overdue: 8, exceptions: 9 });
@@ -54,6 +54,18 @@ test('delivery questions expose computed totals and explicit links; Lyon investi
   const before = await detail();
   expect(before.approval).toBeNull();
   expect(before.operation).toBeNull();
+  const helperContext=await browser.newContext();
+  try {
+    const helper=await helperContext.newPage();
+    await helper.goto('/');
+    await helper.getByLabel('Username',{exact:true}).fill('staff');
+    await helper.getByLabel('Password',{exact:true}).fill(process.env.COMMERCE_HELPER_PASSWORD!);
+    await helper.getByRole('button',{name:'Sign in',exact:true}).click();
+    await helper.getByRole('region',{name:'Exception queue'}).getByRole('button').filter({hasText:'DEMO-LYON'}).click();
+    await expect(helper.getByText('An approver must review the exact proposal and separately confirm execution.',{exact:true})).toBeVisible();
+    await expect(helper.getByRole('button',{name:'Approve replacement',exact:true})).toHaveCount(0);
+    await expect(helper.getByRole('button',{name:'Create replacement',exact:true})).toHaveCount(0);
+  } finally { await helperContext.close(); }
   await ask(page, "What's still missing?");
   expect((await detail()).proposal.id).toBe(before.proposal.id);
   expect((await detail()).generation).toBe(before.generation);
@@ -129,6 +141,10 @@ test('staff can read the workspace but cannot approve or execute or use another 
     expect((await request.post('/api/cases/'+lyon.id+'/review',{headers:staffHeaders,data:{generation:1,proposal_id:'forbidden',content_hash:'0'.repeat(64),decision:'approve'}})).status()).toBe(403);
     const conversation=await (await request.post('/api/conversations',{headers,data:{}})).json();
     expect((await request.post('/api/conversations/'+conversation.id+'/messages',{headers:staffHeaders,data:{message:'status',request_id:'other-actor'}})).status()).toBe(404);
-    expect((await request.get('/api/cases/not-an-authorized-case',{headers:staffHeaders})).status()).toBe(404);
+    const foreign=process.env.COMMERCE_FOREIGN_CASE_ID;
+    if (!foreign) throw new Error('Run isolated commerce_delivery_browser.py to supply a real foreign-store case');
+    expect((await request.get('/api/cases/'+foreign,{headers:staffHeaders})).status()).toBe(404);
+    const own=await (await request.post('/api/conversations',{headers:staffHeaders,data:{}})).json();
+    expect((await request.post('/api/conversations/'+own.id+'/select',{headers:staffHeaders,data:{case_id:foreign}})).status()).toBe(404);
   } finally { await context.close(); }
 });
