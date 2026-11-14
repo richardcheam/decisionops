@@ -2180,7 +2180,7 @@ use that operation on the original application.
 Stage5 native pilots/comparison/replay are stopped. The current source's API health
 requires0005 while current adaptive migration head is0008; the isolated API returns
 503 and browser cannot start. Required PostgreSQL checks also failed; see
-[the Stage5 review](STAGE5-REVIEW.md). Do not modify the original migration-0004
+[the Stage5 review](https://github.com/richardcheam/decisionops/blob/e311fe0e02a0386e86d400fb417147155847da02/docs/commerce/STAGE5-REVIEW.md). Do not modify the original migration-0004
 application, downgrade a database to hide the mismatch, or enable adaptive defaults.
 
 The agent demonstrated this separate database startup (cached image, no pull):
@@ -2257,7 +2257,7 @@ enabled guards. `/health` returns200 with fictional_store_rules only when this
 contract passes. Empty/multiple/older/future revision markers or incompatible
 required objects return503. It does not migrate. Prepare an isolated environment
 with the documented operator migration step; never point these commands at the
-original migration0004 runtime. Full contract/evidence: [STAGE5-CORRECTION.md](STAGE5-CORRECTION.md).
+original migration0004 runtime. Full contract/evidence: [STAGE5-CORRECTION.md](https://github.com/richardcheam/decisionops/blob/e311fe0e02a0386e86d400fb417147155847da02/docs/commerce/STAGE5-CORRECTION.md).
 
 The correction's actual disposable browser recipe and output are preserved in its
 review archive under evidence/correction-browser.compose.yaml and verification/.
@@ -2494,7 +2494,7 @@ execution confirmation remain required. No public CI or new live inference was r
 
 ### Fictional portfolio deployment path
 
-Use [PORTFOLIO-DEMO.md](PORTFOLIO-DEMO.md) and standalone compose.portfolio.yaml.
+Use [PORTFOLIO-DEMO.md](https://github.com/richardcheam/decisionops/blob/e311fe0e02a0386e86d400fb417147155847da02/docs/commerce/PORTFOLIO-DEMO.md) and standalone compose.portfolio.yaml.
 Always name the portfolio project; only web8091 is published on loopback. PostgreSQL
 is internal with its own named volume. `up --wait` verifies health before handoff;
 `stop`/`down` preserve persistent data. The guide records graceful worker restart
@@ -2505,7 +2505,7 @@ stack. The original compose.yaml runtime and 55521 staff demo remain separate.
 
 ### Portfolio release access boundary
 
-The current [release handoff](PORTFOLIO-RELEASE.md) supersedes the old public fixture
+The current [release handoff](https://github.com/richardcheam/decisionops/blob/e311fe0e02a0386e86d400fb417147155847da02/docs/commerce/PORTFOLIO-RELEASE.md) supersedes the old public fixture
 login. Public walkthrough is static and disconnected from the VM; invited interaction
 requires explicit configuration. Old 8091/55521 runtimes were preserved, not upgraded.
 Use only the named release project/volume and its separate 8093 port. Missing password
@@ -2537,7 +2537,7 @@ one fresh persistent ledger. LangGraph and Langfuse work is a
 
 ## Offline portfolio release candidate
 
-[PORTFOLIO-RC.md](PORTFOLIO-RC.md) is the current reviewer entry point, with RC-only
+[PORTFOLIO-RC.md](https://github.com/richardcheam/decisionops/blob/e311fe0e02a0386e86d400fb417147155847da02/docs/commerce/PORTFOLIO-RC.md) is the current reviewer entry point, with RC-only
 build/start/health/verify/stop/reset commands, ports8103/8104, trace inspection and
 permission boundaries. No model key or telemetry export is needed. Existing release
 stacks and live ledgers are historical, immutable evidence; do not operate them using

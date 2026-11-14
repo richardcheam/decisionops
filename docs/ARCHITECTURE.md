@@ -4,45 +4,32 @@ The supported demo uses fictional PostgreSQL records. Rules are the default; the
 optional specialists use mocked choices. Neither mode ships goods or contacts customers.
 
 ```mermaid
-flowchart LR
-    B[Staff browser] -->|HTTP: loopback 8133| N[Nginx: UI and API proxy]
-    N -->|authenticated case/report/review/execute endpoints| A[FastAPI]
-    A -->|cases, request IDs, queued jobs, exact approval| P[(PostgreSQL)]
-    I[Staff investigation worker] -->|claim and fenced progress| P
-    I -->|mock-specialists only| G[LangGraph: specialist orchestration]
-    I -->|rules: bounded deterministic controller| P
-    G -->|scoped read tools and durable steps| P
-    G -->|checkpoint projection, not authority| P
-    W[Ordinary execution worker] -->|claim explicitly requested job| P
-    W -->|revalidate exact approval; transactional reservation/replacement| P
-    P -->|persisted progress via API polling| A
-    A -->|proposal or review, never automatic execution| B
+flowchart TD
+    D[(PostgreSQL<br/>Committed progress)] -. reuse on restart .-> B[Parcel bound to order]
+    B --> O[Order specialist<br/>Remaining payment]
+    B --> S[Shipment specialist<br/>Tracking evidence]
+    O --> J[Deterministic join<br/>Evidence and safety checks]
+    S --> J
 ```
+
+The parcel must be bound before payment and tracking can overlap, and restart
+reuses PostgreSQL commitments instead of redispatching completed specialist work.
+
+The coordinator reads the order manifest and store policy first; the Order
+specialist's explicit fulfilment read then binds the parcel before the split.
+The two branches can make bounded mocked tool choices; the diagram shows only the
+work remaining after that dependency, not two independent full investigations.
 
 Browser requests enter `api.py`; `staff_investigations.enqueue` admits/coalesces
 requests and invalidates an older proposal/approval on genuinely new investigation.
-`staff_investigations.work_once` claims the explicit specialist job partition, or the
-legacy rules partition. The browser polls committed state; it remains usable during work.
-`cases.review_case` checks generation/proposal/hash. A separate `/execute` action queues
-an ordinary job; `execution.execute` revalidates, locks and commits fictional effects.
+`staff_investigations.work_once` claims the specialist or legacy rules job partition.
+The browser polls committed state while work runs. The separate execution worker
+handles only explicitly requested execution jobs: `cases.review_case` binds exact
+approval, then `execution.execute` revalidates, locks and commits fictional effects.
 Model output never has approval or execution authority.
 
-```mermaid
-flowchart TD
-    M[Coordinator: order manifest and store policy] --> O[Order specialist chooses payment or fulfilment]
-    O --> B[Explicit fulfilment observation binds parcel to order]
-    B --> P[Order: remaining payment read]
-    B --> S[Shipment: carrier evidence or explicit fulfilment refresh]
-    P -->|both branches complete| C[Coordinator: compensation history and inventory]
-    S -->|both branches complete| C
-    P -. missing or unavailable .-> J
-    S -. missing or unavailable .-> J
-    C --> J[Deterministic evidence join and private safety recheck]
-    J -->|all seven current conditions and supported scope| Q[Proposal awaiting exact staff approval]
-    J -->|failed condition or missing/disputed evidence| R[Explained blocker or staff review]
-```
-
-Only P/S can overlap. Tracking depends on manifest, fulfilment and replacement policy;
+Only the remaining payment and tracking branches can overlap. Tracking depends on
+manifest, fulfilment and replacement policy;
 there is no hidden all-records read inside a selected specialist tool. Order owns
 payment/fulfilment; Shipment owns carrier evidence and an explicit fulfilment refresh.
 Other mandatory conditions remain coordinator reads. On partial branch failure, those

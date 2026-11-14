@@ -1,7 +1,7 @@
 # Portfolio release rehearsal — decision evidence
 
 Accepted base 71f10857edb424fa664ce18f6fc38317d61e6065, branch
-feat/commerce-staff-investigation. See [the single release handoff](../../docs/commerce/PORTFOLIO-RELEASE.md)
+feat/commerce-staff-investigation. See [the single release handoff](https://github.com/richardcheam/decisionops/blob/e311fe0e02a0386e86d400fb417147155847da02/docs/commerce/PORTFOLIO-RELEASE.md)
 for exact deployment, rollback/teardown, configuration and AWS approval proposal.
 No cloud resources, plan upgrade, publication or paid/model calls occurred.
 
