@@ -11,7 +11,7 @@ if ((${#COMMERCE_MULTI_AGENT_PASSWORD}<16)); then
   exit 2
 fi
 export COMMERCE_PORTFOLIO_PASSWORD="$COMMERCE_MULTI_AGENT_PASSWORD"
-app=(docker compose --env-file /dev/null -p decisionops-multi-agent-demo -f compose.portfolio.yaml -f compose.multi-agent.yaml)
+app=(docker compose --project-directory "$PWD" --env-file /dev/null -p decisionops-multi-agent-demo -f tests/compose/portfolio.yaml -f tests/compose/multi-agent.yaml)
 case "${1:-}" in
   build) "${app[@]}" build --pull=false init web ;;
   start) "${app[@]}" up -d --no-build --pull never --wait --wait-timeout 100 ;;

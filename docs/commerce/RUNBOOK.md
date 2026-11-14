@@ -234,18 +234,18 @@ sudo apt-get install docker.io docker-compose-v2
 sudo systemctl enable --now docker
 ```
 
-Use `sudo docker compose` for the commands below if your current session lacks
+Use `sudo docker compose --project-directory . -f tests/compose/ci.yaml` for the commands below if your current session lacks
 Docker socket access; don't change socket permissions. If you choose Docker
 group access, adding your account to that group and opening a new login session
 enables it. Engine access grants administrative control over the machine.
 
-If docker info succeeds but docker compose reports unknown command, check the
+If docker info succeeds but docker compose --project-directory . -f tests/compose/ci.yaml reports unknown command, check the
 plugin package rather than restarting the engine:
 
 ```bash
 dpkg-query -W docker-compose-v2
 sudo apt-get install docker-compose-v2
-docker compose version
+docker compose --project-directory . -f tests/compose/ci.yaml version
 ```
 
 In the observed setup, this package was absent while docker.io was installed.
@@ -254,12 +254,12 @@ installation reports conflicts, inspect that output before retrying or removing
 packages.
 
 ```bash
-docker compose version
-docker compose config --quiet
-docker compose up -d --wait postgres
-docker compose ps
-docker compose exec -T postgres pg_isready -U commerce -d commerce
-docker compose logs --tail=30 postgres
+docker compose --project-directory . -f tests/compose/ci.yaml version
+docker compose --project-directory . -f tests/compose/ci.yaml config --quiet
+docker compose --project-directory . -f tests/compose/ci.yaml up -d --wait postgres
+docker compose --project-directory . -f tests/compose/ci.yaml ps
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres pg_isready -U commerce -d commerce
+docker compose --project-directory . -f tests/compose/ci.yaml logs --tail=30 postgres
 ```
 
 Expected: healthy postgres, readiness reports accepting connections, and logs
@@ -275,12 +275,12 @@ export COMMERCE_DATABASE_URL='postgresql+psycopg://commerce:local-demo-only@127.
 .venv/bin/alembic current
 .venv/bin/python -B -m decisionops.commerce.seed
 .venv/bin/python -B -m decisionops.commerce.seed
-docker compose exec -T postgres psql -U commerce -d commerce -c '\dt'
-docker compose exec -T postgres psql -U commerce -d commerce -c "SELECT o.id,o.policy_id,l.variant_id,l.quantity,p.status,p.amount_minor,o.resolution_history_complete FROM orders o JOIN order_lines l ON l.order_id=o.id LEFT JOIN payments p ON p.order_id=o.id ORDER BY o.id;"
-docker compose exec -T postgres psql -U commerce -d commerce -c "SELECT s.id,s.order_id,s.carrier_status,s.carrier_observed_at,l.variant_id,l.quantity FROM shipments s JOIN shipment_lines l ON l.shipment_id=s.id AND l.order_id=s.order_id ORDER BY s.id;"
-docker compose exec -T postgres psql -U commerce -d commerce -c "SELECT store_id,variant_id,on_hand,reserved,on_hand-reserved AS available FROM inventory ORDER BY variant_id;"
-docker compose exec -T postgres psql -U commerce -d commerce -c "SELECT * FROM resolutions ORDER BY id;"
-docker compose exec -T postgres psql -U commerce -d commerce -c "SELECT * FROM policy_versions ORDER BY version;"
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c '\dt'
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c "SELECT o.id,o.policy_id,l.variant_id,l.quantity,p.status,p.amount_minor,o.resolution_history_complete FROM orders o JOIN order_lines l ON l.order_id=o.id LEFT JOIN payments p ON p.order_id=o.id ORDER BY o.id;"
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c "SELECT s.id,s.order_id,s.carrier_status,s.carrier_observed_at,l.variant_id,l.quantity FROM shipments s JOIN shipment_lines l ON l.shipment_id=s.id AND l.order_id=s.order_id ORDER BY s.id;"
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c "SELECT store_id,variant_id,on_hand,reserved,on_hand-reserved AS available FROM inventory ORDER BY variant_id;"
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c "SELECT * FROM resolutions ORDER BY id;"
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c "SELECT * FROM policy_versions ORDER BY version;"
 ```
 
 Expected: Alembic revision 0001; first seed reports seeded, repeat reports
@@ -365,7 +365,7 @@ Do not set the integration URL while deliberately running Python with -S.
 Stop only this demo service, preserving data:
 
 ```bash
-docker compose stop postgres
+docker compose --project-directory . -f tests/compose/ci.yaml stop postgres
 .venv/bin/python -B -m decisionops.commerce.store_demo \
   --order ORD-1042 --shipment SHIP-1042 --item shirt-blue-M:1 \
   --output "$db_demo_dir/unavailable.json"
@@ -376,8 +376,8 @@ needs_review with all seven requirements unknown, including compensation;
 the application does not mistake a failed query for an empty history.
 
 ```bash
-docker compose ps -a
-docker compose logs --tail=30 postgres
+docker compose --project-directory . -f tests/compose/ci.yaml ps -a
+docker compose --project-directory . -f tests/compose/ci.yaml logs --tail=30 postgres
 .venv/bin/python -B - "$db_demo_dir/unavailable.json" <<'PY'
 import json, sys
 from pathlib import Path
@@ -385,11 +385,11 @@ result = json.loads(Path(sys.argv[1]).read_text())
 print(result["database_status"], result["decision"])
 print(result["read_tools"][4])
 PY
-docker compose up -d --wait postgres
+docker compose --project-directory . -f tests/compose/ci.yaml up -d --wait postgres
 .venv/bin/python -B -m decisionops.commerce.store_demo \
   --order ORD-1042 --shipment SHIP-1042 --item shirt-blue-M:1 \
   --output "$db_demo_dir/recovered.json"
-docker compose exec -T postgres psql -U commerce -d commerce -c "SELECT * FROM seed_versions; SELECT * FROM inventory ORDER BY variant_id;"
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c "SELECT * FROM seed_versions; SELECT * FROM inventory ORDER BY variant_id;"
 ```
 
 Smallest fix for a stopped container: start it; don't reseed or loosen business
@@ -402,15 +402,15 @@ You can undo the recovery by stopping the service again; data remains intact.
 ### Restarting versus deleting persistent data
 
 ```bash
-docker compose restart postgres
-docker compose exec -T postgres pg_isready -U commerce -d commerce
-docker compose stop postgres
+docker compose --project-directory . -f tests/compose/ci.yaml restart postgres
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres pg_isready -U commerce -d commerce
+docker compose --project-directory . -f tests/compose/ci.yaml stop postgres
 ```
 
 Restart preserves the named volume, schema and records. Readiness may briefly
 fail during restart; wait before assessing. Stop is the normal shutdown command.
-`docker compose down` removes this project's containers/network while keeping
-the named volume. `docker compose down --volumes` also deletes the persistent
+`docker compose --project-directory . -f tests/compose/ci.yaml down` removes this project's containers/network while keeping
+the named volume. `docker compose --project-directory . -f tests/compose/ci.yaml down --volumes` also deletes the persistent
 database and is destructive; it is not a repair command and was not executed.
 Do not use it without intentionally choosing to discard this demo's data.
 Do not use Alembic downgrade-to-base as an outage fix: migration 0001's downgrade
@@ -447,7 +447,7 @@ unchanged True. shutdown.log and recovery.log identify the PostgreSQL lifecycle;
 unavailable.stderr.log contains the database_unavailable event.
 
 The agent's existing shell retained older supplementary groups. It used
-`sg docker -c 'docker compose ps'` (and corresponding scoped Compose commands)
+`sg docker -c 'docker compose --project-directory . -f tests/compose/ci.yaml ps'` (and corresponding scoped Compose commands)
 to activate the already granted group. This is unnecessary in an owner shell
 where Docker commands already work.
 
@@ -486,7 +486,7 @@ The database is already migrated and seeded; no setup writes are necessary.
 Assessment is eligible while the original seeded carrier snapshot remains
 within its 24-hour policy freshness window, otherwise it honestly needs review.
 
-For outage reproduction, substitute this stop command for docker compose stop:
+For outage reproduction, substitute this stop command for docker compose --project-directory . -f tests/compose/ci.yaml stop:
 
 ```bash
 "$native_pg_dir/root/usr/lib/postgresql/16/bin/pg_ctl" -D "$native_pg_dir/data" stop -m fast
@@ -532,8 +532,8 @@ or model download is needed if you followed the previous slice's setup.
 ```bash
 cd /path/to/decisionops
 export COMMERCE_DATABASE_URL='postgresql+psycopg://commerce:local-demo-only@127.0.0.1:55432/commerce'
-docker compose up -d --wait postgres
-docker compose exec -T postgres pg_isready -U commerce -d commerce
+docker compose --project-directory . -f tests/compose/ci.yaml up -d --wait postgres
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres pg_isready -U commerce -d commerce
 .venv/bin/alembic upgrade head
 .venv/bin/alembic current
 .venv/bin/alembic check
@@ -575,11 +575,11 @@ false. Errors are JSON on stderr; successes/business results are JSON on stdout.
 ### Inspect the actual records
 
 ```bash
-docker compose exec -T postgres psql -U commerce -d commerce -c \
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c \
   "SELECT id, order_id, created_at, assessment->'decision' AS decision FROM commerce_investigations ORDER BY created_at DESC LIMIT 5;"
-docker compose exec -T postgres psql -U commerce -d commerce -c \
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c \
   "SELECT id, investigation_id, created_at, content_hash, document FROM commerce_proposals ORDER BY created_at DESC LIMIT 5;"
-docker compose exec -T postgres psql -U commerce -d commerce -c \
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c \
   "SELECT id, carrier_status, carrier_observed_at, CURRENT_TIMESTAMP - carrier_observed_at AS age FROM shipments WHERE id='SHIP-1042';"
 ```
 
@@ -636,8 +636,8 @@ COMMERCE_DATABASE_URL='postgresql+psycopg://commerce:local-demo-only@127.0.0.1:1
 
 Expected exit 3, sanitized database_error on stderr, no successful JSON output.
 The inline setting affects only this command; the exported working URL remains
-unchanged. Diagnose with docker compose ps, pg_isready, docker compose logs
---tail=30 postgres, and .venv/bin/alembic current. If stopped, run docker compose
+unchanged. Diagnose with docker compose --project-directory . -f tests/compose/ci.yaml ps, pg_isready, docker compose --project-directory . -f tests/compose/ci.yaml logs
+--tail=30 postgres, and .venv/bin/alembic current. If stopped, run docker compose --project-directory . -f tests/compose/ci.yaml
 up -d --wait postgres, then repeat inspect. If tables are missing, apply upgrade
 head. Do not reseed or downgrade as an outage fix.
 
@@ -655,7 +655,7 @@ python3 -B -S -m unittest discover -s tests
 export COMMERCE_TEST_DATABASE_URL="$COMMERCE_DATABASE_URL"
 .venv/bin/python -B -m unittest discover -s tests -p test_commerce_investigations.py -v
 .venv/bin/python -B -m unittest discover -s tests
-docker compose stop postgres
+docker compose --project-directory . -f tests/compose/ci.yaml stop postgres
 ```
 
 Pure tests require neither PostgreSQL nor third-party packages. Integration tests
@@ -715,8 +715,8 @@ coverage is still resolution_history_complete, never inferred from revision zero
 cd /path/to/decisionops
 export COMMERCE_DATABASE_URL='postgresql+psycopg://commerce:local-demo-only@127.0.0.1:55432/commerce'
 export COMMERCE_TEST_DATABASE_URL="$COMMERCE_DATABASE_URL"
-docker compose up -d --wait postgres
-docker compose exec -T postgres pg_isready -U commerce -d commerce
+docker compose --project-directory . -f tests/compose/ci.yaml up -d --wait postgres
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres pg_isready -U commerce -d commerce
 .venv/bin/alembic upgrade head
 .venv/bin/alembic current
 .venv/bin/python -B scripts/commerce_execution_walkthrough.py
@@ -805,15 +805,15 @@ proposal contents, deleting compensation or resetting reservation counters.
 Inspect public tables without changing them:
 
 ```bash
-docker compose exec -T postgres psql -U commerce -d commerce -c \
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c \
   "SELECT id,status,generation,proposal_id,approval_id FROM commerce_cases ORDER BY created_at DESC LIMIT 10;"
-docker compose exec -T postgres psql -U commerce -d commerce -c \
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c \
   "SELECT sequence,case_id,kind,details FROM commerce_case_events ORDER BY sequence DESC LIMIT 10;"
-docker compose exec -T postgres psql -U commerce -d commerce -c \
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c \
   "SELECT id,case_id,order_id,completed_at FROM commerce_operations;"
-docker compose exec -T postgres psql -U commerce -d commerce -c \
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c \
   "SELECT * FROM commerce_reservations ORDER BY operation_id,variant_id;"
-docker compose exec -T postgres psql -U commerce -d commerce -c \
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c \
   "SELECT store_id,variant_id,on_hand,reserved,on_hand-reserved AS available FROM inventory;"
 ```
 
@@ -836,7 +836,7 @@ export COMMERCE_TEST_DATABASE_URL="$COMMERCE_DATABASE_URL"
 .venv/bin/python -B -m unittest discover -s tests -p test_commerce_execution.py -v
 .venv/bin/python -B -m unittest discover -s tests
 python3 -B -S -m unittest discover -s tests
-docker compose stop postgres
+docker compose --project-directory . -f tests/compose/ci.yaml stop postgres
 ```
 
 Real concurrency tests use separate connections/transactions: duplicate operation,
@@ -854,7 +854,7 @@ recovery needs a tested backup or a future designed correction workflow.
 Code rollback can retain additive migration 0003 and use previous read-only commands.
 Downgrading 0003 deletes cases, approvals and replacement ledgers; it is destructive
 and not an outage fix. stop/restart preserves the volume and saved approvals/operations.
-Do not use docker compose down -v as a recovery command.
+Do not use docker compose --project-directory . -f tests/compose/ci.yaml down -v as a recovery command.
 
 ## Durable worker and local staff workspace (2026-10-13)
 
@@ -866,7 +866,7 @@ with PostgreSQL LangGraph checkpoints. `cases.py` owns the business lifecycle;
 cannot grant approval. `read_tools.py` still derives actual evidence, and the
 original eligibility function decides false versus unknown. React lives in
 `frontend/src/main.tsx`; image definitions are in `docker/`, service wiring in
-`compose.yaml`. Migration 0004 adds jobs; graph tables live separately in
+`tests/compose/ci.yaml`. Migration 0004 adds jobs; graph tables live separately in
 `commerce_graph` and are set up by the worker, not Alembic.
 
 ### Start and sign in
@@ -875,9 +875,9 @@ Run from `/path/to/decisionops`:
 
 ```bash
 python3 -B scripts/commerce_local_setup.py
-docker compose --profile app build
-docker compose --profile app up -d --wait
-docker compose --profile app ps
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app build
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app up -d --wait
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app ps
 curl --fail http://127.0.0.1:8080/health
 ```
 
@@ -905,13 +905,13 @@ seed command deliberately does not refresh evidence to force eligibility.
 ### Inspect and recover worker failures
 
 ```bash
-docker compose --profile app logs --tail 40 api worker init
-docker compose exec -T postgres psql -U commerce -d commerce -c \
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app logs --tail 40 api worker init
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c \
   "SELECT id,case_id,action,status,attempts,lease_until,error_kind FROM commerce_jobs ORDER BY created_at DESC LIMIT 20;"
-docker compose exec -T postgres psql -U commerce -d commerce -c \
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c \
   "SELECT case_id,kind,created_at FROM commerce_case_events ORDER BY sequence DESC LIMIT 20;"
-docker compose --profile app stop worker
-docker compose --profile app up -d worker
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app stop worker
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app up -d worker
 ```
 
 A queued job waits for a worker. A killed worker's running job becomes claimable
@@ -924,9 +924,9 @@ failure. Database and business state remain the authority after either.
 For job/checkpoint inspection or repair (replace JOB-ID with an actual ID):
 
 ```bash
-docker compose exec -T worker python -B -m decisionops.commerce.worker show --job JOB-ID
-docker compose exec -T worker python -B -m decisionops.commerce.worker replay --job JOB-ID
-docker compose exec -T worker python -B -m decisionops.commerce.worker resume --job JOB-ID
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T worker python -B -m decisionops.commerce.worker show --job JOB-ID
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T worker python -B -m decisionops.commerce.worker replay --job JOB-ID
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T worker python -B -m decisionops.commerce.worker resume --job JOB-ID
 ```
 
 Replay accepts a completed job and repairs its graph projection from the saved
@@ -954,7 +954,7 @@ fresh approval then succeeds. Incomplete compensation history stays unknown and
 has no approval control. Screenshots and logs are saved under runs/. Both demos
 remove only their generated schemas. The browser demo restores the original store
 in finally; do not run it during another operator's session. If interrupted with
-SIGKILL, restore with `docker compose --profile app up -d --wait` before inspecting
+SIGKILL, restore with `docker compose --project-directory . -f tests/compose/ci.yaml --profile app up -d --wait` before inspecting
 and cleaning only the named browser_walkthrough schema recorded in its override.
 
 The smallest fix for a superseded proposal is to inspect the fresh evidence and
@@ -964,13 +964,13 @@ complete; obtain an authoritative record. Do not patch unknown facts to true.
 ### Availability, restart, credentials and shutdown
 
 ```bash
-docker compose stop postgres
+docker compose --project-directory . -f tests/compose/ci.yaml stop postgres
 curl -i http://127.0.0.1:8080/health
-docker compose up -d --wait postgres
+docker compose --project-directory . -f tests/compose/ci.yaml up -d --wait postgres
 curl --fail http://127.0.0.1:8080/health
-docker compose --profile app restart worker
-docker compose --profile app stop web api worker
-docker compose stop postgres
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app restart worker
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app stop web api worker
+docker compose --project-directory . -f tests/compose/ci.yaml stop postgres
 ```
 
 The outage returns an explicit unavailable response (503), never an empty store
@@ -982,7 +982,7 @@ changed configuration requires `up -d` to recreate it. `stop` preserves data;
 
 To rotate staff credentials, keep a private mode-600 backup of .env, replace only
 COMMERCE_STAFF_PASSWORD with a new random value of at least 16 characters, and run
-`docker compose --profile app up -d --wait api web`. Old browser sessions fail
+`docker compose --project-directory . -f tests/compose/ci.yaml --profile app up -d --wait api web`. Old browser sessions fail
 authentication and must sign in again. Undo a mistaken rotation by restoring the
 private backup and recreating api; do not print either secret in logs. Never store
 credentials in frontend code, screenshots, traces or version control.
@@ -1021,12 +1021,12 @@ an off-host backup. A lost disk still loses both source and local backups.
 For an explicit maintenance backup (do not include the leading $ prompts):
 
 ```bash
-docker compose --profile app stop web api worker
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app stop web api worker
 umask 077
 mkdir -p runs/manual-backups
-docker compose exec -T postgres pg_dump -U commerce -d commerce -Fc > runs/manual-backups/commerce.dump
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres pg_dump -U commerce -d commerce -Fc > runs/manual-backups/commerce.dump
 test -s runs/manual-backups/commerce.dump
-docker compose --profile app up -d --wait
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app up -d --wait
 ```
 
 Stop clients before restoring to the original name. Prefer restoring to a new
@@ -1043,10 +1043,10 @@ docker image inspect decisionops-commerce-app:local --format '{{.Id}}'
 docker image inspect decisionops-commerce-web:local --format '{{.Id}}'
 docker tag decisionops-commerce-app:local decisionops-commerce-app:previous
 docker tag decisionops-commerce-web:local decisionops-commerce-web:previous
-docker compose --profile app build
-docker compose --profile app up -d --wait
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app build
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app up -d --wait
 curl --fail http://127.0.0.1:8080/health
-docker compose --profile app logs --tail 30 api worker
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app logs --tail 30 api worker
 ```
 
 If a rollout fails, inspect init/API logs first. Restore the previous image tags
@@ -1055,7 +1055,7 @@ only if their code supports the installed schema, then recreate services:
 ```bash
 docker tag decisionops-commerce-app:previous decisionops-commerce-app:local
 docker tag decisionops-commerce-web:previous decisionops-commerce-web:local
-docker compose --profile app up -d --force-recreate --wait
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app up -d --force-recreate --wait
 ```
 
 These are prepared rollback commands, not proof that arbitrary previous releases
@@ -1110,9 +1110,9 @@ containers are resolved again. The repeated browser demo recreates the API and
 then verifies login and mutations. Rebuild/recreate web after changing its config:
 
 ```bash
-docker compose --profile app build web
-docker compose --profile app up -d --wait web
-docker compose --profile app logs --tail 20 web api
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app build web
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app up -d --wait web
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app logs --tail 20 web api
 curl --fail http://127.0.0.1:8080/health
 ```
 
@@ -1171,8 +1171,8 @@ note; no notification is sent, so staff must share the order reference with a ma
 Reproduce the staff workflow and false-versus-unknown demonstrations:
 
 ```bash
-docker compose --profile app build web
-docker compose --profile app up -d --wait web
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app build web
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app up -d --wait web
 docker build -f docker/Dockerfile.browser -t decisionops-commerce-browser:local .
 export COMMERCE_TEST_DATABASE_URL='postgresql+psycopg://commerce:local-demo-only@127.0.0.1:55432/commerce'
 .venv/bin/python -B scripts/commerce_browser_walkthrough.py
@@ -1212,7 +1212,7 @@ export COMMERCE_TEST_DATABASE_URL='postgresql+psycopg://commerce:local-demo-only
 ```
 
 Use the same startup/test/shutdown commands in that checkout. Compose gives it a
-separate volume and network. `docker compose --profile app down` stops only this
+separate volume and network. `docker compose --project-directory . -f tests/compose/ci.yaml --profile app down` stops only this
 project and preserves its volume. Unset these overrides before operating the
 original stack. To undo this configuration patch, unset the overrides; default
 ports remain 55432 and 8080. Do not delete original diagnostic evidence or data.
@@ -1253,8 +1253,8 @@ export COMMERCE_ORIGINS=http://127.0.0.1:8082
 export COMMERCE_APP_IMAGE=decisionops-provider-app:local
 export COMMERCE_WEB_IMAGE=decisionops-provider-web:local
 python3 -B scripts/commerce_local_setup.py
-docker compose --profile app build
-docker compose --profile app up -d --wait
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app build
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app up -d --wait
 curl --fail http://127.0.0.1:8082/health
 export COMMERCE_DATABASE_URL='postgresql+psycopg://commerce:local-demo-only@127.0.0.1:55434/commerce'
 export COMMERCE_TEST_DATABASE_URL="$COMMERCE_DATABASE_URL"
@@ -1328,9 +1328,9 @@ choice can complete routing with exit 0 while the case still needs a manager.
 ### Inspect reservation, trace and cause
 
 ```bash
-docker compose exec -T postgres psql -U commerce -d commerce -c \
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c \
   "SELECT run_id, case_id, budget_id, state, dispatch_count, reserved_cost_usd, actual_cost_usd, application_status, effective_choice FROM commerce_provider_calls ORDER BY created_at DESC LIMIT 10;"
-docker compose exec -T postgres psql -U commerce -d commerce -c \
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c \
   "SELECT id, limits, pricing FROM commerce_provider_budgets;"
 .venv/bin/python -B -m decisionops.commerce.provider_demo show --run FAKE-1
 ```
@@ -1398,7 +1398,7 @@ cycle. Tests also cover 128-character run IDs, atomic budget races, stale result
 unknown retention, daemon deadlines, no locks during waiting and no duplicate dispatch.
 
 To stop this experiment and return to ordinary use, stop only this isolated project
-with `docker compose --profile app down` (no `-v`), then unset the project/port/image/
+with `docker compose --project-directory . -f tests/compose/ci.yaml --profile app down` (no `-v`), then unset the project/port/image/
 URL overrides. Use the original commerce worktree for the existing rules application.
 Do not downgrade a live database, delete ledgers/volumes, switch branches underneath
 running builds, or recreate original services with the provider image tag. Schema
@@ -1429,8 +1429,8 @@ uv sync --locked --only-group commerce --offline --no-python-downloads
 export COMPOSE_PROJECT_NAME=decisionops-local-provider-check
 export COMMERCE_POSTGRES_PORT=55435
 # Starts PostgreSQL only; does not build, retag or restart application images.
-docker compose up -d --wait postgres
-docker compose exec -T postgres pg_isready -U commerce -d commerce
+docker compose --project-directory . -f tests/compose/ci.yaml up -d --wait postgres
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres pg_isready -U commerce -d commerce
 export COMMERCE_DATABASE_URL='postgresql+psycopg://commerce:local-demo-only@127.0.0.1:55435/commerce'
 export COMMERCE_TEST_DATABASE_URL="$COMMERCE_DATABASE_URL"
 .venv/bin/alembic upgrade head
@@ -1526,7 +1526,7 @@ even an action head of 1.0 is not permission. `trace.effective_choice`,
 or expired evidence prevents application even when a native recommendation is valid.
 
 ```bash
-docker compose exec -T postgres psql -U commerce -d commerce -c \
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres psql -U commerce -d commerce -c \
   "SELECT run_id,state,dispatch_count,effective_choice,application_status,actual_cost_usd,result->'metadata' AS metadata FROM commerce_provider_calls ORDER BY created_at DESC LIMIT 5;"
 ```
 
@@ -1572,7 +1572,7 @@ No provider result may revive a later approval or execution.
 To undo opt-in operation, select rules for subsequent investigations and unset
 COMMERCE_MODEL_PYTHON. Reinvestigate escalated cases explicitly if staff wants a
 new deterministic proposal. Never edit an audit request/proposal or provider ledger
-to clear its history. Stop the isolated container with `docker compose down` while
+to clear its history. Stop the isolated container with `docker compose --project-directory . -f tests/compose/ci.yaml down` while
 COMPOSE_PROJECT_NAME still equals decisionops-local-provider-check. Restarting or
 stopping containers preserves the named volume; `down -v` deletes it and is not a
 recovery step. Do not restart or migrate the original stack for this demonstration.
@@ -1962,7 +1962,7 @@ one uncertain reservation and zero duplicate dispatches.
 
 The container is disposable tmpfs: stopping it destroys this test database. This
 is separate from a persistent deployment where restarting preserves its volume.
-Never use `docker compose down -v` or delete the original application volume.
+Never use `docker compose --project-directory . -f tests/compose/ci.yaml down -v` or delete the original application volume.
 
 ### Commands in a separately prepared persistent demo
 
@@ -2210,15 +2210,15 @@ fixed fallback,9 total decisions,zero duplicate dispatch. Stock remains10/1.
 Never automatically redispatch uncertain work or reset budget counters. For an
 expired owner use the documented claim/recover flow, not a stale token.
 
-For the browser failure the agent used only runs/stage 5-browser.compose.yaml,
+For the browser failure the agent used only runs/stage 5-browser.tests/compose/ci.yaml,
 project decisionops-stage 5-browser, ports55442/8082 and its own network. Its init
 command applied head, seeded and set up legacy checkpoints. Current source was
 mounted read-only into cached app images; existing cached web assets were used.
 These exact diagnostic commands were demonstrated:
 
 ```bash
-sg docker -c 'docker compose -f runs/stage 5-browser.compose.yaml ps'
-sg docker -c 'docker compose -f runs/stage 5-browser.compose.yaml logs --tail 15 api'
+sg docker -c 'docker compose -f runs/stage 5-browser.tests/compose/ci.yaml ps'
+sg docker -c 'docker compose -f runs/stage 5-browser.tests/compose/ci.yaml logs --tail 15 api'
 sg docker -c 'docker exec decisionops-stage 5-browser-postgres-1 psql -U commerce -d stage 5_browser -c "SELECT version_num FROM alembic_version"'
 ```
 
@@ -2233,7 +2233,7 @@ agent/CI passes from earlier stages do not waive this red local run.
 Cleanup actually performed, ONLY after exporting evidence:
 
 ```bash
-sg docker -c 'docker compose -f runs/stage 5-browser.compose.yaml down'
+sg docker -c 'docker compose -f runs/stage 5-browser.tests/compose/ci.yaml down'
 sg docker -c 'docker rm -f decisionops-adaptive-stage 5-tests'
 ```
 
@@ -2260,17 +2260,17 @@ with the documented operator migration step; never point these commands at the
 original migration0004 runtime. Full contract/evidence: [STAGE5-CORRECTION.md](https://github.com/richardcheam/decisionops/blob/e311fe0e02a0386e86d400fb417147155847da02/docs/commerce/STAGE5-CORRECTION.md).
 
 The correction's actual disposable browser recipe and output are preserved in its
-review archive under evidence/correction-browser.compose.yaml and verification/.
+review archive under evidence/correction-browser.tests/compose/ci.yaml and verification/.
 Only cached images were used. Its database is stage 5_correction_browser on55444,
 web8083, Compose project decisionops-stage 5-correction-browser; no original volume.
 The agent actually ran:
 
 ```bash
-sg docker -c 'docker compose -f runs/correction-browser.compose.yaml up -d --wait'
-sg docker -c 'docker compose -f runs/correction-browser.compose.yaml logs --no-color init'
-sg docker -c 'docker compose -f runs/correction-browser.compose.yaml exec -T api python -c "import urllib.request; print(urllib.request.urlopen(\"http://127.0.0.1:8000/health\").read().decode())"'
-sg docker -c 'docker compose -f runs/correction-browser.compose.yaml exec -T postgres psql -U commerce -d stage 5_correction_browser -c "SELECT current_database(),current_user; SELECT version_num FROM alembic_version; SELECT count(*) FROM commerce_operations; SELECT status,count(*) FROM commerce_cases GROUP BY status;"'
-sg docker -c 'docker compose -f runs/correction-browser.compose.yaml down'
+sg docker -c 'docker compose -f runs/correction-browser.tests/compose/ci.yaml up -d --wait'
+sg docker -c 'docker compose -f runs/correction-browser.tests/compose/ci.yaml logs --no-color init'
+sg docker -c 'docker compose -f runs/correction-browser.tests/compose/ci.yaml exec -T api python -c "import urllib.request; print(urllib.request.urlopen(\"http://127.0.0.1:8000/health\").read().decode())"'
+sg docker -c 'docker compose -f runs/correction-browser.tests/compose/ci.yaml exec -T postgres psql -U commerce -d stage 5_correction_browser -c "SELECT current_database(),current_user; SELECT version_num FROM alembic_version; SELECT count(*) FROM commerce_operations; SELECT status,count(*) FROM commerce_cases GROUP BY status;"'
+sg docker -c 'docker compose -f runs/correction-browser.tests/compose/ci.yaml down'
 ```
 
 Init applied head0008, seeded fictional records and set up legacy worker checkpoints
@@ -2494,13 +2494,13 @@ execution confirmation remain required. No public CI or new live inference was r
 
 ### Fictional portfolio deployment path
 
-Use [PORTFOLIO-DEMO.md](https://github.com/richardcheam/decisionops/blob/e311fe0e02a0386e86d400fb417147155847da02/docs/commerce/PORTFOLIO-DEMO.md) and standalone compose.portfolio.yaml.
+Use [PORTFOLIO-DEMO.md](https://github.com/richardcheam/decisionops/blob/e311fe0e02a0386e86d400fb417147155847da02/docs/commerce/PORTFOLIO-DEMO.md) and standalone tests/compose/portfolio.yaml.
 Always name the portfolio project; only web8091 is published on loopback. PostgreSQL
 is internal with its own named volume. `up --wait` verifies health before handoff;
 `stop`/`down` preserve persistent data. The guide records graceful worker restart
 behavior, exact recovery limits, shared visitor state, proposed operator-only reset
 and the unprovisioned hosting cost/access plan. No paid provider is present in this
-stack. The original compose.yaml runtime and 55521 staff demo remain separate.
+stack. The original tests/compose/ci.yaml runtime and 55521 staff demo remain separate.
 
 
 ### Portfolio release access boundary

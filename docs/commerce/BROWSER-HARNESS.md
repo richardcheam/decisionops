@@ -21,7 +21,7 @@ bash scripts/browser_fixture.sh check
 ```
 
 The build uses **already cached** `decisionops-commerce-browser:local` and the pinned
-Node image in `compose.browser-fixtures.yaml`. `--pull never` and network-free
+Node image in `tests/compose/browser-fixtures.yaml`. `--pull never` and network-free
 build containers prevent downloads. No database, private configuration, SDK credential
 or staff worker is required. On a fresh host those cached images must first be
 reproduced with the existing locked frontend/container build; that download/build

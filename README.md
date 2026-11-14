@@ -16,6 +16,9 @@ flowchart LR
 Deterministic checks lead to a proposal or review; staff must approve the exact
 proposal and separately confirm before execution.
 
+The final application uses one [`compose.yaml`](compose.yaml); verification fixtures
+are separate under `tests/compose/`.
+
 ## Run the fictional demo
 
 Requires Git, Bash, curl, Docker Engine and Compose **2.24.4+**, an x86-64 host,

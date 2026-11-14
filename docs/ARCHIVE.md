@@ -66,3 +66,12 @@ previous copy. Every inventoried branch tip was recovered in an independent bare
 repository before any ref deletion. `refs-before.json`, `bundle-verification.json`
 and `branch-decisions.json` record ancestry, actual-tree comparisons and retention
 reasons. Open PR branches, active worktrees and unique changes are preserved.
+
+## One application Compose file
+
+At baseline `a584930`, all original Compose files were copied and hash-verified in
+`$HOME/projects/decisionops-archive/2026-11-14-single-compose/`. The final application
+now uses only root `compose.yaml`; CI/storefront/historical definitions are retained
+under `tests/compose/` with explicit repository-root path resolution. The separate
+cached-build overlay was retired; the normal locked build still reuses Docker caches.
+No runtime volumes, model checkpoints, frozen manifests or historical traces were moved.

@@ -44,11 +44,11 @@ cd decisionops
 python3 -B -S scripts/commerce_ci_tests.py dependency-free
 uv sync --locked --only-group commerce --no-python-downloads
 python3 -B scripts/commerce_local_setup.py
-docker compose --profile app build
-docker compose --profile app up -d --wait
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app build
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app up -d --wait
 curl --fail http://127.0.0.1:8080/health
-docker compose exec -T postgres pg_isready -U commerce -d commerce
-docker compose --profile app logs init
+docker compose --project-directory . -f tests/compose/ci.yaml exec -T postgres pg_isready -U commerce -d commerce
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app logs init
 export COMMERCE_TEST_DATABASE_URL='postgresql+psycopg://commerce:local-demo-only@127.0.0.1:55432/commerce'
 .venv/bin/python -B scripts/commerce_ci_tests.py postgres
 .venv/bin/python -B scripts/commerce_execution_walkthrough.py
@@ -57,7 +57,7 @@ docker build -f docker/Dockerfile.browser -t decisionops-commerce-browser:local 
 .venv/bin/python -B scripts/commerce_browser_walkthrough.py
 python3 -B scripts/commerce_backup_walkthrough.py
 python3 -B scripts/commerce_release_walkthrough.py
-docker compose --profile app down
+docker compose --project-directory . -f tests/compose/ci.yaml --profile app down
 ```
 
 Expected: dependency-free suite reports optional dependency/model/database skips;

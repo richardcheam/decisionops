@@ -66,8 +66,8 @@ overwrite newer case decisions. See the ADR for the full recovery and fencing co
 Use only the dedicated project `decisionops-multi-agent-demo`. Its web listener is
 `http://127.0.0.1:8123`, its username is `visitor`, and its images are
 `decisionops-multi-agent-app:local` and `decisionops-multi-agent-web:local`.
-The [overlay](../../compose.multi-agent.yaml) builds on
-[`compose.portfolio.yaml`](../../compose.portfolio.yaml), retains its isolated database
+The [overlay](../../tests/compose/multi-agent.yaml) builds on
+[`tests/compose/portfolio.yaml`](../../tests/compose/portfolio.yaml), retains its isolated database
 volume and network protections, and enables `COMMERCE_STAFF_INVESTIGATION_MODE=mock-specialists`
 only for this API. The ordinary worker retains its existing CLI; the specialist
 investigator uses the existing staff worker entry point with the new job routing.
@@ -292,8 +292,8 @@ controller. LangGraph owns orchestration/checkpoint projection; PostgreSQL owns 
 There is no public listener beyond loopback `8123`. Nginx serves the interface and
 proxies `/api` to API:8000 on the internal project network. PostgreSQL:5432 is internal
 only; there is no host DB port. API and workers use only fictional environment settings.
-No OpenAI key is forwarded. Health: `/health`; inspect with `docker compose --env-file
-/dev/null -p decisionops-multi-agent-demo -f compose.portfolio.yaml -f compose.multi-agent.yaml
+No OpenAI key is forwarded. Health: `/health`; inspect with `docker compose --project-directory . -f tests/compose/ci.yaml --env-file
+/dev/null -p decisionops-multi-agent-demo -f tests/compose/portfolio.yaml -f tests/compose/multi-agent.yaml
 ps --all` after exporting `COMMERCE_PORTFOLIO_PASSWORD` if invoking Compose directly.
 The wrapper sets that variable from `COMMERCE_MULTI_AGENT_PASSWORD` automatically.
 
@@ -329,7 +329,7 @@ not the staff demo or any original application database:
 ```bash
 python3 -B -m unittest discover -s tests -p test_commerce_specialist_contracts.py -v
 python3 -B -S scripts/commerce_ci_tests.py dependency-free
-docker compose --env-file /dev/null -p decisionops-specialists-test -f compose.specialists-test.yaml up -d --pull never --wait
+docker compose --env-file /dev/null -p decisionops-specialists-test -f tests/compose/specialists-test.yaml up -d --pull never --wait
 export COMMERCE_TEST_DATABASE_URL='postgresql+psycopg://specialists_test:fictional-specialists-test@127.0.0.1:55548/specialists_test'
 ../stage5-correction/.venv-decisions/bin/python -B scripts/commerce_ci_tests.py postgres
 ../stage5-correction/.venv-decisions/bin/python -B -m unittest discover -s tests -p test_commerce_staff_investigation.py -v
@@ -340,7 +340,7 @@ python3 -B scripts/commerce_specialists_restart.py --output runs/multi-agent/new
 
 The sibling `.venv-decisions` is the existing optional locked environment used locally,
 not a clean-checkout prerequisite: cached app/browser images contain the locked runtime.
-The test database recipe is committed as `compose.specialists-test.yaml`; raw evidence
+The test database recipe is committed as `tests/compose/specialists-test.yaml`; raw evidence
 paths are local and indexed in the review bundle. Script preflight checks the test DB name/user/loopback port before any
 migration. Each PostgreSQL test creates and drops its own schema. Full raw outputs retain
 optional skip reasons; no skipped database test is counted as acceptance.

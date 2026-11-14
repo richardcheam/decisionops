@@ -51,13 +51,13 @@ Use the new standalone file/project, never apply it to any existing project/volu
 ```bash
 cd /home/richard/projects/decisionops/runs/worktrees/clothing-fixture
 export COMMERCE_SHOP_PASSWORD=fictional-shop-demo-only
-sg docker -c 'docker compose --env-file /dev/null -f compose.shop-fixture.yaml -p decisionops-shop-demo build --pull=false'
-sg docker -c 'docker compose --env-file /dev/null -f compose.shop-fixture.yaml -p decisionops-shop-demo up -d --wait --wait-timeout 90 --no-build --pull never'
+sg docker -c 'docker compose --env-file /dev/null -f tests/compose/shop-fixture.yaml -p decisionops-shop-demo build --pull=false'
+sg docker -c 'docker compose --env-file /dev/null -f tests/compose/shop-fixture.yaml -p decisionops-shop-demo up -d --wait --wait-timeout 90 --no-build --pull never'
 curl --fail http://127.0.0.1:8095/health
-sg docker -c 'docker compose --env-file /dev/null -f compose.shop-fixture.yaml -p decisionops-shop-demo ps --all'
-sg docker -c 'docker compose --env-file /dev/null -f compose.shop-fixture.yaml -p decisionops-shop-demo logs --tail 30 init api staff-investigator worker web'
+sg docker -c 'docker compose --env-file /dev/null -f tests/compose/shop-fixture.yaml -p decisionops-shop-demo ps --all'
+sg docker -c 'docker compose --env-file /dev/null -f tests/compose/shop-fixture.yaml -p decisionops-shop-demo logs --tail 30 init api staff-investigator worker web'
 # Stops only this fixture; retains all data/evidence:
-sg docker -c 'docker compose --env-file /dev/null -f compose.shop-fixture.yaml -p decisionops-shop-demo stop'
+sg docker -c 'docker compose --env-file /dev/null -f tests/compose/shop-fixture.yaml -p decisionops-shop-demo stop'
 ```
 
 Expected: init exits 0 after schema 0008, guarded seed and checkpoint setup; API/web/PG

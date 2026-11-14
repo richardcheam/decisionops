@@ -17,13 +17,11 @@ bash scripts/demo.sh health
 # http://127.0.0.1:8133 — visitor / the fictional password above
 ```
 
-`build` uses committed Dockerfile.app and Dockerfile.web directly. Python installs
+`build` uses the single application `compose.yaml` and committed Dockerfile.app and Dockerfile.web directly. Python installs
 only the locked commerce group,not model defaults;Node uses package-lock. No optional
 SDK/provider/model is needed for rules or mocked specialists. No sibling path or .env
-is consulted. Compose never forwards OPENAI_API_KEY. For an offline host with the
-existing locked `decisionops-commerce-app:local` and `decisionops-commerce-browser:local`
-images,`build-cached` explicitly reuses those images with networking disabled.
-That is an alternative,not an implicit dependency of the standard build.
+is consulted. Compose never forwards OPENAI_API_KEY. Existing Docker/BuildKit layers may be reused,
+but there is no separate cached-image Compose overlay.
 
 Rules are default. `COMMERCE_DEMO_MODE=mock-specialists bash scripts/demo.sh start`
 reconfigures this project's API;new staff investigations use the opt-in graph.
@@ -47,7 +45,7 @@ No public hosting,HTTPS or production identity hardening was provisioned.
 
 ```bash
 python3 -B -S scripts/commerce_ci_tests.py dependency-free
-# Required PostgreSQL profile,after starting a separate compose.specialists-test.yaml:
+# Required PostgreSQL profile,after starting a separate tests/compose/specialists-test.yaml:
 # point COMMERCE_TEST_DATABASE_URL ONLY to specialists_test on loopback55548
 # use an existing locked commerce+commerce-api environment,or the documented CI profile
 python -B scripts/commerce_ci_tests.py postgres

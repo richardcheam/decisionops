@@ -92,11 +92,11 @@ jobs:
       - name: Build locked app, interface and browser runner
         run: |
           python -B scripts/commerce_local_setup.py
-          docker compose --profile app build
+          docker compose --project-directory . -f tests/compose/ci.yaml --profile app build
           docker build -f docker/Dockerfile.browser -t decisionops-commerce-browser:local .
       - name: Start PostgreSQL; migrate, seed, and await app readiness
         run: |
-          docker compose --profile app up -d --wait
+          docker compose --project-directory . -f tests/compose/ci.yaml --profile app up -d --wait
           curl --fail http://127.0.0.1:8080/health
       - name: Real browser workflow (zero skipped tests required)
         run: .venv/bin/python -B scripts/commerce_browser_walkthrough.py
@@ -106,4 +106,4 @@ jobs:
         run: python -B scripts/commerce_release_walkthrough.py
       - name: Stop stack; preserve diagnostics, never export credentials or dumps
         if: always()
-        run: docker compose --profile app down
+        run: docker compose --project-directory . -f tests/compose/ci.yaml --profile app down

@@ -22,7 +22,7 @@ case "${1:-}" in
     -v "$root/browser-investigation:/source/browser-investigation:ro" -v "$root/runs/browser-investigation/runtime:/runtime" \
     --entrypoint sh decisionops-commerce-browser:local -c 'cp -r /source/browser-investigation /workspace/browser-investigation && ./node_modules/.bin/tsc -p browser-investigation/tsconfig.json'
   ;;
- start) test -f runs/browser-investigation/dist/evaluation.html; docker compose -p decisionops-browser-fixtures -f compose.browser-fixtures.yaml up -d --force-recreate --pull never; ready ;;
+ start) test -f runs/browser-investigation/dist/evaluation.html; docker compose --project-directory "$PWD" -p decisionops-browser-fixtures -f tests/compose/browser-fixtures.yaml up -d --force-recreate --pull never; ready ;;
  check) ready ;;
  test)
   artifacts=${2:-runs/browser-investigation/tests}
@@ -33,6 +33,6 @@ case "${1:-}" in
     -v "$root/frontend:/workspace/repo/frontend:ro" -v "$artifacts:/workspace/artifacts" \
     --entrypoint sh decisionops-commerce-browser:local -c 'npx --no-install playwright test --config repo/frontend/playwright.browser.config.ts'
   ;;
- stop) docker compose -p decisionops-browser-fixtures -f compose.browser-fixtures.yaml down ;;
+ stop) docker compose --project-directory "$PWD" -p decisionops-browser-fixtures -f tests/compose/browser-fixtures.yaml down ;;
  *) echo 'Usage: bash scripts/browser_fixture.sh build|start|check|test [artifact-directory]|stop' >&2; exit 2 ;;
 esac

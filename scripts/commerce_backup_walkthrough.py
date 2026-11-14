@@ -24,7 +24,7 @@ def main():
     dump = directory/'commerce.dump'
     database = 'restore_check_' + uuid.uuid4().hex
     def command(*args, **kwargs):
-        return subprocess.run(['sg','docker','-c',shlex.join(['docker','compose','exec','-T','postgres',*args])], cwd=ROOT, check=True, **kwargs)
+        return subprocess.run(['sg','docker','-c',shlex.join(['docker','compose','--project-directory',str(ROOT),'-f',str(ROOT/'tests/compose/ci.yaml'),'exec','-T','postgres',*args])], cwd=ROOT, check=True, **kwargs)
     descriptor = os.open(dump, os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0o600)
     with os.fdopen(descriptor, 'wb') as output:
         command('pg_dump','-U','commerce','-d','commerce','-Fc',stdout=output)

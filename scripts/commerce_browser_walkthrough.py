@@ -37,6 +37,11 @@ def main():
         f'  {service}:\n    environment:\n      COMMERCE_DATABASE_URL: {container_url.render_as_string(hide_password=False)!r}\n'
         for service in ('init', 'api', 'worker')))
     def docker(name, *args, timeout=180):
+        if args[0] == 'compose':
+            prefix = ['compose', '--project-directory', str(ROOT)]
+            if '-f' not in args:
+                prefix += ['-f', str(ROOT/'tests/compose/ci.yaml')]
+            args = (*prefix, *args[1:])
         result = subprocess.run(['sg','docker','-c',shlex.join(['docker', *args])], cwd=ROOT, text=True, capture_output=True, timeout=timeout)
         (directory/(name+'.log')).write_text(result.stdout+result.stderr)
         if result.returncode:
@@ -48,7 +53,7 @@ def main():
             connection.exec_driver_sql(f'CREATE SCHEMA "{schema}"')
             created = True
         switched = True
-        docker('start-isolated', 'compose', '-f','compose.yaml','-f',str(override),'--profile','app','up','-d','--wait')
+        docker('start-isolated', 'compose', '-f','tests/compose/ci.yaml','-f',str(override),'--profile','app','up','-d','--wait')
         docker('browser', 'run','--rm','--network','host','--user',f'{os.getuid()}:{os.getgid()}',
                '--env-file','.env','-e','COMMERCE_WEB_URL='+os.environ.get('COMMERCE_WEB_URL','http://127.0.0.1:8080'),'-e','HOME=/tmp','-e','PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright',
                '-v',str(results)+':/workspace/artifacts','decisionops-commerce-browser:local')

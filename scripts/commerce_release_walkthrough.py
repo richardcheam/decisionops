@@ -23,6 +23,11 @@ def main():
     (ROOT / "runs").mkdir(exist_ok=True)
     directory = Path(tempfile.mkdtemp(prefix='release-walkthrough-', dir=ROOT/'runs'))
     def docker(name, *args):
+        if args[0] == 'compose':
+            prefix = ['compose', '--project-directory', str(ROOT)]
+            if '-f' not in args:
+                prefix += ['-f', str(ROOT/'tests/compose/ci.yaml')]
+            args = (*prefix, *args[1:])
         result = subprocess.run(['sg','docker','-c',shlex.join(['docker',*args])], cwd=ROOT, capture_output=True, text=True, timeout=180)
         (directory/(name+'.log')).write_text(result.stdout+result.stderr)
         if result.returncode:
@@ -53,7 +58,7 @@ def main():
     override = directory/'failed-config.yaml'
     override.write_text('services:\n  api:\n    command: [python, -c, "raise SystemExit(42)"]\n    restart: "no"\n')
     try:
-        docker('failed-rollout','compose','-f','compose.yaml','-f',str(override),'--profile','app','up','-d','--no-deps','api')
+        docker('failed-rollout','compose','-f','tests/compose/ci.yaml','-f',str(override),'--profile','app','up','-d','--no-deps','api')
         assert await_status({502,503}) in (502,503)
         end = time.monotonic()+15
         while time.monotonic()<end:

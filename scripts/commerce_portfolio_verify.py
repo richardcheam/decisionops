@@ -12,7 +12,7 @@ OUT=ROOT/'runs/portfolio-demo'
 ENV={k:v for k,v in os.environ.items() if k in ('PATH','HOME','USER','LOGNAME','LANG','LC_ALL','COMMERCE_PORTFOLIO_PASSWORD','COMMERCE_PORTFOLIO_PORT','COMMERCE_PORTFOLIO_ORIGIN','COMMERCE_PORTFOLIO_POSTGRES_IMAGE')}
 WEB='http://127.0.0.1:8091'
 PUBLIC='http://127.0.0.1:8094'
-COMPOSE=['docker','compose','--env-file','/dev/null','-f',str(ROOT/'compose.portfolio.yaml'),'-p',PROJECT]
+COMPOSE=['docker','compose','--project-directory',str(ROOT),'--env-file','/dev/null','-f',str(ROOT/'tests/compose/portfolio.yaml'),'-p',PROJECT]
 
 def docker(args,**kwargs):
     return subprocess.run(['sg','docker','-c',shlex.join(args)],env=ENV,check=True,text=True,capture_output=True,timeout=20,**kwargs).stdout
@@ -106,7 +106,7 @@ def main():
     config=rehearsal_config()
     PROJECT=config['project'];OUT=config['output'];WEB='http://127.0.0.1:'+str(config['port'])
     PUBLIC=config['public_url']
-    COMPOSE=['docker','compose','--env-file','/dev/null','-f',str(ROOT/'compose.portfolio.yaml')]
+    COMPOSE=['docker','compose','--project-directory',str(ROOT),'--env-file','/dev/null','-f',str(ROOT/'tests/compose/portfolio.yaml')]
     if config['compose_override'] is not None:COMPOSE+=['-f',str(config['compose_override'])]
     COMPOSE+=['-p',PROJECT]
     if not config['release']:
