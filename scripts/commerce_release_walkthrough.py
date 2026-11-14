@@ -8,12 +8,15 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT))
+from scripts.commerce_schema_contract import source_revision
 
 
 def main():
@@ -46,7 +49,7 @@ def main():
                       "SELECT jsonb_build_object('orders',(SELECT count(*) FROM orders),'inventory',(SELECT jsonb_agg(to_jsonb(i) ORDER BY variant_id) FROM inventory i),'operations',(SELECT count(*) FROM commerce_operations))")
     before = records('records-before')
     images = {label:docker('image-'+label,'inspect',docker('container-'+service,'compose','ps','-q',service).strip(),'--format','{{.Image}}').strip() for label,service in (('app','api'),('web','web'))}
-    (directory/'release.json').write_text(json.dumps({'schema':'0005','images':images,'scope':'local configuration rollout; same code and schema'},indent=2)+'\n')
+    (directory/'release.json').write_text(json.dumps({'schema':source_revision(),'images':images,'scope':'local configuration rollout; same code and schema'},indent=2)+'\n')
     override = directory/'failed-config.yaml'
     override.write_text('services:\n  api:\n    command: [python, -c, "raise SystemExit(42)"]\n    restart: "no"\n')
     try:

@@ -59,7 +59,7 @@ in the PR;local evidence below is not a substitute for executed CI.
 
 ## Packaging-source results
 
-Local candidate checks:238 dependency-free passes,297 explicitly reported optional
+Local candidate checks:239 dependency-free passes (536 collected after the schema-check correction),297 explicitly reported optional
 skips;212 required PostgreSQL passes with zero skips;4 public-evidence checks;2 rules
 staff browser checks;3 mocked-specialist browser checks;6 offline citation checks.
 The historical viewer also exported with its synthetic/uncalibrated notices.
@@ -85,3 +85,13 @@ identity was `portfolio|portfolio|0009|0` (DB,user,revision,cases). The2 ordinar
 browser checks passed again from that clean source;stop retained the project volume.
 All local checks were agent-executed,not Richard or supervisor executions. Raw outputs
 and the deliberately retained reused-fixture failure are archived outside the checkout.
+
+
+Initial publication4556970 passed CI dependency-free/historical viewer verification
+and the actual browser workflow,but backup verification failed on its stale exact0005
+assertion. Raw CI failure is retained in the external archive. Packaging correction
+reads SUPPORTED_REVISION from the explicit source contract with stdlib AST (no optional
+imports),requires source/original/restored revision equality,and records that same
+revision in configuration-recovery metadata. It neither migrates nor accepts arbitrary
+newer revisions. Focused tests cover0009 success and0005/mismatched/newer rejection.
+Final-source CI results are reported on the PR,not inferred from the earlier pass.

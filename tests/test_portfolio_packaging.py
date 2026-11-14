@@ -26,3 +26,11 @@ class PortfolioPackagingTests(unittest.TestCase):
                     env={'PATH':os.defpath,'COMMERCE_DEMO_PASSWORD':password,'COMMERCE_DEMO_MODE':mode},capture_output=True,text=True,timeout=3)
                 self.assertEqual(result.returncode,2)
                 self.assertNotIn('command not found',result.stderr)
+
+    def test_backup_revision_matches_source_and_rejects_stale_or_newer_schemas(self):
+        from scripts.commerce_schema_contract import source_revision,validate_restored_revisions
+        self.assertEqual(source_revision(),'0009')
+        validate_restored_revisions('0009','0009')
+        for original,restored in [('0005','0005'),('0009','0005'),('0009','0010'),('0010','0010')]:
+            with self.subTest(original=original,restored=restored),self.assertRaises(RuntimeError):
+                validate_restored_revisions(original,restored)
