@@ -65,16 +65,17 @@ required PostgreSQL profile fails on **any** skip. The full locked Commerce-only
 profile intentionally omits heavyweight ML dependencies and reports those skips.
 No paid endpoint is used in any of these checks. Create `runs/` before redirection.
 
-Run the browser suite against a **fresh** FR seed and mock-specialist app, with the
-same synthetic primary/helper passwords supplied to the app:
+Run browser acceptance from the project root with the isolated runner. It creates
+fresh FR data, synthetic approver/helper accounts and a real foreign-store case:
 
 ```bash
-export COMMERCE_WEB_URL=http://127.0.0.1:8155
 # Optional system Chromium/Brave; otherwise install Playwright Chromium locally.
 export COMMERCE_BROWSER_PATH=/usr/bin/brave-browser
-cd frontend
-npx playwright test --config playwright.delivery.config.ts
+.venv/bin/python -B scripts/commerce_delivery_browser.py
 ```
+
+Direct Playwright invocation requires the runner's foreign-store fixture and
+`COMMERCE_FOREIGN_CASE_ID`; an ordinary manual demo seed alone does not supply it.
 
 The browser suite performs a fictional replacement. Reset using a new isolated
 browser database before repeating the entire suite. The legacy suites remain under
@@ -126,3 +127,13 @@ For a fresh, automated browser schema and direct PostgreSQL uniqueness assertion
 This runner uses its own synthetic approver/helper accounts, builds the frontend,
 launches the same app on8157, runs all delivery browser tests, verifies the one
 replacement/reservation set, then stops its children and drops only its own schemas.
+
+The retained operator CLI tests additionally require the guarded historical test
+endpoint: URL host127.0.0.1/port55446/database`commerce_decisions_test`/user
+`commerce_decisions`, with PostgreSQL reporting server port5432 (the established
+Docker port mapping). Use the existing isolated setup in
+[OPENAI-DECISIONS.md](commerce/OPENAI-DECISIONS.md). A user-local PostgreSQL5432 plus
+loopback TCP forwarding55446→5432 is equivalent and was verified in this session.
+This guard remains unchanged. A generic isolated database runs the required
+PostgreSQL profile and new acceptance suites; the **full** repository suite needs
+this identity and a database name ending in`_test`.

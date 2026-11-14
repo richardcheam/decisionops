@@ -149,4 +149,5 @@ class ConversationTests(unittest.TestCase):
         self.assertEqual(investigation['state'],'active');self.assertFalse(investigation['evidence_current'])
         payment=next(e for e in investigation['evidence'] if e['tool']=='payment')
         self.assertIsNone(payment['value']);self.assertEqual(payment['applicability'],'refresh_required')
+        self.assertIn('paid',investigation['unknowns']);self.assertNotIn('paid',investigation['blockers'])
         self.assertFalse(self.say(client,identity,'status').json()['evidence_current'])

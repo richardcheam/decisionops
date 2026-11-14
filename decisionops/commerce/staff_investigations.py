@@ -123,7 +123,8 @@ def view(c,case_id):
     for tool in changed:facts[TOOLS[tool]]=None
     return {'evidence_current':not changed,'planned_checks':['Bind order and policy','Check shipment and carrier','Check payment and compensation','Check inventory and join evidence'],'specialists':branches,'id':run['id'],'state':run['state'],'report':run['report'],'mode':'mock_specialists' if run['contracts'].get('specialists') else 'simulated_decisions' if run['contracts'].get('api') else 'rules',
         'job_status':run['job']['status'],'reason':run['terminal'].get('reason') if run['terminal'] else None,
-        'unknowns':run['assessment']['decision']['unknowns'],'blockers':run['assessment']['decision']['blockers'],
+        'unknowns':[fact for fact,value in facts.items() if value is None],
+        'blockers':[fact for fact,value in facts.items() if value is False],
         'facts':facts,'steps':[{'sequence':s['sequence'],'kind':s['kind'],'data':{k:v for k,v in s['data'].items() if k in ('tool','status','reason','action','chosen_action','requested_action','source','specialist','applied')},'created_at':s['created_at']} for s in run['steps']],
         'evidence':evidence}
 
