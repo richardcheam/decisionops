@@ -5,6 +5,19 @@ is still unknown, and prepare a replacement proposal. **People approve the exact
 proposal and separately confirm execution.** PostgreSQL transactions recheck the
 records, reserve stock and prevent duplicate replacements.
 
+```mermaid
+flowchart LR
+    E[Read-only<br/>evidence] -->|eligible| P[Replacement<br/>proposal]
+    E -->|blocked or unknown| R[Explain blocker<br/>or staff review]
+    P --> A[Exact staff approval<br/>Separate confirmation]
+    A --> X[Recheck<br/>and execute]
+```
+
+Deterministic checks lead to a proposal or review; staff must approve the exact
+proposal and separately confirm before execution.
+
+[How the optional mocked specialists gather evidence](docs/ARCHITECTURE.md).
+
 ![Fictional staff proposal awaiting approval](frontend/public/evidence/rules-proposal.png)
 
 ## Five-minute demo
@@ -78,7 +91,7 @@ proposal. Exact approval and separate execution were verified in the ordinary br
 flow. **Wrong-case evidence and actual conflicting database rows through the final
 multi-agent join, and execution after restart, remain unverified.**
 
-- [Architecture and two diagrams](docs/ARCHITECTURE.md)
+- [Specialist architecture and restart](docs/ARCHITECTURE.md)
 - [Sanitized evidence and honest limits](docs/EVIDENCE.md)
 - [Operator/deployment/rollback instructions](docs/RELEASE.md)
 - [Detailed specialist review map](docs/commerce/MULTI-AGENT.md)
