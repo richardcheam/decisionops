@@ -70,7 +70,7 @@ class ConversationMessage(StrictBody):
         return value
 
 
-def create_app(engine=None,*,password=None,username=None,store_id=None,origins=None,staff_investigation_mode=None,storefront_fixture=None,staff_accounts=None,demo_clock=None):
+def create_app(engine=None,*,password=None,username=None,store_id=None,origins=None,staff_investigation_mode=None,storefront_fixture=None,staff_accounts=None,demo_clock=None,conversation_router=None):
     from .staff_investigations import MODES
     staff_investigation_mode=staff_investigation_mode or os.environ.get('COMMERCE_STAFF_INVESTIGATION_MODE','rules')
     if staff_investigation_mode not in MODES:raise ValueError('Staff investigation mode must be rules, mock-decisions or mock-specialists; paid modes prohibited')
@@ -237,7 +237,7 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
             conversation=conversation_owned(c,identity,actor)
             if conversation['selected_case_id']:authorize_case(c,conversation['selected_case_id'])
             return message(c,engine,conversation,body.message,body.request_id,staff_investigation_mode,
-                now=demo_clock() if demo_clock else None)
+                router=conversation_router,now=demo_clock() if demo_clock else None)
 
     @router.get('/orders')
     def orders():

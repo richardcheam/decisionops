@@ -366,6 +366,7 @@ function App() {
     active?.latest_job &&
     ["queued", "running"].includes(active.latest_job.status);
   const locked = busy || Boolean(pending);
+  const replacementVerified = active?.operation?.status === "verified";
   const evidenceNeedsRefresh = staleEvidence || active?.shipment_investigation?.evidence_current === false;
   function confirmation(action: "approve" | "execute") {
     if (!active?.proposal) return;
@@ -626,8 +627,8 @@ function App() {
                     <button type="submit" className="primary" disabled={locked || !report.trim() || new TextEncoder().encode(report).length > 2000 || active.status === "executed"}>Investigate shipment</button>
                   </form>
                   {active.shipment_investigation && <div aria-live="polite">
-                    {evidenceNeedsRefresh && <p role="status" className="error">Saved evidence expired or source records changed. Start an explicit investigation refresh before relying on these findings.</p>}
-                    <p role="status">{evidenceNeedsRefresh ? "Saved investigation requires an evidence refresh." : active.shipment_investigation.state === "active" ? "Investigation in progress. You can refresh or return later." : active.shipment_investigation.state === "proposed" ? "Investigation complete. Replacement proposal ready for your review." : "Investigation finished. " + (active.shipment_investigation.blockers.length ? "A required condition was not met." : "More information or staff review is needed.")}</p>
+                    {evidenceNeedsRefresh && !replacementVerified && <p role="status" className="error">Saved evidence expired or source records changed. Start an explicit investigation refresh before relying on these findings.</p>}
+                    <p role="status">{replacementVerified ? "Historical investigation. The replacement is verified by its execution record." : evidenceNeedsRefresh ? "Saved investigation requires an evidence refresh." : active.shipment_investigation.state === "active" ? "Investigation in progress. You can refresh or return later." : active.shipment_investigation.state === "proposed" ? "Investigation complete. Replacement proposal ready for your review." : "Investigation finished. " + (active.shipment_investigation.blockers.length ? "A required condition was not met." : "More information or staff review is needed.")}</p>
                     <p>{active.shipment_investigation.mode === "mock_specialists" ? "Mocked specialists. No paid calls." : active.shipment_investigation.mode === "simulated_decisions" ? "Demo: simulated Decisions responses. No paid calls." : "Rules investigation. No paid calls."}</p>
                     {Boolean(active.shipment_investigation.specialists?.length) && <section aria-label="Specialist branches">
                       <h3>Specialist branches</h3>
@@ -662,7 +663,7 @@ function App() {
                 </section>
                 <section className="card" aria-label="Next step">
                   <h2>What to do next</h2>
-                  <p>{pending ? "We are checking the order. You can leave this page and return later." : evidenceNeedsRefresh ? "Saved evidence needs an explicit investigation refresh before approval or execution." : nextStep(active)}</p>
+                  <p>{replacementVerified ? nextStep(active) : pending ? "We are checking the order. You can leave this page and return later." : evidenceNeedsRefresh ? "Saved evidence needs an explicit investigation refresh before approval or execution." : nextStep(active)}</p>
                 </section>
                 <div className="actions card">
                   <button
@@ -740,7 +741,7 @@ function App() {
                     </p>
                   </section>
                 )}
-                {active.assessment && (
+                {active.assessment && !replacementVerified && (
                   <section className="card">
                     <div className="sectionhead">
                       <h2>Order checks</h2>

@@ -72,6 +72,8 @@ test('delivery questions expose computed totals and explicit links; Lyon investi
   await page.getByRole('button', { name: 'Confirm replacement', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Replacement confirmed', exact: true })).toBeVisible({ timeout: 30_000 });
   await page.screenshot({ path: 'artifacts/delivery-results/verified-delivery-workspace.png', fullPage: true });
+  await expect(page.getByText('Historical investigation. The replacement is verified by its execution record.', {exact:true})).toBeVisible();
+  await expect(page.getByRole('region',{name:'Next step'})).not.toContainText('refresh');
   const saved = await detail();
   expect(saved.operation.status).toBe('verified');
   expect(saved.events.filter((e: {kind: string}) => e.kind === 'executed')).toHaveLength(1);
@@ -104,4 +106,29 @@ test('queue selection is independent per browser session and split order asks fo
   } finally {
     await otherContext.close();
   }
+});
+
+test('staff can read the workspace but cannot approve or execute or use another actor conversation', async ({ browser, request }) => {
+  const helperPassword = process.env.COMMERCE_HELPER_PASSWORD;
+  if (!helperPassword) throw new Error('Set fictional COMMERCE_HELPER_PASSWORD for real staff browser acceptance');
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const staffHeaders = {Authorization:'Basic '+Buffer.from('staff:'+helperPassword).toString('base64')};
+  try {
+    await page.goto('/');
+    await page.getByLabel('Username',{exact:true}).fill('staff');
+    await page.getByLabel('Password',{exact:true}).fill(helperPassword);
+    await page.getByRole('button',{name:'Sign in',exact:true}).click();
+    await expect(page.getByRole('region',{name:'Delivery overview'})).toBeVisible();
+    const rows=await (await request.get('/api/cases',{headers})).json();
+    const lyon=rows.find((r:{order_id:string})=>r.order_id==='DEMO-LYON');
+    await page.getByRole('button').filter({hasText:'DEMO-LYON'}).first().click();
+    await expect(page.getByRole('button',{name:'Approve replacement',exact:true})).toHaveCount(0);
+    await expect(page.getByRole('button',{name:'Create replacement',exact:true})).toHaveCount(0);
+    expect((await request.post('/api/cases/'+lyon.id+'/execute',{headers:staffHeaders,data:{operation_id:'forbidden'}})).status()).toBe(403);
+    expect((await request.post('/api/cases/'+lyon.id+'/review',{headers:staffHeaders,data:{generation:1,proposal_id:'forbidden',content_hash:'0'.repeat(64),decision:'approve'}})).status()).toBe(403);
+    const conversation=await (await request.post('/api/conversations',{headers,data:{}})).json();
+    expect((await request.post('/api/conversations/'+conversation.id+'/messages',{headers:staffHeaders,data:{message:'status',request_id:'other-actor'}})).status()).toBe(404);
+    expect((await request.get('/api/cases/not-an-authorized-case',{headers:staffHeaders})).status()).toBe(404);
+  } finally { await context.close(); }
 });

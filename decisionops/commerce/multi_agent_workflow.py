@@ -65,8 +65,8 @@ def run(engine, fence, adapters=None, cancel=None, after_node=None,node_delay=0)
             return {name:current['state']}
         return execute
     builder = StateGraph(State)
-    builder.add_node('identity', node('identity', lambda:multi.support(engine,fence,cancel=cancel)))
-    builder.add_node('bound', node('bound', lambda:multi.branch(engine,fence,'order',adapter=adapters.get('order'),until_binding=True,cancel=cancel)))
+    builder.add_node('identity', node('identity', lambda:multi.support(engine,fence,tools=('order_manifest',),cancel=cancel)))
+    builder.add_node('bound', node('bound', lambda:multi.support(engine,fence,tools=('replacement_policy',),cancel=cancel)))
     builder.add_node('order', node('order', lambda:multi.branch(engine,fence,'order',adapter=adapters.get('order'),cancel=cancel)))
     builder.add_node('shipment', node('shipment', lambda:multi.branch(engine,fence,'shipment',adapter=adapters.get('shipment'),cancel=cancel)))
     builder.add_node('terminal', node('terminal', lambda:multi.join(engine,fence,cancel=cancel)))

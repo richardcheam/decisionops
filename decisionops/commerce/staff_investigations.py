@@ -81,6 +81,9 @@ def view(c,case_id):
     history,_,audit,_,_=service.snapshot(c,run);now=clock(c)
     active={o.id:o for o in history.active()};evidence=[]
     changed=set()
+    case=c.execute(sa.select(db.cases).where(db.cases.c.id==case_id)).mappings().one()
+    if run['generation']!=case['generation'] or run['request']!=case['request'] or run['request']['order_id']!=case['order_id']:
+        changed.update(PROJECTIONS)
     if run['state']!='active':
         from .adaptive_evidence import History
         from .adaptive_tools import DEPENDENCIES,read_tool

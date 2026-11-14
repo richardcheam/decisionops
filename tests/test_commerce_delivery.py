@@ -1,6 +1,7 @@
 """Real PostgreSQL delivery ingestion, reporting, queue and migration checks."""
 from datetime import datetime, timedelta, timezone
 import os
+import importlib.util
 from pathlib import Path
 import unittest
 import uuid
@@ -9,6 +10,7 @@ NOW = datetime(2026, 11, 11, 12, tzinfo=timezone.utc)
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@unittest.skipUnless(importlib.util.find_spec('sqlalchemy'), 'Requires Commerce SQL profile')
 class ParisWeekTests(unittest.TestCase):
     def test_local_monday_starts_sunday_utc_and_handles_dst(self):
         from decisionops.commerce.delivery import week_bounds
@@ -220,3 +222,58 @@ class DeliveryTests(unittest.TestCase):
             engine.dispose()
             with self.admin.begin() as c:
                 c.exec_driver_sql(f'DROP SCHEMA "{upgrade_schema}" CASCADE')
+
+    def test_incomplete_parcel_manifest_cannot_stall_other_staff_work(self):
+        from decisionops.commerce import schema as db
+        from decisionops.commerce.delivery import scan
+        from decisionops.commerce.staff_investigations import work_once,enqueue
+        from decisionops.commerce.seed import seed
+        from decisionops.commerce.cases import open_case
+        from decisionops.commerce.read_tools import AssessmentRequest
+        from decisionops.commerce.delivery_seed import seed as fr_seed
+        from datetime import datetime,timezone
+        current=datetime.now(timezone.utc)
+        seed(self.engine,current);fr_seed(self.engine,current)
+        with self.engine.connect().execution_options(isolation_level='READ COMMITTED') as c,c.begin():
+            c.execute(db.delivery_triggers.delete().where(db.delivery_triggers.c.shipment_id=='PARCEL-DEMO-LYON'))
+            c.execute(db.delivery_case_links.delete().where(db.delivery_case_links.c.shipment_id=='PARCEL-DEMO-LYON'))
+            c.execute(db.shipment_lines.delete().where(db.shipment_lines.c.shipment_id=='PARCEL-DEMO-LYON'))
+            case=open_case(c,AssessmentRequest('ORD-1042','SHIP-1042',{'shirt-blue-M':1}))
+            enqueue(c,self.engine,case['id'],'Missing parcel','UNRELATED',case['generation'],'rules')
+            rows=scan(c,'demo-store',current)
+            self.assertTrue(any(r['order_id']=='DEMO-LYON' for r in rows))
+        self.assertEqual(work_once(self.engine)['state'],'proposed')
+
+    def test_scanner_locks_existing_split_cases_before_new_order_fk(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Event
+        import sqlalchemy as sa
+        from decisionops.commerce import schema as db
+        from decisionops.commerce.delivery import scan
+        from decisionops.commerce.cases import lock_case,lock_business
+        from decisionops.commerce.read_tools import AssessmentRequest
+        self.seeded()
+        with self.engine.begin() as c:
+            peer=c.execute(sa.select(db.delivery_case_links.c.case_id).where(db.delivery_case_links.c.shipment_id=='PARCEL-DEMO-SPLIT-B')).scalar_one()
+            c.execute(db.delivery_triggers.delete().where(db.delivery_triggers.c.shipment_id=='PARCEL-DEMO-SPLIT-A'))
+            c.execute(db.delivery_case_links.delete().where(db.delivery_case_links.c.shipment_id=='PARCEL-DEMO-SPLIT-A'))
+        held,attempted=Event(),Event()
+        def observe(c,cursor,statement,parameters,context,many):
+            if c.info.get('scan_probe') and 'commerce_cases' in statement and 'FOR UPDATE' in statement:attempted.set()
+        sa.event.listen(self.engine,'before_cursor_execute',observe)
+        def reviewer():
+            with self.engine.connect().execution_options(isolation_level='READ COMMITTED') as c,c.begin():
+                lock_case(c,peer);held.set()
+                self.assertTrue(attempted.wait(4),'Scanner did not reach case lock')
+                lock_business(c,AssessmentRequest('DEMO-SPLIT','PARCEL-DEMO-SPLIT-B',{'demo-tote':1}))
+        def scanner():
+            self.assertTrue(held.wait(4))
+            with self.engine.connect().execution_options(isolation_level='READ COMMITTED') as c,c.begin():
+                c.info['scan_probe']=True
+                try:return scan(c,'demo-store',NOW)
+                finally:c.info.pop('scan_probe',None)
+        try:
+            with ThreadPoolExecutor(2) as pool:
+                a=pool.submit(reviewer);b=pool.submit(scanner)
+                a.result(10);self.assertTrue(b.result(10))
+        finally:sa.event.remove(self.engine,'before_cursor_execute',observe)

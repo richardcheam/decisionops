@@ -1,67 +1,73 @@
 # DecisionOps Commerce
 
-A local staff assistant for a fictional store's lost shipments. It gathers cited
-evidence, proposes a replacement or explains the missing facts, and requires staff
-to approve the **exact proposal** and separately confirm execution. PostgreSQL
-rechecks records, reserves stock and prevents duplicate fictional replacements.
+A local delivery workspace for a fictional shop dispatching from Paris to France.
+Staff ask delivery questions, open an exception, and delegate a lost parcel to a
+LangGraph coordinator and two specialists. Commerce checks seven conditions;
+an approver reviews the exact proposal and separately confirms a fictional
+replacement. PostgreSQL owns evidence, approvals, stock reservations and recovery.
 
 ```mermaid
 flowchart LR
-    E[Read-only<br/>evidence] -->|eligible| P[Replacement<br/>proposal]
-    E -->|blocked or unknown| R[Explain blocker<br/>or staff review]
-    P --> A[Exact staff approval<br/>Separate confirmation]
-    A --> X[Recheck<br/>and execute]
+  C[Carrier fixtures] --> D[Delivery report and exception queue]
+  D --> S[Staff chat: server-owned selected case]
+  S --> B[Coordinator: bind order and policy]
+  B --> O[Order specialist: payment and compensation]
+  B --> H[Shipment specialist: fulfilment and carrier]
+  O --> J[Join committed evidence; check stock and Commerce rules]
+  H --> J
+  J --> R[Proposal or explicit review]
+  R --> A[Exact approval then separate confirmation]
+  A --> E[Commerce execution and reconciliation]
 ```
 
-Deterministic checks lead to a proposal or review; staff must approve the exact
-proposal and separately confirm before execution.
+## Run the demo
 
-The final application uses one [`compose.yaml`](compose.yaml); verification fixtures
-are separate under `tests/compose/`.
-
-## Run the fictional demo
-
-Requires Git, Bash, curl, Docker Engine and Compose **2.24.4+**, an x86-64 host,
-about **4 GB available RAM**, and disk space for images. The first build needs
-registry/PyPI/npm access; no host Python/Node, private configuration or API key.
-Local rehearsal reused cached layers; fully uncached host retrieval remains a
-separate prerequisite. Dependencies and base images are locked.
+The single application definition is [`compose.yaml`](compose.yaml). Requires
+Docker Engine/Compose2.24.4+, registry access, x86-64, about4GB free RAM. No API key
+or model download is needed. Set your own local fictional demo password:
 
 ```bash
-git clone https://github.com/richardcheam/decisionops.git
-cd decisionops
-export COMMERCE_DEMO_PASSWORD='fictional-demo-password-only'
+export COMMERCE_DEMO_PASSWORD='choose-a-local-demo-password'
+export COMMERCE_DEMO_MODE=mock-specialists
 bash scripts/demo.sh build
 bash scripts/demo.sh start
 bash scripts/demo.sh health
 ```
 
-Open **http://127.0.0.1:8133**, sign in as **visitor** with that password, and select
-**ORD-1042 → Start review → Investigate shipment**. Review gathered evidence, approve
-the exact proposal, then separately confirm replacement creation. **ORD-HISTORY**
-shows why incomplete compensation history requires review instead.
+Open **http://127.0.0.1:8133**, sign in as **visitor**, and follow this walkthrough:
 
-Rules are the default. For a new, unexecuted case, optionally select mocked specialists:
+1. Ask **“How many deliveries did we complete this week?”** Fresh seed:3 completed,
+   9 open,8 overdue and9 exceptions. The report shows Paris-local date bounds and freshness.
+2. Ask **“Were there any problems?”** Open the **DEMO-LYON** parcel from a report
+   link or the queue. Its overdue trigger and verified carrier loss are distinct facts.
+3. Ask **“Fix this”**. Watch both specialist tracks and the cited evidence.
+   **“What’s still missing?”** reads progress without starting another run.
+4. Review the proposal ID and content hash, approve it, then separately confirm
+   replacement creation. The completed result comes from the execution record.
+5. Open **DEMO-CONFLICT**, **DEMO-HISTORY**, **DEMO-REPLACED**, or **DEMO-OUTAGE**
+   for safe review/blocker examples. **DEMO-SPLIT** requires explicit parcel selection
+   and unsupported partial replacements stay in review.
+
+Queue updates run in the background without chat. “Notifications” mean in-app case
+updates. Reporting counts distinct parcels with verified delivered events in the
+Paris week; open/overdue use all dispatched parcels, a separate cohort. A conflicting
+parcel can have a delivered event and remain an operational exception.
+
+`COMMERCE_DEMO_MODE=rules` retains the rules reference. Demo specialists make
+**simulated choices**. Paid product/evaluation endpoints, real merchants/carriers,
+MCP/A2A and telemetry exports are outside this release. Production identity
+integration is a later step; this local demo retains Basic auth and optional staff
+and approver roles.
+
+Stop with `bash scripts/demo.sh stop`. Seeds are insert-once; replay preserves staff
+work. For a new current-week launch, explicitly reset only the fictional demo volume:
 
 ```bash
-export COMMERCE_DEMO_MODE=mock-specialists
+COMMERCE_DEMO_RESET=decisionops-github-demo bash scripts/demo.sh reset
 bash scripts/demo.sh start
-# When finished; data is retained:
-bash scripts/demo.sh stop
 ```
 
-Changing modes does not erase compensation history. Reset is explicit and restricted
-to this demo's fictional volume; see the operator guide. No paid calls or telemetry
-are initiated by this demo, tests or CI. Live API use remains separately authorized
-and manual-only. No public deployment or real-shop integration is claimed.
-
-- [Architecture: specialist flow and recovery boundary](docs/ARCHITECTURE.md)
-- [Operation, reset, checks and rollback](docs/RELEASE.md)
-- [Evidence, screenshots and unverified scenarios](docs/EVIDENCE.md)
-- [Archive and retained historical diagnostics](docs/ARCHIVE.md)
-
-Mocked specialists demonstrate proposal, partial-failure review and restart without
-redispatch or duplicate proposal. Exact approval/execution was checked in the ordinary
-browser flow; final-join wrong-case/conflicting-row scenarios and execution after
-restart remain unverified. Historical live API/browser investigations did not complete
-successful proposals; they do not establish live multi-agent quality.
+See [isolated local launch, checks and evidence](docs/DELIVERY_WORKSPACE.md),
+[measured comparison and acceptance](docs/DELIVERY_VERIFICATION.md), and
+[historical evidence](docs/EVIDENCE.md). The old evidence document records earlier
+limitations and live runs; it is not evidence for this release's live model quality.

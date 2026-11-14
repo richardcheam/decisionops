@@ -18,9 +18,11 @@ from .cases import clock, identifier
 from .jobs import LeaseLost
 from .adaptive_policies import Action
 
+from .workflow_registry import LOST_SHIPMENT
+
 CONTRACT = 'commerce-specialists/v1'
-OWNED = {'order': ('payment', 'fulfilment'), 'shipment': ('carrier_loss', 'fulfilment')}
-REQUIRED = {'order': ('fulfilment', 'payment'), 'shipment': ('carrier_loss',)}
+OWNED = dict(LOST_SHIPMENT.branches)
+REQUIRED = OWNED
 
 
 def start(engine, case_id, report, **kwargs):
@@ -79,11 +81,12 @@ def specialist_result(c,run,specialist):
         next((r['error'] for r in rows if r['error']),None))
 
 
-def support(engine, fence, tools=('order_manifest', 'replacement_policy'), cancel=None):
+def support(engine, fence, tools=LOST_SHIPMENT.prerequisites, cancel=None):
     for tool in tools:
         if stopped(cancel): return current(engine, fence)
         run = current(engine, fence)
         if run['state'] != 'active': return run
+        if run.get('evidence_error'): return reject_evidence(engine, fence)
         with service.transaction(engine, readonly=True) as c:
             history = service.snapshot(c, run)[0]
             if ready(history, tool, clock(c)): continue
@@ -95,7 +98,7 @@ def support(engine, fence, tools=('order_manifest', 'replacement_policy'), cance
     return current(engine, fence)
 
 
-def reserve(engine, fence, specialist):
+def reserve(engine, fence, specialist, source='simulated_specialist'):
     from .specialist_contracts import SpecialistRequest
     if specialist not in OWNED: raise ValueError('Unknown specialist')
     run_id = current(engine, fence)['id']
@@ -105,16 +108,18 @@ def reserve(engine, fence, specialist):
         rows = calls(c, run_id, specialist)
         if rows and (rows[-1]['state'] != 'settled' or rows[-1]['disposition']=='pending'):
             return rows[-1]  # Reuse reservation, never repeat an unknown dispatch.
-        if result_status(c, run, specialist) != 'pending': return None
+        status = result_status(c, run, specialist)
+        history, _, _, _, counts = service.snapshot(c, run)
+        retryable = status == 'unavailable' and any(
+            obs.record()['status'] == 'unavailable' and counts.get(tool, 0) < 2
+            for tool in REQUIRED[specialist] for obs in history.active(tool))
+        if status != 'pending' and not retryable: return None
         now = clock(c)
         branch_end = (rows[0]['created_at'] if rows else now) + timedelta(seconds=60)
         if len(rows) >= 4 or run['decision_attempts'] >= 16 or run['tool_attempts'] >= 12 or now >= branch_end: return None
-        history, _, _, _, counts = service.snapshot(c, run)
         allowed = []
         for tool in OWNED[specialist]:
-            # Shipment may explicitly refresh fulfilment; the returned carrier fact
-            # still depends on that new observation. No hidden dependency queries.
-            if ready(history, tool, now) and not (specialist == 'shipment' and tool == 'fulfilment'): continue
+            if ready(history, tool, now): continue
             if counts.get(tool, 0) >= 2: continue
             try:
                 for dep in DEPENDENCIES[tool]: history.select(dep, now)
@@ -137,7 +142,7 @@ def reserve(engine, fence, specialist):
             request=bound, request_hash=sha256(canonical(bound).encode()).hexdigest(), state='reserved',
             deadline=min(run['deadline'], branch_end, now+timedelta(seconds=5)), created_at=now))
         service.step(c, run, 'specialist_reserved', {'specialist': specialist, 'call_id': call_id,
-            'source': 'mock_specialist', 'allowed_actions': [a.record() for a in allowed]}, decision_attempts=run['decision_attempts']+1)
+            'source': source, 'allowed_actions': [a.record() for a in allowed]}, decision_attempts=run['decision_attempts']+1)
         return get(c, call_id)
 
 
@@ -175,7 +180,7 @@ def choose(engine, fence, call, adapter, cancel=None):
             return get(c, saved['id'])
         c.execute(db.specialist_calls.update().where(db.specialist_calls.c.id == saved['id']).values(
             state='dispatching', dispatch_count=1, dispatch_token=fence.token))
-        service.step(c, run, 'specialist_dispatched', {'specialist': saved['specialist'], 'call_id': saved['id'], 'source': 'mock_specialist'})
+        service.step(c, run, 'specialist_dispatched', {'specialist': saved['specialist'], 'call_id': saved['id'], 'source': getattr(adapter, 'decision_source', 'fixture_specialist')})
     if stopped(cancel):
         uncertain(engine, call['id'], fence.token, 'shutdown_before_adapter'); return None
     signal = Event(); queue = Queue(maxsize=1); started = time.monotonic()
@@ -213,7 +218,7 @@ def choose(engine, fence, call, adapter, cancel=None):
                 elapsed_ms=int((time.monotonic()-started)*1000), error=error if valid else 'late_or_stale_result',
                 disposition='pending' if valid and not error else 'discarded'))
             service.step(c, run, 'specialist_decision', {'specialist': saved['specialist'], 'call_id': saved['id'], 'action': decision,'tool':decision.get('tool'),
-                'status': 'accepted' if valid and not error else 'discarded', 'source': 'mock_specialist'})
+                'status': 'accepted' if valid and not error else 'discarded', 'source': getattr(adapter, 'decision_source', 'fixture_specialist')})
             return get(c, call['id'])
     except (LeaseLost, TimeoutError):
         uncertain(engine, call['id'], fence.token, 'late_or_unowned_result'); return None
@@ -241,9 +246,12 @@ def read(engine, fence, call, cancel=None):
     if stopped(cancel): return  # Persisted reading remains interrupted, no guessed result.
     with service.transaction(engine, readonly=True) as c:
         c.info['adaptive_tool'] = tool
-        bounded = service.DeadlineConnection(c, branch_end)
-        fence.check(bounded, run, False)
-        obs = read_tool(bounded, tool, AssessmentRequest(**run['request']), history, clock(bounded), dependencies=dependencies)
+        try:
+            bounded = service.DeadlineConnection(c, branch_end)
+            fence.check(bounded, run, False)
+            obs = read_tool(bounded, tool, AssessmentRequest(**run['request']), history, clock(bounded), dependencies=dependencies)
+        finally:
+            c.info.pop('adaptive_tool', None)
     # Result history is immutable even when late, wrong-bound, or ownership changed.
     with service.transaction(engine) as raw:
         c = service.bounded_active(raw, run['id']); actual, case = service.locked(c, run['id'])
@@ -287,11 +295,12 @@ def branch(engine, fence, specialist, adapter=None, until_binding=False, cancel=
         if stopped(cancel): break
         run = current(engine, fence)
         if run['state'] != 'active': break
+        if run.get('evidence_error'): return reject_evidence(engine, fence)
         with service.transaction(engine, readonly=True) as c:
             history = service.snapshot(c, run)[0]
             if until_binding and ready(history, 'fulfilment', clock(c)): break
         jobs.renew(engine, fence.job_id, fence.token)
-        call = reserve(engine, fence, specialist)
+        call = reserve(engine, fence, specialist, getattr(adapter, 'decision_source', 'fixture_specialist'))
         if call is None: break
         if call['state'] == 'reserved': call = choose(engine, fence, call, adapter, cancel)
         if call is None or call['state'] != 'settled' or call['error']: break
@@ -318,14 +327,31 @@ def recover(engine, fence):
     return current(engine, fence)
 
 
+def reject_evidence(engine, fence):
+    """End safely when immutable evidence cannot be reconstructed or scoped.
+
+    Retain rejected database rows for audit. An empty authority projection prevents
+    even otherwise valid sibling evidence from concealing a corrupted commitment.
+    """
+    from .adaptive_evidence import History
+    run = current(engine, fence)
+    with service.guarded(engine, run['id'], fence) as (c, actual, case):
+        if actual['state'] == 'active':
+            service.finish(c, actual, case, History(actual['request']), 'invalid_committed_evidence',
+                           stale=not service.matches(actual, case))
+    jobs.complete(engine, fence)
+    return current(engine, fence)
+
+
 def join(engine, fence, cancel=None):
     if stopped(cancel): return current(engine, fence)
     run = current(engine, fence)
     if run['state'] != 'active': return run
+    if run.get('evidence_error'): return reject_evidence(engine, fence)
     with service.transaction(engine, readonly=True) as c:
         states = {name: result_status(c, run, name) for name in OWNED}
     if all(v == 'complete' for v in states.values()):
-        run = support(engine, fence, ('compensation_history', 'inventory'), cancel)
+        run = support(engine, fence, ('inventory',), cancel)
     if stopped(cancel) or run['state'] != 'active': return run
     with service.guarded(engine, run['id'], fence) as (c, run, case):
         history = service.snapshot(c, run)[0]
@@ -349,10 +375,17 @@ def trace(engine, run_id):
     with service.transaction(engine,readonly=True) as c:
         run=service.inspect_connection(c,run_id)
         saved=calls(c,run_id)
+        if run.get('evidence_error'):
+            return {'contract': CONTRACT, 'mode': 'evidence-rejected', 'run_id': run_id,
+                'case_id': run['case_id'], 'generation': run['generation'], 'case_revision': run['case_revision'],
+                'request': run['request'], 'state': run['state'], 'evidence_error': run['evidence_error'],
+                'terminal': run['terminal'], 'specialists': [], 'steps': [], 'calls': [], 'evidence': [],
+                'budgets': {k:run[k] for k in ('decision_attempts','tool_attempts')},
+                'api_charge_usd': 'unmeasured', 'export_enabled': False}
         history=service.snapshot(c,run)[0]
         active={o.id:o for o in history.active()}
         branches=[specialist_result(c,run,name).record() for name in OWNED]
-    return {'specialists':branches,'contract': CONTRACT, 'mode': 'mocked-model-choices', 'run_id': run_id, 'case_id': run['case_id'],
+    return {'specialists':branches,'contract': CONTRACT, 'mode': ('model-directed-choices' if any(s['data'].get('source') == 'model_directed_specialist' for s in run['steps']) else 'simulated-model-choices'), 'run_id': run_id, 'case_id': run['case_id'],
         'generation': run['generation'], 'case_revision': run['case_revision'], 'request':run['request'],'state': run['state'],
         'elapsed_ms': int(((run['steps'][-1]['created_at'] if run['state']!='active' else datetime.now(timezone.utc))-run['created_at']).total_seconds()*1000),
         'budgets': {k:run[k] for k in ('decision_attempts','tool_attempts')}, 'terminal': run['terminal'],
@@ -362,7 +395,7 @@ def trace(engine, run_id):
             'applicability':'current' if o['id'] in active and not history.invalid_reason(active[o['id']],datetime.now(timezone.utc)) and not history.content_conflict(o['tool']) else 'unapplied_or_invalid','source_version':o['source_version'],'observed_at':o['observed_at'],'expires_at':o['expires_at'],
             'source':{'order_id':o['request']['order_id'],'shipment_id':o['request']['shipment_id'],
                 'declared_queries':[{'table':table,'columns':list(columns)} for table,columns in PROJECTIONS[o['tool']]]}} for o in run['observations']],
-        'api_charge_usd': '0', 'export_enabled': False}
+        'api_charge_usd': ('unmeasured' if any(s['data'].get('source') == 'model_directed_specialist' for s in run['steps']) else '0'), 'export_enabled': False}
 
 
 def main():

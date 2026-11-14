@@ -7,8 +7,8 @@ from .adaptive_policies import Action
 CONTRACT = 'commerce-specialist-action/v1'
 MAX_DECISIONS = 4
 MAX_DECISION_MS = 5000
-SPECIALIST_TOOLS = {'order': ('payment', 'fulfilment'),
-                    'shipment': ('carrier_loss', 'fulfilment')}
+from .workflow_registry import LOST_SHIPMENT
+SPECIALIST_TOOLS = dict(LOST_SHIPMENT.branches)
 OBSERVATION_FEATURES = {'tool', 'value', 'status', 'reason', 'scope_known', 'scope_reasons'}
 
 
@@ -136,6 +136,7 @@ def validate_action(request, raw):
 
 class MockSpecialist:
     """Deterministic simulated specialist; report cues change actual read choices."""
+    decision_source = 'simulated_specialist'
     def choose(self, request, cancel=None):
         if cancel is not None and cancel.is_set():
             raise RuntimeError('Specialist cancelled')
@@ -143,7 +144,7 @@ class MockSpecialist:
             raise RuntimeError('Specialist budget exhausted')
         report = request.report.lower()
         if request.specialist == 'order':
-            preferred = ('payment', 'fulfilment') if 'payment' in report else ('fulfilment', 'payment')
+            preferred = ('payment', 'compensation_history') if 'payment' in report else ('compensation_history', 'payment')
         else:
             preferred = ('fulfilment', 'carrier_loss') if 'refresh' in report else ('carrier_loss', 'fulfilment')
         reads = [a for a in request.allowed if a.kind == 'read']
@@ -220,3 +221,43 @@ class SpecialistResult:
         if not isinstance(raw, dict) or set(raw) != keys or not isinstance(raw['observation_ids'], list):
             raise ValueError('Invalid specialist result record')
         return cls(**dict(raw, observation_ids=tuple(raw['observation_ids'])))
+
+
+class ModelDirectedSpecialist:
+    """Explicit opt-in typed transport; no provider, credentials or endpoint loaded.
+
+    The worker enforces the external-wait deadline and ownership fence. Transports
+    receive bounded public features and must honor timeout_ms/cancel. Replies echo
+    the audit binding and select exactly one currently allowed action. No model
+    text supplies an observation or a business fact.
+    """
+    decision_source = 'model_directed_specialist'
+
+    def __init__(self, transport, *, enabled=False):
+        if enabled is not True or not callable(transport):
+            raise ValueError('Model-directed transport requires explicit configuration')
+        self.transport = transport
+
+    def choose(self, request, cancel=None):
+        import time
+        if not isinstance(request, SpecialistRequest): raise ValueError('Typed specialist request required')
+        if cancel is not None and cancel.is_set(): raise RuntimeError('Specialist cancelled')
+        if request.budgets['decisions'] <= 0 or request.budgets['remaining_ms'] <= 0:
+            raise RuntimeError('Specialist budget exhausted')
+        binding = dict(run_id=request.run_id, call_id=request.call_id, generation=request.generation,
+                       case_revision=request.case_revision)
+        timeout = request.budgets['remaining_ms']
+        started = time.monotonic()
+        raw = self.transport(dict(binding=binding.copy(), features=request.features()),
+                             timeout_ms=timeout, cancel=cancel)
+        if (time.monotonic()-started)*1000 >= timeout: raise TimeoutError('Specialist decision deadline')
+        if cancel is not None and cancel.is_set(): raise RuntimeError('Specialist cancelled')
+        if isinstance(raw, str):
+            if len(raw.encode('utf-8')) > 8192: raise ValueError('Specialist reply exceeds byte cap')
+            try: raw = json.loads(raw)
+            except ValueError: raise ValueError('Specialist reply must be JSON') from None
+        raw = _bounded(raw, 8192)
+        if (not isinstance(raw, dict) or set(raw) != {*binding, 'action'}
+                or any(type(raw[k]) is not type(v) or raw[k] != v for k,v in binding.items())):
+            raise ValueError('Stale or malformed specialist reply binding')
+        return validate_action(request, raw['action'])

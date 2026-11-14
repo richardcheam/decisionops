@@ -41,6 +41,7 @@ services:
       <<: *store
       COMMERCE_STAFF_USERNAME: visitor
       COMMERCE_STAFF_PASSWORD: ${COMMERCE_DEMO_PASSWORD:?Set an explicit invitation password (at least 16 characters)}
+      COMMERCE_HELPER_PASSWORD: ${COMMERCE_HELPER_PASSWORD:-}
       COMMERCE_STAFF_INVESTIGATION_MODE: ${COMMERCE_DEMO_MODE:-rules}
       COMMERCE_ORIGINS: ${COMMERCE_DEMO_ORIGIN:-http://127.0.0.1:${COMMERCE_DEMO_PORT:-8133}}
     depends_on:

@@ -86,3 +86,23 @@ class ConversationTests(unittest.TestCase):
         self.assertEqual(after['proposal'],proposal)
         evidence=after['shipment_investigation']['evidence']
         self.assertTrue(any(e['tool']=='inventory' and e['value'] is None and e['applicability']=='refresh_required' for e in evidence))
+
+    def test_bounded_routing_transport_times_out_and_rejects_late_result(self):
+        from decisionops.commerce.conversations import BoundedRouter
+        import time
+        def late(_):time.sleep(.1);return {'kind':'investigate'}
+        with self.assertRaises(TimeoutError):BoundedRouter(late,timeout_seconds=.01).choose('Fix this')
+
+    def test_older_run_generation_is_never_current_in_detail_or_chat(self):
+        from decisionops.commerce.staff_investigations import work_once
+        from decisionops.commerce.cases import investigate_case
+        client=self.client();case=self.case();identity=self.conversation(client)
+        client.post('/api/conversations/'+identity+'/select',json={'case_id':case['id']})
+        self.say(client,identity,'Fix this');work_once(self.engine)
+        with self.engine.connect().execution_options(isolation_level='READ COMMITTED') as c,c.begin():investigate_case(c,case['id'])
+        detail=client.get('/api/cases/'+case['id']).json()['shipment_investigation']
+        self.assertFalse(detail['evidence_current'])
+        self.assertTrue(all(e['value'] is None for e in detail['evidence']))
+        reply=self.say(client,identity,'status').json()
+        self.assertFalse(reply['evidence_current']);self.assertFalse(reply['investigation']['evidence_current'])
+        self.assertTrue(all(v is None for v in reply['investigation']['facts'].values()))

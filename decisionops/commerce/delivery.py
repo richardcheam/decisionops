@@ -158,6 +158,14 @@ def scan(connection, store_id, now=None):
     """
     now = aware(clock(connection,now))
     _lock(connection,store_id)
+    # Acquire every existing case before inserts take order FK locks. This keeps
+    # scanning consistent with Commerce's case -> order lock order even when a
+    # new parcel and an existing peer case belong to the same split order.
+    existing=connection.execute(sa.select(db.delivery_case_links.c.case_id).where(
+        db.delivery_case_links.c.store_id==store_id)).scalars().all()
+    if existing:
+        connection.execute(sa.select(db.cases.c.id).where(db.cases.c.id.in_(existing))
+            .order_by(db.cases.c.id).with_for_update()).all()
     for row in _rows(connection,store_id):
         scope = (db.delivery_case_links.c.store_id==store_id,db.delivery_case_links.c.shipment_id==row['shipment_id'])
         link = connection.execute(sa.select(db.delivery_case_links).where(*scope)).mappings().one_or_none()
@@ -166,6 +174,17 @@ def scan(connection, store_id, now=None):
         if not link:
             items = dict(connection.execute(sa.select(db.shipment_lines.c.variant_id,db.shipment_lines.c.quantity).where(
                 db.shipment_lines.c.shipment_id==row['shipment_id'])).all())
+            if not items:
+                # Bind the requested order quantities, without asserting they
+                # shipped. The fulfilment tool will report the missing manifest.
+                items=dict(connection.execute(sa.select(db.order_lines.c.variant_id,db.order_lines.c.quantity)
+                    .where(db.order_lines.c.order_id==row['order_id'])).all())
+            if not items:
+                # No valid replacement request exists. Retain source rows; do
+                # not let one malformed order prevent unrelated jobs running.
+                import logging
+                logging.getLogger(__name__).warning('delivery_scope_unavailable')
+                continue
             case = open_case(connection,AssessmentRequest(row['order_id'],row['shipment_id'],items),now)
             connection.execute(db.delivery_case_links.insert().values(store_id=store_id,shipment_id=row['shipment_id'],
                 order_id=row['order_id'],case_id=case['id'],active=True))

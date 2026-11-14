@@ -31,13 +31,24 @@ class DemoRouter:
 class BoundedRouter:
     """Optional transport gets bounded text and emits exactly one typed intent.
 
-    Host integrations supply their own timeout/budgeted transport. This adapter
-    cannot receive tool, case, approval or execution arguments from model output.
+    One decision, at most five seconds; late output is discarded. Integrations
+    must also bound their transport I/O. No tool or authority fields are accepted.
     """
-    def __init__(self,transport):self.transport=transport
+    def __init__(self,transport,*,timeout_seconds=1):
+        if type(timeout_seconds) not in (int,float) or not 0<timeout_seconds<=5:raise ValueError('Routing deadline must be 0..5 seconds')
+        self.transport=transport;self.timeout_seconds=timeout_seconds
     def choose(self,message):
         if not isinstance(message,str) or len(message.encode())>2000:raise ValueError('Message too large')
-        raw=self.transport({'message':message,'allowed_intents':list(KINDS)})
+        from queue import Queue,Empty
+        from threading import Thread
+        results=Queue(maxsize=1)
+        def invoke():
+            try:results.put(('result',self.transport({'message':message,'allowed_intents':list(KINDS)})))
+            except Exception as error:results.put(('error',type(error).__name__))
+        Thread(target=invoke,daemon=True).start()
+        try:kind,raw=results.get(timeout=self.timeout_seconds)
+        except Empty:raise TimeoutError('Routing decision deadline reached') from None
+        if kind=='error':raise ValueError('Routing transport failed')
         if isinstance(raw,str):
             if len(raw.encode())>2048:raise ValueError('Routing reply too large')
             raw=json.loads(raw)
@@ -96,6 +107,8 @@ def status(c,case):
     if stale:
         for evidence in investigation['evidence']:
             evidence['value']=None;evidence['applicability']='refresh_required'
+        investigation['evidence_current']=False
+        investigation['facts']={fact:None for fact in investigation['facts']}
         text='Saved evidence expired or source records changed. Explicitly refresh the investigation before relying on it.'
     elif investigation['state']=='active':text='Investigation in progress. Saved checks are shown below.'
     elif case['status']=='approved':text='Exact proposal approved. Separate confirmation is required to create the replacement.'
