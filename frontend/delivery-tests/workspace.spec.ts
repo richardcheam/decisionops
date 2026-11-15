@@ -108,6 +108,9 @@ test('queue selection is independent per browser session and split order asks fo
     const ambiguous = await ask(other, 'Fix order DEMO-SPLIT');
     expect(ambiguous.intent).toBe('clarify');
     expect(ambiguous.case_links.length).toBeGreaterThan(1);
+    const alternatives=await ask(other,'Fix DEMO-LYON or DEMO-OVERDUE');
+    expect(alternatives.intent).toBe('clarify');expect(alternatives.selected_case_id).toBeNull();
+    expect(new Set(alternatives.case_links.map((r:{order_id:string})=>r.order_id))).toEqual(new Set(['DEMO-LYON','DEMO-OVERDUE']));
     await expect(other.getByTestId('selected-case')).toContainText('No case selected');
     await queue.getByRole('button').filter({ hasText: 'DEMO-CONFLICT' }).click();
     await page.getByText('Carrier timeline and provenance', { exact: true }).click();

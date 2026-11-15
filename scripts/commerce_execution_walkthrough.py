@@ -78,6 +78,10 @@ def main():
                        for table in ('commerce_operations', 'commerce_replacement_orders', 'commerce_replacement_lines',
                                      'commerce_reservations', 'resolutions', 'inventory')}
             assert len(records['commerce_operations']) == 1
+            for table in ('commerce_replacement_orders','commerce_replacement_lines','commerce_reservations'):
+                assert len(records[table]) == 1,table
+            assert sum(row['quantity'] for row in records['commerce_reservations']) == 1
+            assert len([row for row in records['resolutions'] if row['operation_id']==operation]) == 1
             blue = next(row for row in records['inventory'] if row['variant_id'] == 'shirt-blue-M')
             assert blue['reserved'] == 2 and blue['on_hand'] == 10
         (directory / 'business-records.json').write_text(canonical(records))

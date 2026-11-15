@@ -70,6 +70,9 @@ class SpecialistAcceptanceTests(unittest.TestCase):
             self.assertEqual(c.exec_driver_sql('SELECT count(*) FROM commerce_proposals').scalar_one(), 1)
             self.assertEqual(c.exec_driver_sql('SELECT count(*) FROM commerce_operations').scalar_one(), 1)
             self.assertEqual(c.exec_driver_sql('SELECT count(*) FROM commerce_reservations').scalar_one(), 1)
+            self.assertEqual(c.exec_driver_sql('SELECT count(*) FROM commerce_replacement_orders').scalar_one(), 1)
+            self.assertEqual(c.exec_driver_sql('SELECT count(*) FROM commerce_replacement_lines').scalar_one(), 1)
+            self.assertEqual(c.exec_driver_sql('SELECT sum(quantity) FROM commerce_reservations').scalar_one(), 1)
 
     def test_final_join_rejects_foreign_evidence_inserted_through_actual_storage(self):
         from decisionops.commerce import multi_agent as multi, schema as db

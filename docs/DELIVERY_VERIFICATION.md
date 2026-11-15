@@ -1,5 +1,10 @@
 # Delivery workspace verification
 
+> Historical implementation handoff. Dedicated follow-up supervision found and
+> corrected additional A6 gaps. See [DELIVERY_SUPERVISION.md](DELIVERY_SUPERVISION.md)
+> for the corrections and new SHA-pinned verification method. The counts below
+> are historical and are not evidence that every command ran on a later SHA.
+
 This release uses fictional records and simulated choices. The report in
 [`reports/delivery-workspace/comparison.json`](../reports/delivery-workspace/comparison.json)
 contains33 real PostgreSQL product runs across11 frozen cases, with the same source

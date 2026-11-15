@@ -215,3 +215,32 @@ class ConversationTests(unittest.TestCase):
         self.assertEqual(approved.status_code,200)
         self.assertTrue(self.say(client,identity,'status').json()['evidence_current'])
         self.assertEqual(client.get('/api/cases/'+case['id']).json()['approval'],approved.json()['approval'])
+
+    def test_router_cannot_replace_or_omit_staff_explicit_order_scope(self):
+        from decisionops.commerce.conversations import BoundedRouter
+        from decisionops.commerce.api import create_app
+        from fastapi.testclient import TestClient
+        from decisionops.commerce import schema as db
+        one=self.case();two=self.case('STOCK',{'shirt-red-M':1});base=self.client()
+        for action in ({'kind':'investigate','order_id':'ORD-STOCK'},{'kind':'investigate'}):
+            with self.subTest(action=action):
+                client=TestClient(create_app(self.engine,password='fictional-test-password',staff_investigation_mode='mock-specialists',
+                    conversation_router=BoundedRouter(lambda _,action=action:action)),headers=base.headers)
+                identity=self.conversation(client)
+                client.post('/api/conversations/'+identity+'/select',json={'case_id':two['id']})
+                response=self.say(client,identity,'Fix ORD-1042').json()
+                self.assertEqual(response['selected_case_id'],one['id'])
+        client=TestClient(create_app(self.engine,password='fictional-test-password',staff_investigation_mode='mock-specialists',
+            conversation_router=BoundedRouter(lambda _:{'kind':'status','order_id':'ORD-STOCK'})),headers=base.headers)
+        identity=self.conversation(client)
+        client.post('/api/conversations/'+identity+'/select',json={'case_id':one['id']})
+        self.assertEqual(self.say(client,identity,'status').json()['selected_case_id'],one['id'])
+        outside=TestClient(create_app(self.engine,password='fictional-test-password',store_id='another-store',
+            conversation_router=BoundedRouter(lambda _:{'kind':'investigate','order_id':'ORD-STOCK'})),headers=base.headers)
+        foreign=self.conversation(outside)
+        response=self.say(outside,foreign,'Fix ORD-1042').json()
+        self.assertEqual(response['intent'],'clarify');self.assertIsNone(response['selected_case_id'])
+        self.assertEqual(response['case_links'],[])
+        with self.engine.connect() as c:
+            rows=c.execute(db.adaptive_runs.select()).mappings().all()
+            self.assertEqual(len(rows),1);self.assertEqual(rows[0]['request']['order_id'],'ORD-1042')

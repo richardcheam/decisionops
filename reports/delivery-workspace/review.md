@@ -1,5 +1,9 @@
 # Independent review record
 
+This is the historical implementation review. The dedicated follow-up supervisor
+audit and additional corrections are described in
+[DELIVERY_SUPERVISION.md](../../docs/DELIVERY_SUPERVISION.md).
+
 Base:3eccbdf2db4a5db1a8a749c6c3a3112b751648c3. Reviews and fixes stayed local.
 No external messaging, paid product/evaluation calls, model downloads or real
 merchant/carrier integrations were used.

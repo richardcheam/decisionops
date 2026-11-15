@@ -126,6 +126,12 @@ def message(c,engine,conversation,text,request_id,mode,router=None,now=None):
     # Scope ambiguity is resolved by staff, before any configured router can
     # choose a case or request an investigation on their behalf.
     intent=Intent('clarify') if len(references)>1 else (router or DemoRouter()).choose(text)
+    if len(references)==1:
+        intent=Intent(intent.kind,references[0])
+    elif not references and intent.order_id is not None:
+        # A router chooses an intent, never a new case binding. Without an
+        # explicit staff reference, keep the server-owned session selection.
+        intent=Intent(intent.kind)
     selected=conversation['selected_case_id'];links=[];store=conversation['store_id']
     if len(references)>1:
         matches=c.execute(sa.select(db.cases).join(db.orders,db.orders.c.id==db.cases.c.order_id).where(

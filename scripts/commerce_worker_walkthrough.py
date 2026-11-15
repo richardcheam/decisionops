@@ -71,6 +71,9 @@ def main():
         assert cli('reconcile','case_demo','reconcile','--operation',operation)['status']=='verified'
         with engine.connect() as connection:
             assert connection.exec_driver_sql('SELECT COUNT(*) FROM commerce_operations').scalar_one()==1
+            for table in ('commerce_proposals','commerce_replacement_orders','commerce_replacement_lines','commerce_reservations'):
+                assert connection.exec_driver_sql('SELECT count(*) FROM '+table).scalar_one()==1,table
+            assert connection.exec_driver_sql('SELECT sum(quantity) FROM commerce_reservations').scalar_one()==1
             assert connection.exec_driver_sql("SELECT reserved FROM inventory WHERE variant_id='shirt-blue-M'").scalar_one()==2
         print('expired claim recovered: attempt 2; original worker token fenced')
         print('review interrupt persisted across processes; fake resume rejected')

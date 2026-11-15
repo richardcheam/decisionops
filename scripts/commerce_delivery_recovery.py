@@ -23,6 +23,7 @@ def main():
     from decisionops.commerce import staff_investigations as staff,multi_agent as multi
     from decisionops.commerce.multi_agent_workflow import checkpoint_url
     from decisionops.commerce.jobs import enqueue
+    from decisionops.commerce.execution import reconcile
     from decisionops.commerce.worker import work_once
     from decisionops.commerce.workflow import setup_checkpoints,graph_schema
     url=os.environ.get('COMMERCE_TEST_DATABASE_URL')
@@ -74,8 +75,13 @@ graph.run(engine,jobs.Fence(owned['id'],owned['token']),after_node=hard_exit)
             assert c.exec_driver_sql('SELECT count(*) FROM commerce_proposals').scalar_one()==1
             assert c.exec_driver_sql('SELECT count(*) FROM commerce_operations').scalar_one()==1
             assert c.exec_driver_sql('SELECT count(*) FROM commerce_reservations').scalar_one()==1
+            assert c.exec_driver_sql('SELECT count(*) FROM commerce_replacement_orders').scalar_one()==1
+            assert c.exec_driver_sql('SELECT count(*) FROM commerce_replacement_lines').scalar_one()==1
+            assert c.exec_driver_sql('SELECT sum(quantity) FROM commerce_reservations').scalar_one()==1
+            assert c.exec_driver_sql("SELECT reserved FROM inventory WHERE variant_id='shirt-blue-M'").scalar_one()==2
+            assert reconcile(c,operation)['status']=='verified'
             assert show_case(c,case['id'])['status']=='executed'
-        print(json.dumps({'hard_exit':73,'committed_order_steps_reused':2,'proposals':1,'operations':1,'reservations':1,'duplicate_confirmation':'same_job','paid_calls':0}))
+        print(json.dumps({'hard_exit':73,'committed_order_steps_reused':2,'proposals':1,'operations':1,'reservations':1,'replacement_orders':1,'replacement_lines':1,'reserved_units':1,'operation_status':'verified','duplicate_confirmation':'same_job','paid_calls':0}))
     finally:
         engine.dispose()
         with admin.begin() as c:

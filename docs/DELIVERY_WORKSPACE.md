@@ -75,7 +75,8 @@ export COMMERCE_BROWSER_PATH=/usr/bin/brave-browser
 ```
 
 Direct Playwright invocation requires the runner's foreign-store fixture and
-`COMMERCE_FOREIGN_CASE_ID`; an ordinary manual demo seed alone does not supply it.
+`COMMERCE_FOREIGN_CASE_ID` and `COMMERCE_STALE_CASE_ID`; an ordinary manual demo
+seed alone does not supply these verification fixtures.
 
 The browser suite performs a fictional replacement. Reset using a new isolated
 browser database before repeating the entire suite. The legacy suites remain under
