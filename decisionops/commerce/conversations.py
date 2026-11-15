@@ -87,7 +87,7 @@ def status(c,case):
         verified=reconcile(c,operation)
         return {'intent':'status','text':'Replacement verified.' if verified['status']=='verified' else 'Replacement requires reconciliation.', 'operation':verified}
     investigation=view(c,case['id'])
-    if not investigation:
+    if not investigation or investigation.get('historical'):
         if case['proposal_id']:
             from .investigations import recheck
             check=recheck(c,case['proposal_id'],clock(c))
@@ -154,6 +154,7 @@ def message(c,engine,conversation,text,request_id,mode,router=None,now=None):
     elif intent.kind in ('status','investigate') and selected:
         case=authorized_case(c,selected,store)
         if case is None:raise LookupError('Case not found')
+        result['case_generation']=case['generation']
         if intent.kind=='investigate' and case['status'] in ('open','needs_review','blocked','escalated','rejected'):
             # A completed run is never replaced just to answer a follow-up.
             existing=c.execute(sa.select(db.adaptive_runs.c.id).where(db.adaptive_runs.c.case_id==selected)).first()

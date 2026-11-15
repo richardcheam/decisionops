@@ -99,13 +99,14 @@ class ConversationTests(unittest.TestCase):
         client=self.client();case=self.case();identity=self.conversation(client)
         client.post('/api/conversations/'+identity+'/select',json={'case_id':case['id']})
         self.say(client,identity,'Fix this');work_once(self.engine)
-        with self.engine.connect().execution_options(isolation_level='READ COMMITTED') as c,c.begin():investigate_case(c,case['id'])
+        with self.engine.connect().execution_options(isolation_level='READ COMMITTED') as c,c.begin():current=investigate_case(c,case['id'])
         detail=client.get('/api/cases/'+case['id']).json()['shipment_investigation']
-        self.assertFalse(detail['evidence_current'])
+        self.assertTrue(detail['historical']);self.assertFalse(detail['evidence_current'])
         self.assertTrue(all(e['value'] is None for e in detail['evidence']))
+        self.assertTrue(all(v is None for v in detail['facts'].values()))
         reply=self.say(client,identity,'status').json()
-        self.assertFalse(reply['evidence_current']);self.assertFalse(reply['investigation']['evidence_current'])
-        self.assertTrue(all(v is None for v in reply['investigation']['facts'].values()))
+        self.assertTrue(reply['evidence_current']);self.assertEqual(reply['proposal_id'],current['proposal_id'])
+        self.assertNotIn('investigation',reply)
 
     def test_expired_persisted_evidence_is_explicit_in_followup(self):
         from datetime import datetime,timedelta,timezone
@@ -182,3 +183,35 @@ class ConversationTests(unittest.TestCase):
         client=self.client();case=self.case();identity=self.conversation(client)
         response=self.say(client,identity,'Fix ORD-1042; I mean ord-1042').json()
         self.assertEqual(response['intent'],'investigate');self.assertEqual(response['selected_case_id'],case['id'])
+
+    def test_rules_refresh_supersedes_historical_specialist_guidance(self):
+        from decisionops.commerce.staff_investigations import work_once
+        from decisionops.commerce.worker import work_once as rules_once
+        from decisionops.commerce.workflow import setup_checkpoints
+        from decisionops.commerce import schema as db
+        from decisionops.commerce.investigations import recheck
+        from decisionops.commerce.cases import clock
+        client=self.client();case=self.case();identity=self.conversation(client)
+        client.post('/api/conversations/'+identity+'/select',json={'case_id':case['id']})
+        self.say(client,identity,'Fix this');work_once(self.engine)
+        before=client.get('/api/cases/'+case['id']).json()
+        with self.engine.begin() as c:c.execute(db.inventory.update().where(db.inventory.c.variant_id=='shirt-blue-M').values(on_hand=20))
+        self.assertFalse(self.say(client,identity,'status').json()['evidence_current'])
+        started=client.post('/api/cases/'+case['id']+'/investigate',json={})
+        self.assertEqual(started.status_code,202)
+        setup_checkpoints(self.engine);rules_once(self.engine)
+        current=client.get('/api/cases/'+case['id']).json()
+        self.assertEqual(current['status'],'awaiting_review')
+        self.assertGreater(current['generation'],before['generation'])
+        self.assertNotEqual(current['proposal']['id'],before['proposal']['id'])
+        with self.engine.connect() as c:self.assertEqual(recheck(c,current['proposal']['id'],clock(c))['status'],'valid_for_review')
+        history=current['shipment_investigation']
+        self.assertTrue(history.get('historical',False));self.assertFalse(history['evidence_current'])
+        self.assertTrue(all(e['value'] is None for e in history['evidence']))
+        reply=self.say(client,identity,'status').json()
+        self.assertTrue(reply['evidence_current']);self.assertEqual(reply['proposal_id'],current['proposal']['id'])
+        approved=client.post('/api/cases/'+case['id']+'/review',json={'generation':current['generation'],
+            'proposal_id':current['proposal']['id'],'content_hash':current['proposal']['content_hash'],'decision':'approve'})
+        self.assertEqual(approved.status_code,200)
+        self.assertTrue(self.say(client,identity,'status').json()['evidence_current'])
+        self.assertEqual(client.get('/api/cases/'+case['id']).json()['approval'],approved.json()['approval'])

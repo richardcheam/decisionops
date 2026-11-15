@@ -73,16 +73,18 @@ def view(c,case_id):
         db.adaptive_runs.c.contracts['staff_ui'].as_boolean()==True)).order_by(db.adaptive_runs.c.created_at.desc()).limit(1)).scalar_one_or_none()
     if not run_id:return None
     run=service.inspect_connection(c,run_id)
+    case=c.execute(sa.select(db.cases).where(db.cases.c.id==case_id)).mappings().one()
+    historical=(run['generation']!=case['generation'] or run['request']!=case['request']
+        or run['request']['order_id']!=case['order_id'])
     if run.get('evidence_error'):
-        return {'id':run_id,'state':'review','report':run['report'],'mode':'mock_specialists' if run['contracts'].get('specialists') else 'rules',
+        return {'id':run_id,'generation':run['generation'],'historical':historical,'state':'review','report':run['report'],'mode':'mock_specialists' if run['contracts'].get('specialists') else 'rules',
             'reason':run['evidence_error'],'job_status':run['job']['status'],'unknowns':list(run['assessment']['facts']),
             'blockers':[],'facts':run['assessment']['facts'],'steps':[],'evidence':[],'specialists':[],
             'evidence_current':False,'planned_checks':[]}
     history,_,audit,_,_=service.snapshot(c,run);now=clock(c)
     active={o.id:o for o in history.active()};evidence=[]
     changed=set()
-    case=c.execute(sa.select(db.cases).where(db.cases.c.id==case_id)).mappings().one()
-    if run['generation']!=case['generation'] or run['request']!=case['request'] or run['request']['order_id']!=case['order_id']:
+    if historical:
         changed.update(PROJECTIONS)
     from .adaptive_evidence import History
     from .adaptive_tools import DEPENDENCIES,read_tool
@@ -121,7 +123,7 @@ def view(c,case_id):
     facts=dict(run['assessment']['facts'])
     from .adaptive_evidence import TOOLS
     for tool in changed:facts[TOOLS[tool]]=None
-    return {'evidence_current':not changed,'planned_checks':['Bind order and policy','Check shipment and carrier','Check payment and compensation','Check inventory and join evidence'],'specialists':branches,'id':run['id'],'state':run['state'],'report':run['report'],'mode':'mock_specialists' if run['contracts'].get('specialists') else 'simulated_decisions' if run['contracts'].get('api') else 'rules',
+    return {'generation':run['generation'],'historical':historical,'evidence_current':not changed,'planned_checks':['Bind order and policy','Check shipment and carrier','Check payment and compensation','Check inventory and join evidence'],'specialists':branches,'id':run['id'],'state':run['state'],'report':run['report'],'mode':'mock_specialists' if run['contracts'].get('specialists') else 'simulated_decisions' if run['contracts'].get('api') else 'rules',
         'job_status':run['job']['status'],'reason':run['terminal'].get('reason') if run['terminal'] else None,
         'unknowns':[fact for fact,value in facts.items() if value is None],
         'blockers':[fact for fact,value in facts.items() if value is False],

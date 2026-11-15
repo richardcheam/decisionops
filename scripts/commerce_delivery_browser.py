@@ -50,11 +50,20 @@ def main():
                 allow_confirmed_loss=True,max_units=10,carrier_max_age_seconds=86400))
             c.execute(db.orders.insert().values(id='FOREIGN-ORDER',store_id='foreign-store',policy_id='foreign-policy',currency='EUR',resolution_history_complete=True))
             foreign=open_case(c,AssessmentRequest('FOREIGN-ORDER','FOREIGN-PARCEL',{'fictional-item':1}))
+        # Real persisted specialist findings followed by real inventory drift.
+        # Browser acceptance must recover through the existing rules refresh.
+        from decisionops.commerce import staff_investigations as staff
+        with engine.connect().execution_options(isolation_level='READ COMMITTED') as c,c.begin():
+            stale_case=open_case(c,AssessmentRequest('ORD-1042','SHIP-1042',{'shirt-blue-M':1}))
+            staff.enqueue(c,engine,stale_case['id'],'Missing parcel','BROWSER-STALE-FIXTURE',stale_case['generation'],'mock-specialists')
+        assert staff.work_once(engine)['state']=='proposed'
+        with engine.begin() as c:
+            c.execute(db.inventory.update().where(db.inventory.c.variant_id=='shirt-blue-M').values(on_hand=20))
         specialist_schema=checkpoint_url(engine)[0]
         subprocess.run(['npm','--prefix','frontend','run','build'],cwd=ROOT,check=True)
         env=dict(os.environ,COMMERCE_DATABASE_URL=scoped.render_as_string(hide_password=False),
             COMMERCE_STAFF_USERNAME='operator',COMMERCE_STAFF_PASSWORD='fictional-browser-demo-only',
-            COMMERCE_HELPER_PASSWORD='fictional-helper-demo-only',COMMERCE_FOREIGN_CASE_ID=foreign['id'],COMMERCE_WEB_URL=f'http://127.0.0.1:{args.port}',
+            COMMERCE_HELPER_PASSWORD='fictional-helper-demo-only',COMMERCE_FOREIGN_CASE_ID=foreign['id'],COMMERCE_STALE_CASE_ID=stale_case['id'],COMMERCE_WEB_URL=f'http://127.0.0.1:{args.port}',
             LANGSMITH_TRACING='false',LANGCHAIN_TRACING_V2='false')
         with open(ROOT/'runs/delivery-browser-server.log','w') as output:
             child=subprocess.Popen([sys.executable,'-B','scripts/commerce_delivery_local.py','--port',str(args.port)],

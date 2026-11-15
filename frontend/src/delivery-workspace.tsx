@@ -13,7 +13,7 @@ type Exception = CaseLink & {
 };
 export type ChatReply = {
   intent: string; text: string; selected_case_id: string | null;
-  report?: DeliveryReport; case_links?: CaseLink[]; evidence_current?: boolean;
+  report?: DeliveryReport; case_links?: CaseLink[]; evidence_current?: boolean; case_generation?: number;
 };
 type Message = { id: string; speaker: 'You' | 'Assistant'; text: string; links?: CaseLink[] };
 type Props = {

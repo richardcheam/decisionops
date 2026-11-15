@@ -5,8 +5,8 @@ const password = process.env.COMMERCE_STAFF_PASSWORD;
 if (!password) throw new Error('Set an explicit fictional COMMERCE_STAFF_PASSWORD');
 const headers = { Authorization: 'Basic ' + Buffer.from(username + ':' + password).toString('base64') };
 
-async function login(page: Page) {
-  await page.goto('/');
+async function login(page: Page, path='/') {
+  await page.goto(path);
   await page.getByLabel('Username', { exact: true }).fill(username);
   await page.getByLabel('Password', { exact: true }).fill(password!);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -147,4 +147,31 @@ test('staff can read the workspace but cannot approve or execute or use another 
     const own=await (await request.post('/api/conversations',{headers:staffHeaders,data:{}})).json();
     expect((await request.post('/api/conversations/'+own.id+'/select',{headers:staffHeaders,data:{case_id:foreign}})).status()).toBe(404);
   } finally { await context.close(); }
+});
+
+
+test('rules refresh makes a new valid proposal actionable while old specialist findings remain historical', async ({ page, request }) => {
+  const id=process.env.COMMERCE_STALE_CASE_ID;
+  if (!id) throw new Error('Run commerce_delivery_browser.py for the persisted stale-evidence fixture');
+  await login(page,'/#case='+id);
+  const before=await (await request.get('/api/cases/'+id,{headers})).json();
+  expect((await ask(page,"What's still missing?")).evidence_current).toBe(false);
+  await expect(page.getByRole('button',{name:'Approve replacement',exact:true})).toBeDisabled();
+  await page.getByRole('button',{name:'Check again',exact:true}).click();
+  const detail=async()=> (await request.get('/api/cases/'+id,{headers})).json();
+  await expect.poll(async()=> (await detail()).generation,{timeout:30_000}).toBeGreaterThan(before.generation);
+  await expect(page.getByRole('button',{name:'Approve replacement',exact:true})).toBeEnabled({timeout:30_000});
+  const current=await detail();
+  expect(current.proposal.id).not.toBe(before.proposal.id);
+  expect(current.shipment_investigation.historical).toBe(true);
+  expect(current.shipment_investigation.evidence_current).toBe(false);
+  await expect(page.getByText('Historical investigation from an earlier case generation. Current order checks and the proposal below govern this case.',{exact:true})).toBeVisible();
+  const reply=await ask(page,"What's still missing?");
+  expect(reply.evidence_current).toBe(true);expect(reply.proposal_id).toBe(current.proposal.id);
+  await page.getByRole('button',{name:'Approve replacement',exact:true}).click();
+  await page.getByRole('button',{name:'Confirm approval',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Create replacement',exact:true})).toBeEnabled();
+  const approved=await detail();
+  await ask(page,'status');
+  expect((await detail()).approval.operation_id).toBe(approved.approval.operation_id);
 });

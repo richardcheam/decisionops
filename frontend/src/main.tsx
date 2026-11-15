@@ -57,7 +57,7 @@ type Case = {
     error_kind: string | null;
   } | null;
   shipment_investigation?: {
-    id: string; state: string; report: string; mode: string; reason: string | null;
+    id: string; generation?: number; historical?: boolean; state: string; report: string; mode: string; reason: string | null;
     unknowns: string[]; blockers: string[]; evidence_current?: boolean; planned_checks?: string[];
     evidence: {tool: string; value: boolean | null; applicability: string; status: string; reason: string | null; observed_at: string; expires_at?: string; customer_page?: string; source?: {kind:string;observation_id:string;version:string;order_id:string;shipment_id:string;tables:string[]}}[];
     steps: {sequence: number; kind: string; data: {specialist?: string; tool?: string; status?: string; chosen_action?: {tool?: string; kind?: string}; reason?: string}; created_at: string}[];
@@ -170,7 +170,7 @@ function App() {
   const [auth, setAuth] = useState("");
   const [role, setRole] = useState<"staff" | "approver">("staff");
   const [conversationId, setConversationId] = useState("");
-  const [staleEvidence, setStaleEvidence] = useState(false);
+  const [staleEvidence, setStaleEvidence] = useState<{caseId:string;generation:number} | null>(null);
   const selectionFlight = useRef(false);
   const [username, setUsername] = useState("operator");
   const [password, setPassword] = useState("");
@@ -311,7 +311,7 @@ function App() {
         ),
       });
       await request("/api/conversations/" + conversationId + "/select", {case_id: result.id});
-      setStaleEvidence(false);
+      setStaleEvidence(null);
       setSelected(result.id);
       setActive(result);
       await request("/api/cases/" + result.id + "/investigate", {});
@@ -329,7 +329,7 @@ function App() {
     setError("");
     try {
       const binding = await request<{selected_case_id: string}>("/api/conversations/" + conversationId + "/select", {case_id: id});
-      setStaleEvidence(false);
+      setStaleEvidence(null);
       setSelected(binding.selected_case_id);
       setActive(null);
       setReport("");
@@ -342,8 +342,8 @@ function App() {
     try {
       const reply = await request<ChatReply>("/api/conversations/" + conversationId + "/messages", {message, request_id: requestId});
       const id = reply.selected_case_id || "";
-      if (id !== selected) { setSelected(id); setActive(null); setReport(""); setStaleEvidence(false); }
-      if (reply.evidence_current !== undefined) setStaleEvidence(!reply.evidence_current);
+      if (id !== selected) { setSelected(id); setActive(null); setReport(""); setStaleEvidence(null); }
+      if (reply.evidence_current !== undefined) setStaleEvidence(reply.evidence_current === false && typeof reply.case_generation === 'number' ? {caseId:id,generation:reply.case_generation} : null);
       if (id) await refresh(id);
       return reply;
     } finally { setBusy(false); }
@@ -358,7 +358,7 @@ function App() {
         await request("/api/cases/" + snapshot.id + "/shipment-investigation", {
           report, request_id: crypto.randomUUID(), expected_generation: snapshot.generation,
         });
-        setStaleEvidence(false);
+        setStaleEvidence(null);
       });
     } finally { investigationFlight.current = false; }
   }
@@ -367,7 +367,8 @@ function App() {
     ["queued", "running"].includes(active.latest_job.status);
   const locked = busy || Boolean(pending);
   const replacementVerified = active?.operation?.status === "verified";
-  const evidenceNeedsRefresh = staleEvidence || active?.shipment_investigation?.evidence_current === false;
+  const historicalInvestigation = active?.shipment_investigation?.historical === true;
+  const evidenceNeedsRefresh = Boolean(staleEvidence && staleEvidence.caseId === active?.id && staleEvidence.generation === active?.generation) || (!historicalInvestigation && active?.shipment_investigation?.evidence_current === false);
   function confirmation(action: "approve" | "execute") {
     if (!active?.proposal) return;
     setConfirm({
@@ -628,7 +629,7 @@ function App() {
                   </form>
                   {active.shipment_investigation && <div aria-live="polite">
                     {evidenceNeedsRefresh && !replacementVerified && <p role="status" className="error">Saved evidence expired or source records changed. Start an explicit investigation refresh before relying on these findings.</p>}
-                    <p role="status">{replacementVerified ? "Historical investigation. The replacement is verified by its execution record." : evidenceNeedsRefresh ? "Saved investigation requires an evidence refresh." : active.shipment_investigation.state === "active" ? "Investigation in progress. You can refresh or return later." : active.shipment_investigation.state === "proposed" ? "Investigation complete. Replacement proposal ready for your review." : "Investigation finished. " + (active.shipment_investigation.blockers.length ? "A required condition was not met." : "More information or staff review is needed.")}</p>
+                    <p role="status">{replacementVerified ? "Historical investigation. The replacement is verified by its execution record." : historicalInvestigation ? "Historical investigation from an earlier case generation. Current order checks and the proposal below govern this case." : evidenceNeedsRefresh ? "Saved investigation requires an evidence refresh." : active.shipment_investigation.state === "active" ? "Investigation in progress. You can refresh or return later." : active.shipment_investigation.state === "proposed" ? "Investigation complete. Replacement proposal ready for your review." : "Investigation finished. " + (active.shipment_investigation.blockers.length ? "A required condition was not met." : "More information or staff review is needed.")}</p>
                     <p>{active.shipment_investigation.mode === "mock_specialists" ? "Mocked specialists. No paid calls." : active.shipment_investigation.mode === "simulated_decisions" ? "Demo: simulated Decisions responses. No paid calls." : "Rules investigation. No paid calls."}</p>
                     {Boolean(active.shipment_investigation.specialists?.length) && <section aria-label="Specialist branches">
                       <h3>Specialist branches</h3>
@@ -651,7 +652,7 @@ function App() {
                         </li>)}</ol>
                       </details>
                     </section>}
-                    {active.shipment_investigation.evidence.some(row => ["expired", "dependency_changed", "future_timestamp", "conflicting_active_contents"].includes(row.applicability)) && <p role="status" className="error">Saved findings include expired, changed or conflicting evidence. Refresh the investigation before treating these findings as current.</p>}
+                    {!historicalInvestigation && active.shipment_investigation.evidence.some(row => ["expired", "dependency_changed", "future_timestamp", "conflicting_active_contents"].includes(row.applicability)) && <p role="status" className="error">Saved findings include expired, changed or conflicting evidence. Refresh the investigation before treating these findings as current.</p>}
                     {active.shipment_investigation.planned_checks?.length ? <p>Investigation outline: {active.shipment_investigation.planned_checks.join(" → ")}</p> : null}
                     <p>Saved report: {active.shipment_investigation.report}</p>
                     <p>{active.shipment_investigation.unknowns.length} checks still unknown</p>

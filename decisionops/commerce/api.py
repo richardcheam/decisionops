@@ -296,9 +296,9 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
                               and source['shipment_id']==result['request']['shipment_id']=='SHIP-'+result['order_id'].removeprefix('ORD-')):
                             evidence['customer_page']='/shop/account/orders/'+result['order_id']+'/tracking'
             investigation=result['shipment_investigation']
-            if investigation and (investigation['state']=='active' or not result['assessment']):
+            if investigation and not investigation.get('historical') and (investigation['state']=='active' or not result['assessment']):
                 result['assessment']={'facts':investigation['facts'],'decision':{'unknowns':investigation['unknowns'],'blockers':investigation['blockers'],'status':'needs_review'},'read_tools':[]}
-            if investigation and investigation['state']=='active':
+            if investigation and not investigation.get('historical') and investigation['state']=='active':
                 result['latest_job']={'id':investigation['id'],'status':investigation['job_status'],'action':'shipment_investigation','error_kind':None}
         return result
 
