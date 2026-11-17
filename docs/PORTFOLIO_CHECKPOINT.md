@@ -88,3 +88,20 @@ passed on that SHA. Supervisor held sign-off for two reproduced findings:
 Final candidate will supersede that SHA. Do not attribute the first candidate's
 in-flight/mixed-SHA runs to the final candidate. Every final manifest records
 before/after SHA and clean status. Supervisor must sign the new exact SHA.
+
+## Supervisor review round 2 and whole-message correction
+Reviewed exact9d4441e35efd68a5413c6ae6fb7cc578a34ad22b. Original negative intent
+examples and packaging contract passed; review caught a quoted multi-sentence help
+example. Reproduced that and personal-statement-plus-guide-context as RED. Filing
+now validates the entire supported utterance, with every sentence matching a positive
+request/direct personal nonreceipt statement; no embedded imperative can authorize it.
+Unknown narrative clarifies. Canonical template is documented in the demo guide.
+Role5tests and customer16tests are GREEN after this correction; supervisor's independent
+working-tree parser probes found no further blocker. Exact committed re-review pending.
+
+A concurrent earlier265-test PostgreSQL run hit two existing checkpoint-metadata
+statement timeouts in AdaptiveSessionTests (plain resume preload cases). Its SHA/tree
+also changed during review; it is not final evidence. Final broad SQL suites will be
+serialized after review fixes, without increasing product deadlines or weakening tests.
+Earlier candidate browser/deployment/restore checks remain historical; final commands
+and supervisor report are under this worktree's `runs/portfolio-verification/`.

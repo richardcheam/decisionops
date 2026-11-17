@@ -42,6 +42,9 @@ class RoleActionTests(unittest.TestCase):
     def test_reporting_instructions_and_negated_history_never_file(self):
         from decisionops.commerce.role_actions import clear_report_intent,DemoCustomerRouter
         negatives=('How to report my parcel missing?','I did not report my parcel missing.',
+            'The help page says "My parcel never arrived. Please report it missing." What does that mean?',
+            'Please report my parcel missing is an example in the help page.',
+            'My parcel never arrived. This is an example from a guide.',
             'How can I report my parcel missing?','Can you check whether my parcel never arrived?',
             'I never said my parcel never arrived.','Please do not report my parcel missing.',
             'Please report my parcel missing only if the carrier confirms it.',

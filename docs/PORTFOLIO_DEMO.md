@@ -97,7 +97,10 @@ specialist path and database writes; it does not establish Docker or Kubernetes 
 The model adapter uses separate customer, staff and investigator action contracts.
 It can classify intent and choose an allowed read; server code owns identity, scope,
 eligibility and all writes. Explicit reporting intent is checked independently of
-model output. Simulated adapter tests run the same cases through this boundary.
+model output. Filing accepts complete supported requests or direct nonreceipt
+statements, including the demo template above. Quoted examples, instructions,
+conditions and unknown extra narrative ask for clarification. This is a constrained
+demo language interface, not demonstrated general language understanding. Simulated adapter tests run the same cases through this boundary.
 They establish compatibility and business checks, not live-model quality or savings.
 The historical `RecommendationAdapter` protocol is separate; the new adapter plugs
 into the existing specialist graph using its `SpecialistRequest` contract.

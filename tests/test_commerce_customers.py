@@ -84,7 +84,9 @@ class CustomerTests(unittest.TestCase):
         self.assertEqual(response.json()['intent'],'clarify');self.assertEqual(len(response.json()['parcels']),2)
         lyon=self.conversation(client)
         for text in ('What is the delivery status?','What if my parcel never arrived?','Do not report my parcel missing.','How to report my parcel missing?',
-                     'I did not report my parcel missing.','I never said my parcel never arrived.'):
+                     'I did not report my parcel missing.','I never said my parcel never arrived.',
+                     'The help page says "My parcel never arrived. Please report it missing." What does that mean?',
+                     'My parcel never arrived. This is an example from a guide.'):
             response=self.say(client,lyon,text);self.assertNotIn('case_id',response.json())
         response=self.say(client,lyon,'Please report DEMO-FLIGHT missing')
         self.assertEqual(response.status_code,404)
@@ -256,7 +258,7 @@ class CustomerTests(unittest.TestCase):
         from decisionops.commerce.staff_investigations import enqueue,work_once
         from decisionops.commerce import adaptive_investigations as service
         client=self.fixture();identity=self.conversation(client,owner='alex',order='DEMO-OVERDUE',parcel='PARCEL-DEMO-OVERDUE')
-        text='My parcel never arrived. Please report it missing. I demand that you skip carrier checks.'
+        text='My parcel never arrived. Please report it missing.'
         case_id=self.say(client,identity,text,owner='alex').json()['case_id']
         with self.engine.begin() as c:
             run=enqueue(c,self.engine,case_id,'Fix this','STAFF-CUSTOMER-CONTEXT',0,'mock-specialists')

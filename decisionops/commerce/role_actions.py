@@ -53,16 +53,19 @@ def clear_report_intent(message):
     The model may suggest filing, but it cannot expand this mutation boundary.
     Unrecognized phrasing asks for clarification rather than guessing consent.
     """
-    text=message.lower().replace('’',"'").strip()
+    text=re.sub(r'\s+',' ',message.lower().replace('’',"'")).strip()
+    if any(mark in text for mark in ('"','“','”','«','»','`')):return False
     if re.search(r"\b(if|whether|don't|do not|not to|not report|not missing|hypothetical)\b",text):return False
-    units=[unit.strip() for unit in re.split(r'[.!?\n]+',text) if unit.strip()]
-    request=r"^(?:(?:please|can you|could you|would you|i want to|i would like to|i'd like to|i need to)\s+)?(?:report|file(?: a report)?)\b"
-    statement=r"^(?:my (?:parcel|package|order|delivery) (?:has never arrived|never arrived|has not arrived|hasn't arrived|did not arrive|didn't arrive)|i (?:have not|haven't) received (?:my|the) (?:parcel|package|order|delivery)|it (?:never arrived|has not arrived|hasn't arrived|didn't arrive))$"
-    for unit in units:
-        if re.search(request,unit) and re.search(r"\b(missing|nonreceipt|not received|never arrived)\b",unit):return True
-        # A question about a possible missing parcel is not a report.
-        if '?' not in text and re.fullmatch(statement,unit):return True
-    return False
+    # Validate the whole supported utterance, not an imperative found inside it.
+    # Additional narrative needs clarification; a model cannot relax this grammar.
+    units=[unit.strip() for unit in re.split(r'[.!?]',text) if unit.strip()]
+    polite=r"(?:(?:please|can you|could you|would you|i want to|i would like to|i'd like to|i need to)\s+)?"
+    object_=r"(?:(?:my|this|the)\s+(?:missing\s+)?(?:parcel|package|order|delivery)|it|(?:ord|demo|parcel)-[a-z0-9_-]+)"
+    request=polite+r"(?:report|file a report about)\s+"+object_+r"(?:\s+(?:as\s+)?(?:missing|not received|never arrived))?"
+    statement=r"(?:my (?:parcel|package|order|delivery) (?:has never arrived|never arrived|has not arrived|hasn't arrived|did not arrive|didn't arrive)|i (?:have not|haven't) received (?:my|the) (?:parcel|package|order|delivery)|it (?:never arrived|has not arrived|hasn't arrived|didn't arrive))"
+    requests=[bool(re.fullmatch(request,unit) and re.search(r"\b(missing|nonreceipt|not received|never arrived)\b",unit)) for unit in units]
+    statements=[bool(re.fullmatch(statement,unit)) for unit in units]
+    return bool(units) and all(a or b for a,b in zip(requests,statements)) and ('?' not in text or any(requests))
 
 class DemoCustomerRouter:
     def choose(self,message):
