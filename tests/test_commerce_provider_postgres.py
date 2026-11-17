@@ -200,20 +200,30 @@ class ProviderDatabaseTests(unittest.TestCase):
         self.assertEqual(len([e for e in repeated['case']['events'] if e['kind']=='provider_routed']),1)
 
     def test_restart_inflight_call_is_not_automatically_redispatched(self):
-        from decisionops.commerce.providers import ProviderConfig
+        from unittest.mock import patch
+        from decisionops.commerce.providers import ProviderConfig,FakeProvider
         from decisionops.commerce.provider_service import prepare
-        from decisionops.commerce.provider_budget import claim
-        self.budget();case=self.opened()
-        prepare(self.engine,case['id'],'RUN-1','BUDGET-1',ProviderConfig(),deadline_seconds=0.2)
-        with self.engine.begin() as c:claim(c,'RUN-1')
-        result=self.route(case)
+        from decisionops.commerce import provider_budget as ledger
+        self.budget();case=self.opened();dispatches=[]
+        class MustNotDispatch(FakeProvider):
+            def choose(self,request):
+                dispatches.append(request.run_id)
+                return super().choose(request)
+        prepared=prepare(self.engine,case['id'],'RUN-1','BUDGET-1',ProviderConfig())
+        # Exercise the actual persisted call on both sides of its immutable
+        # deadline. Host scheduling/DB latency must not decide which phase this
+        # assertion happens to observe; no production timeout is changed.
+        with patch.object(ledger,'clock',return_value=prepared['deadline']-timedelta(milliseconds=1)):
+            with self.engine.begin() as c:ledger.claim(c,'RUN-1')
+            result=self.route(case,provider=MustNotDispatch())
         self.assertEqual(result['trace']['dispatch_count'],1)
         self.assertEqual(result['trace']['state'],'dispatching')
-        import time
-        time.sleep(0.25)
-        result=self.route(case)
+        with patch.object(ledger,'clock',return_value=prepared['deadline']+timedelta(milliseconds=1)):
+            result=self.route(case,provider=MustNotDispatch())
         self.assertEqual(result['trace']['state'],'uncertain')
         self.assertEqual(result['case']['status'],'escalated')
+        self.assertEqual(result['trace']['dispatch_count'],1)
+        self.assertEqual(dispatches,[])
 
     def test_duplicate_concurrent_dispatch_claim_is_fenced(self):
         from decisionops.commerce.providers import ProviderConfig,FakeProvider

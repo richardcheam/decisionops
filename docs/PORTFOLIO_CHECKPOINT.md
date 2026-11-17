@@ -105,3 +105,21 @@ also changed during review; it is not final evidence. Final broad SQL suites wil
 serialized after review fixes, without increasing product deadlines or weakening tests.
 Earlier candidate browser/deployment/restore checks remain historical; final commands
 and supervisor report are under this worktree's `runs/portfolio-verification/`.
+
+## Final aggregate timing-test correction
+Exact04ea32e required PostgreSQL run:264/265passed, zero skips; one older test
+assumed it could observe a call before a200ms deadline. Product safely returned
+uncertain after that deadline. Original test passed alone; injecting250ms scheduling
+delay reproduced RED. The test now supplies ledger-clock input1msbefore/after the
+actual saved deadline, asserts the same persisted transitions and adds a zero-provider-
+redispatch sentinel. No application code or production timeout changed. Delayed
+reproduction and all33provider regression tests passed. Independent Sol/high review
+approved the test semantics; other real-time expiry tests remain unchanged.
+
+Application implementation remains identical to04ea32e. Latest HEAD also contains
+this deterministic test correction. Final verification will use `current-*.json/log`
+in `runs/portfolio-verification/`; older approved-/final-/candidate- records are
+historical. Exact final branch/SHA, commands, results and open items are maintained
+in that directory's `CHECKPOINT.md`, `manifest.json` and supervisor report. The
+pipeline is serialized and stops on any failure. No final acceptance claim until
+all local checks and exact-SHA supervisor review finish.
