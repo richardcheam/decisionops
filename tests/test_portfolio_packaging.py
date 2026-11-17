@@ -36,8 +36,8 @@ class PortfolioPackagingTests(unittest.TestCase):
 
     def test_backup_revision_matches_source_and_rejects_stale_or_newer_schemas(self):
         from scripts.commerce_schema_contract import source_revision,validate_restored_revisions
-        self.assertEqual(source_revision(),'0010')
-        validate_restored_revisions('0010','0010')
-        for original,restored in [('0005','0005'),('0009','0005'),('0009','0010'),('0011','0011')]:
+        self.assertEqual(source_revision(),'0011')
+        validate_restored_revisions('0011','0011')
+        for original,restored in [('0005','0005'),('0009','0005'),('0010','0010'),('0010','0011'),('0012','0012')]:
             with self.subTest(original=original,restored=restored),self.assertRaises(RuntimeError):
                 validate_restored_revisions(original,restored)

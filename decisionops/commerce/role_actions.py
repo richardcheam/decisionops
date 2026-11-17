@@ -48,13 +48,21 @@ class CustomerAction:
         return cls(**raw)
 
 def clear_report_intent(message):
-    text=message.lower().replace('’',"'")
-    if re.search(r"\b(what if|if |don't|do not|not to|cancel|hypothetical|whether)\b",text):return False
-    explicit=bool(re.search(r"\b(report|file)\b.*\b(missing|nonreceipt|not received)\b",text))
-    if explicit:
-        return not bool(re.search(r"\b(how do|should i|can i|how would|what happens)\b",text))
-    if '?' in text or re.search(r"\b(check|can|could|would|suppose|wonder)\b",text):return False
-    return bool(re.search(r"\b(never arrived|not received|haven't received|didn't arrive|hasn't arrived)\b",text))
+    """Supported positive requests/statements, never an embedded mention of loss.
+
+    The model may suggest filing, but it cannot expand this mutation boundary.
+    Unrecognized phrasing asks for clarification rather than guessing consent.
+    """
+    text=message.lower().replace('’',"'").strip()
+    if re.search(r"\b(if|whether|don't|do not|not to|not report|not missing|hypothetical)\b",text):return False
+    units=[unit.strip() for unit in re.split(r'[.!?\n]+',text) if unit.strip()]
+    request=r"^(?:(?:please|can you|could you|would you|i want to|i would like to|i'd like to|i need to)\s+)?(?:report|file(?: a report)?)\b"
+    statement=r"^(?:my (?:parcel|package|order|delivery) (?:has never arrived|never arrived|has not arrived|hasn't arrived|did not arrive|didn't arrive)|i (?:have not|haven't) received (?:my|the) (?:parcel|package|order|delivery)|it (?:never arrived|has not arrived|hasn't arrived|didn't arrive))$"
+    for unit in units:
+        if re.search(request,unit) and re.search(r"\b(missing|nonreceipt|not received|never arrived)\b",unit):return True
+        # A question about a possible missing parcel is not a report.
+        if '?' not in text and re.fullmatch(statement,unit):return True
+    return False
 
 class DemoCustomerRouter:
     def choose(self,message):

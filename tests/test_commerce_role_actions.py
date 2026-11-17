@@ -38,3 +38,19 @@ class RoleActionTests(unittest.TestCase):
             (Action('read',tool='payment'),),(),{'decisions':1,'remaining_ms':100})
         adapter=ModelActionAdapter(lambda _: {'kind':'read','tool':'payment'})
         self.assertEqual(adapter.choose(request,None),Action('read',tool='payment'))
+
+    def test_reporting_instructions_and_negated_history_never_file(self):
+        from decisionops.commerce.role_actions import clear_report_intent,DemoCustomerRouter
+        negatives=('How to report my parcel missing?','I did not report my parcel missing.',
+            'How can I report my parcel missing?','Can you check whether my parcel never arrived?',
+            'I never said my parcel never arrived.','Please do not report my parcel missing.',
+            'Please report my parcel missing only if the carrier confirms it.',
+            'Should I report my parcel missing?')
+        for text in negatives:
+            with self.subTest(text=text):
+                self.assertFalse(clear_report_intent(text))
+                self.assertNotEqual(DemoCustomerRouter().choose(text).kind,'report_nonreceipt')
+        for text in ('My parcel never arrived. Please report it missing.',
+                     'Please report DEMO-LYON missing.','Can you report my parcel missing?',
+                     'I have not received my parcel.','My parcel has not arrived.'):
+            with self.subTest(text=text):self.assertTrue(clear_report_intent(text))

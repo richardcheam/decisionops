@@ -73,3 +73,18 @@ Update this file with commits, exact commands, results and review findings as wo
 
 Final verification commands/results and exact SHA will be retained in
 `runs/portfolio-verification/manifest.json` and the supervisor report in this worktree.
+
+## Supervisor review round 1 and corrections
+Reviewed exact candidate 760d8cf646e7601e45b535da7812f8631ac9d01a. Browser
+5/5 customer and4/4 staff, recovery/worker/execution, deployment static/restore
+passed on that SHA. Supervisor held sign-off for two reproduced findings:
+1. An instruction question or negated report could file. Positive imperative
+   requests/direct first-person nonreceipt statements now gate admission; embedded
+   mentions, instructions, negated history and conditional requests clarify.
+   Regression: role action5tests and customer16tests green after observed RED.
+2. Backup contract test still expected0010. Current pair now0011; stale0010,
+   mismatched and future0012 remain rejected. Packaging4tests green after RED.
+
+Final candidate will supersede that SHA. Do not attribute the first candidate's
+in-flight/mixed-SHA runs to the final candidate. Every final manifest records
+before/after SHA and clean status. Supervisor must sign the new exact SHA.

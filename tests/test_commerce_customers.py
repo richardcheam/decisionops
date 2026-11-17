@@ -83,7 +83,8 @@ class CustomerTests(unittest.TestCase):
         response=self.say(client,identity)
         self.assertEqual(response.json()['intent'],'clarify');self.assertEqual(len(response.json()['parcels']),2)
         lyon=self.conversation(client)
-        for text in ('What is the delivery status?','What if my parcel never arrived?','Do not report my parcel missing.'):
+        for text in ('What is the delivery status?','What if my parcel never arrived?','Do not report my parcel missing.','How to report my parcel missing?',
+                     'I did not report my parcel missing.','I never said my parcel never arrived.'):
             response=self.say(client,lyon,text);self.assertNotIn('case_id',response.json())
         response=self.say(client,lyon,'Please report DEMO-FLIGHT missing')
         self.assertEqual(response.status_code,404)
