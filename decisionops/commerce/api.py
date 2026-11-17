@@ -70,7 +70,10 @@ class ConversationMessage(StrictBody):
         return value
 
 
-def create_app(engine=None,*,password=None,username=None,store_id=None,origins=None,staff_investigation_mode=None,storefront_fixture=None,staff_accounts=None,demo_clock=None,conversation_router=None):
+def create_app(engine=None,*,password=None,username=None,store_id=None,origins=None,staff_investigation_mode=None,storefront_fixture=None,staff_accounts=None,demo_clock=None,conversation_router=None,customer_accounts=None,customer_router=None,action_adapter=None):
+    if action_adapter is not None:
+        if conversation_router is not None or customer_router is not None:raise ValueError('Configure one action adapter')
+        conversation_router=action_adapter.staff();customer_router=action_adapter.customer()
     from .staff_investigations import MODES
     staff_investigation_mode=staff_investigation_mode or os.environ.get('COMMERCE_STAFF_INVESTIGATION_MODE','rules')
     if staff_investigation_mode not in MODES:raise ValueError('Staff investigation mode must be rules, mock-decisions or mock-specialists; paid modes prohibited')
@@ -352,8 +355,17 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
         return result
 
     app.include_router(router)
+    from .customer_api import install as install_customer_api
+    install_customer_api(app,transaction=transaction,mutation=mutation,StrictBody=StrictBody,
+        ConversationMessage=ConversationMessage,store_id=store_id,staff_names=set(accounts),
+        accounts=customer_accounts,router=customer_router)
     web_dist=os.environ.get('COMMERCE_WEB_DIST')
     if web_dist:
         from fastapi.staticfiles import StaticFiles
+        from fastapi.responses import FileResponse
+        from pathlib import Path
+        @app.get('/customer',include_in_schema=False)
+        @app.get('/staff',include_in_schema=False)
+        def role_entry():return FileResponse(Path(web_dist)/'index.html')
         app.mount('/',StaticFiles(directory=web_dist,html=True),name='workspace')
     return app

@@ -5,17 +5,17 @@
 - Reviewed baseline: feat/commerce-delivery-workspace at 8307701fceb9438527e9649257695d982dd8cc71.
 - Working branch: feat/customer-staff-portfolio.
 - Worktree: /home/richard/.codex/worktrees/portfolio-customer/decisionops.
-- Current checkpoint: design/planning at baseline; candidate not yet implemented.
+- Current checkpoint: integrated customer/staff candidate; final SHA verification pending.
 - Session date: 2026-11-17.
 
 ## Checklist
 - [x] Locate local reviewed SHA and check remote heads read-only.
 - [x] Write design and implementation checklist before product changes.
 - [x] Start dedicated GPT-6.1 Sol / high read-only supervisor.
-- [ ] Customer backend, identity, ownership, canonical reports and conversation projection.
-- [ ] Separate customer entry and real browser customer/staff flow.
-- [ ] Typed model adapter, redacted opt-in tracing and local comparison.
-- [ ] Compose, Kubernetes, prepared Terraform, deployment/restore attempts.
+- [x] Customer backend, identity, ownership, canonical reports and conversation projection.
+- [x] Separate customer entry and real browser customer/staff flow (five browser checks).
+- [x] Typed customer/staff/specialist adapter, redacted bounded tracing and five-case local comparison.
+- [x] Compose, Kubernetes, prepared Terraform, deployment/restore attempts (runtime blocked).
 - [ ] PostgreSQL/browser/migration/recovery checks and supervisor review on final SHA.
 - [ ] Short demo guide and final acceptance matrix.
 
@@ -38,3 +38,38 @@ probe alternate local options without changing host permissions or using sudo.
 Design: superpowers/specs/2026-11-17-customer-staff-portfolio-design.md.
 Plan: superpowers/plans/2026-11-17-customer-staff-portfolio.md.
 Update this file with commits, exact commands, results and review findings as work proceeds.
+
+## Integrated implementation evidence (before candidate commit)
+- Baseline dependency-free: 583 collected, 247 passed, 336 optional skips.
+- Reviewed baseline PostgreSQL: 246/246, zero skips (log in reviewed worktree runs/).
+- Customer tests: 16 passed, including first-admission race, report FK integrity,
+  explicit case ownership, changed reconciliation, 0010->0011 upgrade and untrusted text.
+- Browser agent: five real-browser tests passed, build passed; SQL one operation,
+  replacement, reservation, reserved unit and canonical parcel case link.
+- Typed adapter: four pure tests passed; injected specialist contract validated.
+- Tracing: four pure/local tests and two real graph tests passed; export outage,
+  redaction, off-thread enrichment, resume after committed reads and correlation.
+- Five frozen scenarios x rules/injected adapter simulation: ten product runs,
+  matched source hashes and expected public outcomes. Live-model metrics unmeasured.
+- First integrated required PostgreSQL profile: 264 passed, zero skips; later
+  evaluation/module refinements require final rerun.
+- Packaging: Compose config, 12 Kustomize objects/OpenAPI, Terraform fmt/validate,
+  locked optional deployment profile passed. No cloud calls.
+- Restore: 49 user tables plus two populated worker graphs restored; replacement
+  reconciliation verified. Final candidate rerun pending.
+
+## Review fixes and ordinary decisions
+- Customer ambiguity clears previous scope, including an explicit split order.
+  Questions/hypotheticals do not file reports; model intent cannot override this.
+- Explicit customer case references bind the owned case rather than reuse selection.
+- Conversations join customer/store identity, including empty threads and replay.
+- Reports have immutable ownership/canonical-case/parcel foreign-key bindings.
+- Staff see customer words as bounded untrusted context; carrier/source rules retain authority.
+- Customer success is freshly reconciled; approval alone and inconsistent ledgers are not success.
+- UI fences stale responses across logins and preserves original conversation on transient503.
+- Supervisor reproduced trace inspection blocking; enrichment moved to bounded background queue.
+- New model adapter supports the specialist graph; historical RecommendationAdapter is separate.
+- Continue using explicit demo credentials/Basic auth, no production identity claim.
+
+Final verification commands/results and exact SHA will be retained in
+`runs/portfolio-verification/manifest.json` and the supervisor report in this worktree.

@@ -6,32 +6,7 @@ import sqlalchemy as sa
 from . import schema as db
 from .cases import clock,identifier,show_case
 
-KINDS=('weekly_deliveries','problems','investigate','status','clarify')
-
-def explicit_orders(message):
-    return tuple(dict.fromkeys(value.upper() for value in re.findall(
-        r'\b(?:ORD|DEMO)-[A-Za-z0-9_-]+\b',message,re.I)))
-
-@dataclass(frozen=True)
-class Intent:
-    kind: str
-    order_id: str | None=None
-    def __post_init__(self):
-        if self.kind not in KINDS or self.order_id is not None and not re.fullmatch(r'[A-Za-z0-9_-]{1,128}',self.order_id):
-            raise ValueError('Invalid conversation intent')
-
-class DemoRouter:
-    def choose(self,message):
-        text=message.lower().replace('’',"'")
-        orders=explicit_orders(message)
-        if len(orders)>1:return Intent('clarify')
-        bound=orders[0] if orders else None
-        if 'how many' in text and any(w in text for w in ('deliver','week')):kind='weekly_deliveries'
-        elif any(w in text for w in ('problem','exception')):kind='problems'
-        elif any(w in text for w in ('fix','investigate')):kind='investigate'
-        elif any(w in text for w in ('missing','status','progress')):kind='status'
-        else:kind='clarify'
-        return Intent(kind,bound)
+from .role_actions import STAFF_KINDS as KINDS,StaffAction as Intent,DemoStaffRouter as DemoRouter,explicit_orders
 
 class BoundedRouter:
     """Optional transport gets bounded text and emits exactly one typed intent.

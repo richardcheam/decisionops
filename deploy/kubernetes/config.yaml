@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: decisionops-config
+data:
+  COMMERCE_STORE_ID: demo-store
+  COMMERCE_STAFF_USERNAME: visitor
+  COMMERCE_STAFF_INVESTIGATION_MODE: mock-specialists
+  COMMERCE_ORIGINS: http://127.0.0.1:8166,http://localhost:8166
+  LANGSMITH_TRACING: "false"
+  LANGCHAIN_TRACING_V2: "false"
+  COMMERCE_TRACING_ENABLED: "false"
+---
+# Kubernetes DNS is resolved when nginx starts; Docker's 127.0.0.11 resolver is
+# intentionally not reused in the cluster. The API Service exists before web starts.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: decisionops-nginx
+data:
+  default.conf: |
+    server {
+      listen 8080;
+      server_name _;
+      root /usr/share/nginx/html;
+      client_max_body_size 64k;
+      add_header X-Content-Type-Options nosniff always;
+      add_header Referrer-Policy no-referrer always;
+      add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+      location /api/ {
+        proxy_pass http://api:8000;
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 10s;
+      }
+      location /customer-api/ {
+        proxy_pass http://api:8000;
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 10s;
+      }
+      location = /health {
+        proxy_pass http://api:8000;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 5s;
+      }
+      location / { try_files $uri $uri/ /index.html; }
+    }

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import { Shop } from "./shop";
+import { CustomerPortal } from "./customer";
 import { DeliveryWorkspace, type ChatReply } from "./delivery-workspace";
 
 type Order = {
@@ -92,6 +93,7 @@ const requirements: Record<string, string> = {
 const toolLabels: Record<string,string> = {order_manifest:"Order items", replacement_policy:"Store replacement policy", payment:"Payment", fulfilment:"Shipment", carrier_loss:"Carrier loss confirmation", compensation_history:"Refund and replacement history", inventory:"Available stock"};
 const events: Record<string, string> = {
   opened: "Case opened",
+  customer_report_received: "Customer reported a missing parcel",
   adaptive_started: "Shipment investigation started",
   staff_investigation_requested: "Shipment report received",
   adaptive_proposed: "Evidence checked — proposal prepared",
@@ -453,6 +455,7 @@ function App() {
             {error}
           </p>
         )}
+        <nav aria-label="Application entry points"><a href="/customer">Customer help</a> · <a href="/staff">Staff workspace</a></nav>
         <p className="footnote">
           Demo store · Replacements need your approval
         </p>
@@ -468,6 +471,7 @@ function App() {
           </strong>
         </div>
         <div className="header-right">
+          <a href="/customer">Customer help</a>
           <span className="badge">Demo store · {role === "approver" ? "Approver" : "Staff"}</span>
           <button
             className="quiet"
@@ -823,6 +827,7 @@ function App() {
                       <li key={event.id}>
                         <div>
                           <strong>{events[event.kind] || event.kind}</strong>
+                          {event.kind === "customer_report_received" && typeof event.details.message === "string" && <p>{event.details.message}</p>}
                           <time>{time(event.created_at)}</time>
                         </div>
                       </li>
@@ -920,6 +925,6 @@ function App() {
 }
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {window.location.pathname.startsWith("/shop") ? <Shop /> : <App />}
+    {window.location.pathname.startsWith("/customer") ? <CustomerPortal /> : window.location.pathname.startsWith("/shop") ? <Shop /> : <App />}
   </React.StrictMode>,
 );

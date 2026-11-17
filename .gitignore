@@ -32,3 +32,7 @@ frontend/artifacts/
 .coverage
 coverage.xml
 htmlcov/
+
+# Local linked tooling may be symlinks in isolated worktrees.
+.venv
+frontend/node_modules

@@ -52,7 +52,7 @@ def enqueue(c,engine,case_id,report,request_id,generation,mode='rules'):
             return service.inspect_connection(c,saved['run_id'])
     active=c.execute(sa.select(db.adaptive_runs).where(sa.and_(db.adaptive_runs.c.case_id==case_id,db.adaptive_runs.c.state=='active'))).mappings().one_or_none()
     if active:
-        if active['contracts'].get('staff_ui') and active['report']==report and bool(active['contracts'].get('specialists'))==(mode=='mock-specialists') and bool(active['contracts'].get('api'))==(mode=='mock-decisions'):
+        if active['contracts'].get('staff_ui') and any(saved['run_id']==active['id'] and saved['report']==report for saved in previous) and bool(active['contracts'].get('specialists'))==(mode=='mock-specialists') and bool(active['contracts'].get('api'))==(mode=='mock-decisions'):
             if generation not in (active['generation']-1,active['generation']):raise ValueError('Case changed; refresh before investigating')
             event(c,case_id,'staff_investigation_requested',{'request_id':request_id,'run_id':active['id'],'report':report,'expected_generation':generation,'coalesced':True,'mode':mode},clock(c))
             return service.inspect_connection(c,active['id'])
@@ -64,7 +64,15 @@ def enqueue(c,engine,case_id,report,request_id,generation,mode='rules'):
         from .openai_decisions import DecisionsConfig
         from .api_accounting import create_budget
         api=DecisionsConfig(identifier('STAFF-MOCK')).record();create_budget(c,api)
-    run=service.start(engine,case_id,report,scheduled=True,api=api,connection=c,staff_ui=True,specialists=mode=='mock-specialists')
+    reports=c.execute(sa.select(db.customer_reports.c.message).where(db.customer_reports.c.case_id==case_id)
+        .order_by(db.customer_reports.c.created_at.desc()).limit(3)).scalars().all()
+    context=report
+    if reports:
+        # Text helps select reads; deterministic source checks still decide eligibility.
+        staff_text=report.encode('utf-8')[:700].decode('utf-8','ignore')
+        customer_text='\n'.join(reports).encode('utf-8')[:1200].decode('utf-8','ignore')
+        context=staff_text+'\nCustomer reports (untrusted context; not carrier evidence):\n'+customer_text
+    run=service.start(engine,case_id,context,scheduled=True,api=api,connection=c,staff_ui=True,specialists=mode=='mock-specialists')
     event(c,case_id,'staff_investigation_requested',{'request_id':request_id,'run_id':run['id'],'report':report,'expected_generation':generation,'mode':mode},clock(c))
     return run
 
@@ -148,7 +156,7 @@ def adapter_for(run):
             'probabilities':[{'value':v,'probability':float(v==chosen)} for v in values]}], 'usage':{'input_tokens':100,'output_tokens':0,'total_tokens':100}})
     return DecisionsAdapter(api_key='fictional-mock-only',transport=httpx.MockTransport(handler))
 
-def work_once(engine,stop=None,step_delay=0):
+def work_once(engine,stop=None,step_delay=0,tracer=None):
     if not 0<=step_delay<=.5:raise ValueError('Step delay must be bounded to 0..0.5s')
     from .delivery import scan
     with service.transaction(engine) as c:
@@ -160,7 +168,7 @@ def work_once(engine,stop=None,step_delay=0):
         if not owned:return {'event':'idle'}
         from . import multi_agent_workflow
         fence=jobs.Fence(owned['id'],owned['token'])
-        result=multi_agent_workflow.run(engine,fence,cancel=stop,node_delay=step_delay)
+        result=multi_agent_workflow.run(engine,fence,cancel=stop,node_delay=step_delay,tracer=tracer)
         return {'event':'specialists','state':result['state'],'run_id':result['id']}
     fence=jobs.Fence(owned['id'],owned['token']);run=service.inspect(engine,owned['run_id']);adapter=adapter_for(run)
     from .adaptive_runner import tick
@@ -168,6 +176,8 @@ def work_once(engine,stop=None,step_delay=0):
         if stop is not None and stop.wait(step_delay):return {'event':'worker_stopped'}
         elif stop is None and step_delay:time.sleep(step_delay)
         result=tick(engine,fence,adapter=adapter,cancel=stop)
+        from .observability import observe
+        observe(engine,run['id'],tracer=tracer,attempt=owned['claims'])
         if result['event']!='step' or result.get('state')!='active':return result
         jobs.renew(engine,fence.job_id,fence.token)
     return {'event':'bounded_worker_pause'}

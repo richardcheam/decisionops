@@ -14,6 +14,8 @@ dependencies = [
 torch = { index = "pytorch-cpu" }
 
 [dependency-groups]
+# Optional local manifest/rehearsal tooling; not installed in app images.
+commerce-deploy = ["pyyaml==6.0.3"]
 commerce-api = ["openai==3.26.0"]
 commerce = [
     "sqlalchemy==2.0.54",

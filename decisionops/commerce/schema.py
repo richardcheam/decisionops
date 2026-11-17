@@ -443,6 +443,7 @@ delivery_case_links = sa.Table(
     sa.Column('store_id',sa.String,primary_key=True),sa.Column('shipment_id',sa.String,primary_key=True),
     sa.Column('order_id',sa.String,nullable=False),sa.Column('case_id',sa.String,nullable=False,unique=True),
     sa.Column('active',sa.Boolean,nullable=False),
+    sa.UniqueConstraint('store_id','shipment_id','case_id',name='uq_delivery_link_case_scope'),
     sa.ForeignKeyConstraint(['store_id','shipment_id','order_id'],['commerce_delivery_parcels.store_id','commerce_delivery_parcels.shipment_id','commerce_delivery_parcels.order_id']),
     sa.ForeignKeyConstraint(['case_id','order_id'],['commerce_cases.id','commerce_cases.order_id']),
 )
@@ -466,3 +467,49 @@ conversation_messages = sa.Table(
     sa.Column('request_id',sa.String(128),primary_key=True),sa.Column('message',sa.String(2000),nullable=False),
     sa.Column('response',JSONB,nullable=False),sa.Column('created_at',sa.DateTime(timezone=True),nullable=False),
 )
+
+# Customer identities are authenticated by server configuration; never by model text.
+customers = sa.Table('commerce_customers', metadata,
+    sa.Column('id',sa.String(128),primary_key=True),
+    sa.Column('store_id',sa.String,nullable=False),
+    sa.Column('display_name',sa.String(128),nullable=False),
+    sa.UniqueConstraint('id','store_id'))
+customer_orders = sa.Table('commerce_customer_orders', metadata,
+    sa.Column('customer_id',sa.String(128),primary_key=True),
+    sa.Column('order_id',sa.String,primary_key=True),
+    sa.Column('store_id',sa.String,nullable=False),
+    sa.UniqueConstraint('order_id'),
+    sa.ForeignKeyConstraint(['customer_id','store_id'],['commerce_customers.id','commerce_customers.store_id']),
+    sa.ForeignKeyConstraint(['store_id','order_id'],['orders.store_id','orders.id']))
+customer_conversations = sa.Table('commerce_customer_conversations', metadata,
+    sa.Column('id',sa.String,primary_key=True),
+    sa.Column('customer_id',sa.String(128),sa.ForeignKey('commerce_customers.id'),nullable=False),
+    sa.Column('selected_order_id',sa.String),
+    sa.Column('selected_shipment_id',sa.String),
+    sa.Column('created_at',sa.DateTime(timezone=True),nullable=False),
+    sa.UniqueConstraint('id','customer_id'),
+    sa.ForeignKeyConstraint(['customer_id','selected_order_id'],['commerce_customer_orders.customer_id','commerce_customer_orders.order_id']),
+    sa.ForeignKeyConstraint(['selected_shipment_id','selected_order_id'],['shipments.id','shipments.order_id']),
+    sa.CheckConstraint('selected_shipment_id IS NULL OR selected_order_id IS NOT NULL'))
+customer_messages = sa.Table('commerce_customer_messages', metadata,
+    sa.Column('conversation_id',sa.String,sa.ForeignKey('commerce_customer_conversations.id'),primary_key=True),
+    sa.Column('request_id',sa.String(128),primary_key=True),
+    sa.Column('message',sa.String(2000),nullable=False),
+    sa.Column('response',JSONB,nullable=False),
+    sa.Column('created_at',sa.DateTime(timezone=True),nullable=False))
+customer_reports = sa.Table('commerce_customer_reports', metadata,
+    sa.Column('store_id',sa.String,nullable=False),
+    sa.Column('order_id',sa.String,nullable=False),
+    sa.Column('id',sa.String,primary_key=True),
+    sa.Column('conversation_id',sa.String,nullable=False),
+    sa.Column('customer_id',sa.String(128),nullable=False),
+    sa.Column('request_id',sa.String(128),nullable=False),
+    sa.Column('case_id',sa.String,sa.ForeignKey('commerce_cases.id'),nullable=False),
+    sa.Column('shipment_id',sa.String,sa.ForeignKey('commerce_delivery_parcels.shipment_id'),nullable=False),
+    sa.Column('message',sa.String(2000),nullable=False),
+    sa.Column('created_at',sa.DateTime(timezone=True),nullable=False),
+    sa.ForeignKeyConstraint(['customer_id','order_id'],['commerce_customer_orders.customer_id','commerce_customer_orders.order_id']),
+    sa.ForeignKeyConstraint(['store_id','shipment_id','case_id'],['commerce_delivery_case_links.store_id','commerce_delivery_case_links.shipment_id','commerce_delivery_case_links.case_id']),
+    sa.ForeignKeyConstraint(['store_id','shipment_id','order_id'],['commerce_delivery_parcels.store_id','commerce_delivery_parcels.shipment_id','commerce_delivery_parcels.order_id']),
+    sa.UniqueConstraint('conversation_id','request_id'),
+    sa.ForeignKeyConstraint(['conversation_id','customer_id'],['commerce_customer_conversations.id','commerce_customer_conversations.customer_id']))

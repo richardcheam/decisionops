@@ -12,7 +12,7 @@ DATABASE_MODULES = (
     'test_commerce_postgres', 'test_commerce_investigations',
     'test_commerce_execution', 'test_commerce_jobs', 'test_commerce_api',
     'test_commerce_provider_postgres', 'test_commerce_adaptive_postgres',
-    'test_commerce_delivery', 'test_commerce_conversations', 'test_commerce_specialist_acceptance',
+    'test_commerce_customer_evaluation', 'test_commerce_observability_postgres', 'test_commerce_customers', 'test_commerce_delivery', 'test_commerce_conversations', 'test_commerce_specialist_acceptance',
     'test_commerce_adaptive_tools', 'test_commerce_adaptive_core', 'test_commerce_adaptive_jobs', 'test_commerce_adaptive_sessions', 'test_commerce_specialists',
 )
 

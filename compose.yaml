@@ -29,7 +29,7 @@ services:
       COMMERCE_DATABASE_URL: postgresql+psycopg://portfolio:fictional-portfolio-db-only@postgres:5432/portfolio
       LANGSMITH_TRACING: 'false'
       LANGCHAIN_TRACING_V2: 'false'
-    command: [sh, -c, "alembic upgrade head && python -B -m decisionops.commerce.seed && python -B -m decisionops.commerce.delivery_seed && python -B -m decisionops.commerce.worker setup"]
+    command: [sh, -c, "alembic upgrade head && python -B -m decisionops.commerce.seed && python -B -m decisionops.commerce.delivery_seed && python -B -m decisionops.commerce.customer_seed && python -B -m decisionops.commerce.worker setup"]
     depends_on:
       postgres: {condition: service_healthy}
     restart: 'no'
@@ -42,6 +42,8 @@ services:
       COMMERCE_STAFF_USERNAME: visitor
       COMMERCE_STAFF_PASSWORD: ${COMMERCE_DEMO_PASSWORD:?Set an explicit invitation password (at least 16 characters)}
       COMMERCE_HELPER_PASSWORD: ${COMMERCE_HELPER_PASSWORD:-}
+      COMMERCE_CUSTOMER_CAMILLE_PASSWORD: ${COMMERCE_CUSTOMER_CAMILLE_PASSWORD:?Set Camille's distinct fictional password (at least 16 characters)}
+      COMMERCE_CUSTOMER_ALEX_PASSWORD: ${COMMERCE_CUSTOMER_ALEX_PASSWORD:?Set Alex's distinct fictional password (at least 16 characters)}
       COMMERCE_STAFF_INVESTIGATION_MODE: ${COMMERCE_DEMO_MODE:-rules}
       COMMERCE_ORIGINS: ${COMMERCE_DEMO_ORIGIN:-http://127.0.0.1:${COMMERCE_DEMO_PORT:-8133}}
     depends_on:

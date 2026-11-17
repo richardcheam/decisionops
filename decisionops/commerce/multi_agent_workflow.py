@@ -37,7 +37,7 @@ def setup(engine):
     return namespace
 
 
-def run(engine, fence, adapters=None, cancel=None, after_node=None,node_delay=0):
+def run(engine, fence, adapters=None, cancel=None, after_node=None,node_delay=0,tracer=None):
     if not 0<=node_delay<=.5:raise ValueError('Node delay bounded to 0..0.5s')
     adapters = adapters or {}
     initial = multi.current(engine, fence)
@@ -45,6 +45,9 @@ def run(engine, fence, adapters=None, cancel=None, after_node=None,node_delay=0)
         job = jobs.get(c, fence.job_id)
         if job['action'] != jobs.SPECIALIST_ACTION: raise ValueError('Wrong graph job partition')
         if initial['state'] == 'active': fence.check(c, initial, False)
+    from .observability import observe
+    attempt=job['claims']
+    observe(engine,initial['id'],tracer=tracer,event='resume' if attempt>1 else 'start',attempt=attempt)
     if multi.stopped(cancel): return initial
     if initial['state']=='active' and job['claims']>1:
         multi.recover(engine,fence)
@@ -61,6 +64,7 @@ def run(engine, fence, adapters=None, cancel=None, after_node=None,node_delay=0)
                 jobs.renew(engine, fence.job_id, fence.token)
                 action()
             current = multi.current(engine, fence)
+            observe(engine,initial['id'],tracer=tracer,node=name,attempt=attempt)
             if after_node is not None: after_node(name,current)
             return {name:current['state']}
         return execute
@@ -87,8 +91,12 @@ def run(engine, fence, adapters=None, cancel=None, after_node=None,node_delay=0)
             with super()._cursor(pipeline=pipeline) as cursor:yield cursor
     with checkpoint_saver(url,end) as bounded:
         saver=LiveSaver(bounded.conn,end)
-        builder.compile(checkpointer=saver).invoke({'run_id':initial['id']},
-            {'configurable':{'thread_id':'commerce-specialists/v1:'+initial['id']},'recursion_limit':16})
+        try:
+            builder.compile(checkpointer=saver).invoke({'run_id':initial['id']},
+                {'configurable':{'thread_id':'commerce-specialists/v1:'+initial['id']},'recursion_limit':16})
+        except Exception:
+            observe(engine,initial['id'],tracer=tracer,event='failure',reason='worker_error',attempt=attempt)
+            raise
     return multi.current(engine,fence)
 
 
