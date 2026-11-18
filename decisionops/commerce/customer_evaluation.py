@@ -1,7 +1,8 @@
 """Frozen synthetic customer/staff comparison; default and simulation are model-free.
 
 An authorized evaluator may inject a ModelActionAdapter via evaluate(adapter=...).
-This module does not construct a provider client, consume a key, or export traces.
+This module does not construct a provider client or consume a key. Tracing
+requires an explicitly injected tracer.
 Observed local runtime is not live model latency. Live quality/cost stay unmeasured
 without a separately authorized and documented provider experiment.
 """
@@ -25,7 +26,7 @@ def simulated_transport(payload):
     return next((a for a in allowed if a['kind']=='read'),allowed[0])
 
 
-def evaluate(url,*,simulate_adapter=False,adapter=None):
+def evaluate(url,*,simulate_adapter=False,adapter=None,specialist_adapter=None,tracer=None):
     from alembic import command
     from alembic.config import Config
     from fastapi.testclient import TestClient
@@ -36,11 +37,15 @@ def evaluate(url,*,simulate_adapter=False,adapter=None):
     from .role_actions import ModelActionAdapter
     from . import schema as db,staff_investigations as staff,adaptive_jobs as jobs,multi_agent_workflow as graph,worker
     from .workflow import graph_schema,setup_checkpoints
+    from .observability import SafeTracer
+    tracer=tracer if tracer is not None else SafeTracer()
     if make_url(url).host not in ('127.0.0.1','localhost','::1'):raise ValueError('Use disposable loopback PostgreSQL')
-    if simulate_adapter and adapter is not None:raise ValueError('Choose simulation or explicitly injected adapter')
+    if sum((simulate_adapter,adapter is not None,specialist_adapter is not None))>1:
+        raise ValueError('Choose simulation, full adapter or specialist-only adapter')
     modes=[('rules',None)]
     if simulate_adapter:modes.append(('adapter_simulation',ModelActionAdapter(simulated_transport)))
     elif adapter is not None:modes.append(('injected_adapter',adapter))
+    elif specialist_adapter is not None:modes.extend((('mock_specialists',None),('injected_specialists',None)))
     frozen=datetime.now(timezone.utc).replace(microsecond=0);runs=[];admin=database_engine(url)
     try:
         for name in CASES:
@@ -63,8 +68,12 @@ def evaluate(url,*,simulate_adapter=False,adapter=None):
                         source={table.name:[dict(row) for row in c.execute(sa.select(table).order_by(*table.primary_key.columns)).mappings()]
                             for table in (db.orders,db.order_lines,db.shipments,db.shipment_lines,db.payments,db.policies,db.inventory,db.carrier_events,db.delivery_parcels,db.customer_orders)}
                     source_hash=hashlib.sha256(json.dumps(source,sort_keys=True,default=str).encode()).hexdigest()
+                    use_specialists=bool(current_adapter) or mode in ('mock_specialists','injected_specialists')
+                    graph_adapter=specialist_adapter if mode=='injected_specialists' else current_adapter
+                    investigation_id=tool_attempts=None
+                    specialist_decisions=[]
                     app=create_app(engine,password='fictional-evaluation-staff',action_adapter=current_adapter,
-                        staff_investigation_mode='mock-specialists' if current_adapter else 'rules',
+                        staff_investigation_mode='mock-specialists' if use_specialists else 'rules',
                         customer_accounts={'camille':{'customer_id':'camille','password':'fictional-evaluation-camille'},
                                            'alex':{'customer_id':'alex','password':'fictional-evaluation-alex'}})
                     with TestClient(app) as client:
@@ -91,17 +100,27 @@ def evaluate(url,*,simulate_adapter=False,adapter=None):
                                 client.post('/api/conversations/'+staff_chat+'/select',json={'case_id':case_id},auth=staff_auth).raise_for_status()
                                 investigation=client.post('/api/conversations/'+staff_chat+'/messages',json={'message':'Fix this','request_id':'FROZEN-INVESTIGATION'},auth=staff_auth)
                                 assert investigation.status_code==200,investigation.text
-                                if current_adapter:
+                                if use_specialists:
                                     with engine.connect() as c:
                                         run=c.execute(sa.select(db.adaptive_runs).where(db.adaptive_runs.c.case_id==case_id)).mappings().one()
                                         job_id=c.execute(sa.select(db.adaptive_jobs.c.id).where(db.adaptive_jobs.c.run_id==run['id'])).scalar_one()
                                     claimed=jobs.claim(engine,job_id=job_id,action=jobs.SPECIALIST_ACTION)
                                     specialist_schema=graph.checkpoint_url(engine)[0]
-                                    graph.run(engine,jobs.Fence(claimed['id'],claimed['token']),adapters={'order':current_adapter,'shipment':current_adapter})
-                                else:staff.work_once(engine)
+                                    graph.run(engine,jobs.Fence(claimed['id'],claimed['token']),
+                                        adapters={'order':graph_adapter,'shipment':graph_adapter},tracer=tracer)
+                                else:staff.work_once(engine,tracer=tracer)
+                                with engine.connect() as c:
+                                    investigation_id,tool_attempts=c.execute(sa.select(
+                                        db.adaptive_runs.c.id,db.adaptive_runs.c.tool_attempts).where(
+                                        db.adaptive_runs.c.case_id==case_id)).one()
+                                    if mode=='injected_specialists':
+                                        calls=db.specialist_calls
+                                        specialist_decisions=[dict(row) for row in c.execute(sa.select(
+                                            calls.c.id,calls.c.disposition,calls.c.error).where(
+                                            calls.c.run_id==investigation_id,calls.c.dispatch_count>0)).mappings()]
                                 saved=client.get('/api/cases/'+case_id,auth=staff_auth).json()
-                                if name=='resolution':
-                                    proposal=saved['proposal'];assert proposal,saved['status']
+                                if name=='resolution' and saved['proposal']:
+                                    proposal=saved['proposal']
                                     approved=client.post('/api/cases/'+case_id+'/review',json={'generation':saved['generation'],
                                         'proposal_id':proposal['id'],'content_hash':proposal['content_hash'],'decision':'approve'},auth=staff_auth)
                                     assert approved.status_code==200,approved.text
@@ -113,9 +132,12 @@ def evaluate(url,*,simulate_adapter=False,adapter=None):
                                     outcome='replacement_created' if public['replacement_created'] and not public['shipped'] else 'unverified'
                                     expected='replacement_created'
                                 else:
-                                    outcome='review' if saved['status']=='needs_review' and saved['proposal'] is None else saved['status'];expected='review'
+                                    outcome='review' if saved['status']=='needs_review' and saved['proposal'] is None else saved['status']
+                                    expected='replacement_created' if name=='resolution' else 'review'
                         runs.append({'case':name,'mode':mode,'source_hash':source_hash,'outcome':outcome,'expected':expected,
-                            'matches_expected':outcome==expected,'observed_local_ms':round((time.monotonic()-started)*1000,3)})
+                            'matches_expected':outcome==expected,'investigation_id':investigation_id,
+                            'tool_attempts':tool_attempts,'specialist_decisions':specialist_decisions,
+                            'observed_local_ms':round((time.monotonic()-started)*1000,3)})
                 finally:
                     engine.dispose()
                     with admin.begin() as c:
@@ -123,9 +145,12 @@ def evaluate(url,*,simulate_adapter=False,adapter=None):
                             if drop:c.exec_driver_sql('DROP SCHEMA IF EXISTS '+c.dialect.identifier_preparer.quote(drop)+' CASCADE')
     finally:admin.dispose()
     return {'contract':'customer-staff-comparison/v1','population':list(CASES),'runs':runs,
-        'interpretation':'Frozen synthetic public flows. Simulation tests typed adapter/graph wiring, not model quality.',
-        'paid_model_calls':0 if adapter is None else None,'live_model_quality':None,'live_model_latency_ms':None,'live_model_cost_usd':None,
-        'live_model_status':'unmeasured; no paid model constructed by this harness','hosted_traces_exported':False}
+        'interpretation':('Frozen cases with identical customer/staff routing and identical specialist graph for the two specialist modes.'
+            if specialist_adapter is not None else 'Frozen synthetic public flows. Simulation tests typed adapter/graph wiring, not model quality.'),
+        'paid_model_calls':0 if adapter is None and specialist_adapter is None else None,'live_model_quality':None,'live_model_latency_ms':None,'live_model_cost_usd':None,
+        'live_model_status':('See injected specialist outcomes and any provider measurements.' if specialist_adapter is not None
+            else 'unmeasured; no paid model constructed by this harness'),
+        'hosted_traces_exported':False if not tracer.enabled else None}
 
 if __name__=='__main__':
     import argparse
