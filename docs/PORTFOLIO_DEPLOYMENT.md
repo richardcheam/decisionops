@@ -188,3 +188,20 @@ Commerce-only application path.
 
 Implementation references: [Kustomize documentation](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/),
 [Terraform AWS EKS resource](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/eks_cluster).
+
+## Draft PR runtime workflow
+
+The `Verify portfolio container runtime` workflow checks out the PR head commit
+and records it in each job summary. It builds and launches the root Compose stack
+and installs the same images in an isolated kind cluster in separate jobs. The
+Kubernetes job observes an injected API failure, restores the original deployment
+template and runs the customer browser suite against the rolled-back application.
+
+During the Lyon browser journey, the CI probe pauses the ordinary investigator,
+queues the work through staff chat and runs the specialist worker code in the
+deployed application image using the same database. The probe forces a hard exit
+after the order specialist commits. The ordinary investigator reclaims the job
+after its lease expires. After execution and a repeated confirmation, the probe
+compares the committed call IDs and checks the replacement and reservation counts
+in PostgreSQL. CI logs contain the resulting counts and the tested SHA. Browser
+traces and database dumps are excluded from uploads.

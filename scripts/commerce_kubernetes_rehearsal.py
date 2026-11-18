@@ -102,23 +102,37 @@ def main():
             scoped('rollout', 'status', 'deployment/' + name, '--timeout=120s')
         health()
         checks.append('worker Pod replacement and restored readiness')
-        # Rehearse a failed application release using the same local image but
-        # an intentionally failing API process. This is not a schema downgrade.
-        scoped('patch', 'deployment', 'api', '--type=strategic', '-p', json.dumps({'spec': {'template': {'spec': {'containers': [{'name': 'api', 'command': ['python', '-c', 'raise SystemExit(73)']}]}}}}))
-        failed = False
+        # Observe the injected failure on the new replica before rolling it back.
+        def api_template():
+            return json.loads(scoped('get', 'deployment/api', '-o', 'json', capture=True).stdout)['spec']['template']
+
+        original = api_template()
+        scoped('patch', 'deployment', 'api', '--type=strategic', '-p', json.dumps({
+            'spec': {'template': {'metadata': {'labels': {'decisionops-test': 'failed-release'}},
+                                  'spec': {'containers': [{'name': 'api', 'command': ['python', '-c', 'raise SystemExit(73)']}]}}}
+        }))
         try:
-            scoped('rollout', 'status', 'deployment/api', '--timeout=30s', capture=True, timeout=40)
-        except subprocess.CalledProcessError:
-            failed = True
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                pods = json.loads(scoped('get', 'pods', '-l', 'decisionops-test=failed-release',
+                                         '-o', 'json', capture=True).stdout)['items']
+                terminated = [
+                    phase.get('terminated', {}).get('exitCode')
+                    for pod in pods for status in pod.get('status', {}).get('containerStatuses', [])
+                    for phase in (status.get('state', {}), status.get('lastState', {}))
+                ]
+                if 73 in terminated:
+                    break
+                time.sleep(1)
+            else:
+                raise RuntimeError('Failed API rollout never reached injected exit 73')
         finally:
-            # Always restore the known-good template, even if the failure probe
-            # behaved unexpectedly; keep the disposable namespace inspectable.
             scoped('rollout', 'undo', 'deployment/api')
             scoped('rollout', 'status', 'deployment/api', '--timeout=120s')
-        if not failed:
-            raise RuntimeError('Intentionally failing API release unexpectedly became ready')
+        if api_template() != original:
+            raise RuntimeError('Rollback did not restore the original API pod template')
         health()
-        checks.append('failed application process rollout and rollback readiness')
+        checks.append('failed application process exit 73, original API template restored, and rollback readiness')
         print(json.dumps({'status': 'passed', 'context': args.context, 'namespace': NAMESPACE, 'app_image': args.app_image, 'web_image': args.web_image, 'checks': checks,
                           'browser_and_business_recovery': 'run separately; not established by readiness checks',
                           'cleanup': f'kubectl --context {args.context} delete namespace {NAMESPACE}'}))

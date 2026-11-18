@@ -1,4 +1,12 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { test, expect, Page } from '@playwright/test';
+
+async function runtimeProbe(phase: 'pause' | 'interrupt' | 'verify') {
+  if (!process.env.COMMERCE_RUNTIME) return;
+  const { stdout } = await promisify(execFile)('python3', ['-B', '../scripts/commerce_runtime_probe.py', phase]);
+  if (stdout.trim()) console.log(stdout.trim());
+}
 
 const staffUsername = process.env.COMMERCE_STAFF_USERNAME || 'operator';
 const staffPassword = process.env.COMMERCE_STAFF_PASSWORD!;
@@ -30,6 +38,7 @@ async function staffAsk(page: Page, message: string) {
 }
 
 test('customer Lyon report reaches the same staff case and original conversation shows only verified replacement', async ({ browser, request }) => {
+  if (process.env.COMMERCE_RUNTIME) test.setTimeout(180_000);
   const customerContext = await browser.newContext();
   const staffContext = await browser.newContext();
   try {
@@ -53,8 +62,10 @@ test('customer Lyon report reaches the same staff case and original conversation
     await staff.getByRole('region', { name: 'Exception queue', exact: true }).getByRole('button').filter({ hasText: 'DEMO-LYON' }).click();
     await expect(staff.getByTestId('selected-case')).toContainText(filed.case_id);
     await expect(staff.getByRole('heading', { name: 'Case history', exact: true }).locator('..')).toContainText('My parcel never arrived. Please report it missing.');
+    await runtimeProbe('pause');
     await staffAsk(staff, 'Fix this');
-    await expect(staff.getByText('Investigation complete. Replacement proposal ready for your review.')).toBeVisible({ timeout: 60_000 });
+    await runtimeProbe('interrupt');
+    await expect(staff.getByText('Investigation complete. Replacement proposal ready for your review.')).toBeVisible({ timeout: process.env.COMMERCE_RUNTIME ? 90_000 : 60_000 });
     const headers = auth(staffUsername, staffPassword);
     const before = await (await request.get('/api/cases/' + filed.case_id, { headers })).json();
     expect(before.approval).toBeNull();
@@ -87,6 +98,7 @@ test('customer Lyon report reaches the same staff case and original conversation
     for (const internal of ['content_hash', 'compensation_history', 'on_hand', 'reserved_units', 'evidence_current']) expect(serialized).not.toContain(internal);
     const finalCase = await (await request.get('/api/cases/' + filed.case_id, { headers })).json();
     expect((await request.post('/api/cases/' + filed.case_id + '/execute', { headers, data: { operation_id: finalCase.operation.operation_id } })).status()).toBe(409);
+    await runtimeProbe('verify');
   } finally { await customerContext.close(); await staffContext.close(); }
 });
 
