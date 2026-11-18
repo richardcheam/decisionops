@@ -244,6 +244,9 @@ commerce = [
 commerce-api = [
     { name = "openai" },
 ]
+commerce-deploy = [
+    { name = "pyyaml" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -265,6 +268,7 @@ commerce = [
     { name = "uvicorn", specifier = ">=0.40,<1" },
 ]
 commerce-api = [{ name = "openai", specifier = "==3.26.0" }]
+commerce-deploy = [{ name = "pyyaml", specifier = "==6.0.3" }]
 
 [[package]]
 name = "distro"

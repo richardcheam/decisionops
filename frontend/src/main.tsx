@@ -2,6 +2,8 @@ import React, { useEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import { Shop } from "./shop";
+import { CustomerPortal } from "./customer";
+import { DeliveryWorkspace, type ChatReply } from "./delivery-workspace";
 
 type Order = {
   id: string;
@@ -32,6 +34,10 @@ type Case = {
     items: Record<string, number>;
   };
   updated_at: string;
+  delivery?: {
+    city: string; promised_at: string | null; dispatch_origin: string;
+    carrier_events: {id: string; source: string; external_id: string; event_at: string; received_at: string; status: string; verified: boolean; original: Record<string, unknown>}[];
+  } | null;
   assessment?: Assessment;
   proposal?: {
     id: string;
@@ -52,9 +58,9 @@ type Case = {
     error_kind: string | null;
   } | null;
   shipment_investigation?: {
-    id: string; state: string; report: string; mode: string; reason: string | null;
-    unknowns: string[]; blockers: string[];
-    evidence: {tool: string; value: boolean | null; applicability: string; status: string; reason: string | null; observed_at: string; customer_page?: string; source?: {kind:string;observation_id:string;version:string;order_id:string;shipment_id:string;tables:string[]}}[];
+    id: string; generation?: number; historical?: boolean; state: string; report: string; mode: string; reason: string | null;
+    unknowns: string[]; blockers: string[]; evidence_current?: boolean; planned_checks?: string[];
+    evidence: {tool: string; value: boolean | null; applicability: string; status: string; reason: string | null; observed_at: string; expires_at?: string; customer_page?: string; source?: {kind:string;observation_id:string;version:string;order_id:string;shipment_id:string;tables:string[]}}[];
     steps: {sequence: number; kind: string; data: {specialist?: string; tool?: string; status?: string; chosen_action?: {tool?: string; kind?: string}; reason?: string}; created_at: string}[];
     specialists?: {name: string; state: string; tools: string[]; reason?: string | null; observations: string[]}[];
   } | null;
@@ -87,6 +93,7 @@ const requirements: Record<string, string> = {
 const toolLabels: Record<string,string> = {order_manifest:"Order items", replacement_policy:"Store replacement policy", payment:"Payment", fulfilment:"Shipment", carrier_loss:"Carrier loss confirmation", compensation_history:"Refund and replacement history", inventory:"Available stock"};
 const events: Record<string, string> = {
   opened: "Case opened",
+  customer_report_received: "Customer reported a missing parcel",
   adaptive_started: "Shipment investigation started",
   staff_investigation_requested: "Shipment report received",
   adaptive_proposed: "Evidence checked — proposal prepared",
@@ -142,6 +149,7 @@ function time(value: string) {
   return new Date(value).toLocaleString(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "Europe/Paris",
   });
 }
 function items(value: Record<string, number>) {
@@ -162,6 +170,10 @@ type Confirmation = {
 
 function App() {
   const [auth, setAuth] = useState("");
+  const [role, setRole] = useState<"staff" | "approver">("staff");
+  const [conversationId, setConversationId] = useState("");
+  const [staleEvidence, setStaleEvidence] = useState<{caseId:string;generation:number} | null>(null);
+  const selectionFlight = useRef(false);
   const [username, setUsername] = useState("operator");
   const [password, setPassword] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
@@ -170,7 +182,7 @@ function App() {
   const [selected, setSelected] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get("case") || "");
   const [report, setReport] = useState("");
   const investigationFlight = useRef(false);
-  useEffect(() => { if (selected) window.history.replaceState(null, "", "#case=" + encodeURIComponent(selected)); }, [selected]);
+  useEffect(() => { window.history.replaceState(null, "", selected ? "#case=" + encodeURIComponent(selected) : window.location.pathname + window.location.search); }, [selected]);
   const [active, setActive] = useState<Case | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -253,7 +265,11 @@ function App() {
     setBusy(true);
     try {
       const authorization = "Basic " + btoa(username + ":" + password);
-      await request("/api/session", undefined, authorization);
+      const session = await request<{role?: "staff" | "approver"}>("/api/session", undefined, authorization);
+      const conversation = await request<{id: string}>("/api/conversations", {}, authorization);
+      if (selected) await request("/api/conversations/" + conversation.id + "/select", {case_id: selected}, authorization);
+      setRole(session.role || "approver");
+      setConversationId(conversation.id);
       const loaded = await request<Order[]>(
         "/api/orders",
         undefined,
@@ -296,6 +312,8 @@ function App() {
           order.lines.map((line) => [line.variant_id, line.quantity]),
         ),
       });
+      await request("/api/conversations/" + conversationId + "/select", {case_id: result.id});
+      setStaleEvidence(null);
       setSelected(result.id);
       setActive(result);
       await request("/api/cases/" + result.id + "/investigate", {});
@@ -306,21 +324,53 @@ function App() {
       setBusy(false);
     }
   }
+  async function selectCase(id: string) {
+    if (selectionFlight.current || busy || confirm) return;
+    selectionFlight.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const binding = await request<{selected_case_id: string}>("/api/conversations/" + conversationId + "/select", {case_id: id});
+      setStaleEvidence(null);
+      setSelected(binding.selected_case_id);
+      setActive(null);
+      setReport("");
+      await refresh(binding.selected_case_id);
+    } finally { selectionFlight.current = false; setBusy(false); }
+  }
+  async function sendMessage(message: string, requestId: string): Promise<ChatReply> {
+    setBusy(true);
+    setError("");
+    try {
+      const reply = await request<ChatReply>("/api/conversations/" + conversationId + "/messages", {message, request_id: requestId});
+      const id = reply.selected_case_id || "";
+      if (id !== selected) { setSelected(id); setActive(null); setReport(""); setStaleEvidence(null); }
+      if (reply.evidence_current !== undefined) setStaleEvidence(reply.evidence_current === false && typeof reply.case_generation === 'number' ? {caseId:id,generation:reply.case_generation} : null);
+      if (id) await refresh(id);
+      return reply;
+    } finally { setBusy(false); }
+  }
   async function investigateShipment(event: React.FormEvent) {
     event.preventDefault();
     if (!active || investigationFlight.current) return;
     investigationFlight.current = true;
     const snapshot = active;
     try {
-      await perform(() => request("/api/cases/" + snapshot.id + "/shipment-investigation", {
-        report, request_id: crypto.randomUUID(), expected_generation: snapshot.generation,
-      }));
+      await perform(async () => {
+        await request("/api/cases/" + snapshot.id + "/shipment-investigation", {
+          report, request_id: crypto.randomUUID(), expected_generation: snapshot.generation,
+        });
+        setStaleEvidence(null);
+      });
     } finally { investigationFlight.current = false; }
   }
   const pending =
     active?.latest_job &&
     ["queued", "running"].includes(active.latest_job.status);
   const locked = busy || Boolean(pending);
+  const replacementVerified = active?.operation?.status === "verified";
+  const historicalInvestigation = active?.shipment_investigation?.historical === true;
+  const evidenceNeedsRefresh = Boolean(staleEvidence && staleEvidence.caseId === active?.id && staleEvidence.generation === active?.generation) || (!historicalInvestigation && active?.shipment_investigation?.evidence_current === false);
   function confirmation(action: "approve" | "execute") {
     if (!active?.proposal) return;
     setConfirm({
@@ -405,6 +455,7 @@ function App() {
             {error}
           </p>
         )}
+        <nav aria-label="Application entry points"><a href="/customer">Customer help</a> · <a href="/staff">Staff workspace</a></nav>
         <p className="footnote">
           Demo store · Replacements need your approval
         </p>
@@ -420,11 +471,14 @@ function App() {
           </strong>
         </div>
         <div className="header-right">
-          <span className="badge">Demo store</span>
+          <a href="/customer">Customer help</a>
+          <span className="badge">Demo store · {role === "approver" ? "Approver" : "Staff"}</span>
           <button
             className="quiet"
             onClick={() => {
               setAuth("");
+              setConversationId("");
+              setRole("staff");
               setActive(null);
               setSelected("");
               setCases([]);
@@ -459,6 +513,7 @@ function App() {
             </button>
           </div>
         )}
+        {conversationId && <DeliveryWorkspace key={conversationId} conversationId={conversationId} request={request} selected={selected} selectedOrder={active?.request.order_id} disabled={busy || Boolean(confirm)} onSelect={selectCase} onMessage={sendMessage} />}
         <div className="layout">
           <aside>
             <section className="card">
@@ -514,11 +569,7 @@ function App() {
                         className={
                           "case-row " + (row.id === selected ? "selected" : "")
                         }
-                        onClick={() => {
-                          setSelected(row.id);
-                          setActive(null);
-                          setError("");
-                        }}
+                        onClick={() => void selectCase(row.id).catch(e => setError((e as Error).message))}
                       >
                         <strong>{row.request.order_id}</strong>
                         <span className={"status " + row.status}>
@@ -551,6 +602,7 @@ function App() {
                     <p className="eyebrow">Order {active.request.order_id}</p>
                     <h2>Replacement review</h2>
                     <p className="muted">{items(active.request.items)}</p>
+                    <p className="muted">Case {active.id} · Parcel {active.request.shipment_id} · Updated {time(active.updated_at)}</p>
                   </div>
                   <span className={"status " + active.status}>
                     {active.operation && active.operation.status !== "verified"
@@ -558,9 +610,21 @@ function App() {
                       : labels[active.status] || "Needs review"}
                   </span>
                 </section>
+                {active.delivery && <details className="card" aria-label="Carrier timeline">
+                  <summary>Carrier timeline and provenance</summary>
+                  <p>{active.delivery.dispatch_origin} → {active.delivery.city}. {active.delivery.promised_at ? "Promised " + time(active.delivery.promised_at) : "Delivery promise unknown"}.</p>
+                  {active.delivery.carrier_events.some(event => event.verified && event.status === "lost") && active.delivery.carrier_events.some(event => event.verified && event.status === "delivered") && <p className="error">Conflicting verified loss and delivery records require review.</p>}
+                  <ol className="timeline">{active.delivery.carrier_events.map(event => <li key={event.id}>
+                    <strong>{event.status.replaceAll("_", " ")} · {event.verified ? "Verified record" : "Unverified record"}</strong>
+                    <p>Event <time dateTime={event.event_at}>{time(event.event_at)}</time> · Received <time dateTime={event.received_at}>{time(event.received_at)}</time></p>
+                    <p>Source: {event.source} · Event ID: {event.external_id} · Record: {event.id}</p>
+                    <details><summary>Original simulated carrier event</summary><pre>{JSON.stringify(event.original, null, 2)}</pre></details>
+                  </li>)}</ol>
+                </details>}
                 <section className="card" aria-label="Shipment investigation">
                   <h2>Investigate shipment</h2>
                   <p className="muted">Tell us what happened. We will gather the required evidence before suggesting a replacement. Nothing is replaced without your exact approval.</p>
+                  <p className="muted">Plan: bind the parcel and policy, check shipment and carrier evidence alongside payment and compensation history, then check stock and replacement eligibility.</p>
                   <form onSubmit={event => void investigateShipment(event)}>
                     <label htmlFor="shipment-report">Shipment report</label>
                     <textarea id="shipment-report" rows={3} maxLength={1000} value={report} onChange={e => setReport(e.target.value)} placeholder="For example: the customer says their parcel has not arrived." disabled={locked} required />
@@ -568,13 +632,14 @@ function App() {
                     <button type="submit" className="primary" disabled={locked || !report.trim() || new TextEncoder().encode(report).length > 2000 || active.status === "executed"}>Investigate shipment</button>
                   </form>
                   {active.shipment_investigation && <div aria-live="polite">
-                    <p role="status">{active.shipment_investigation.state === "active" ? "Investigation in progress. You can refresh or return later." : active.shipment_investigation.state === "proposed" ? "Investigation complete. Replacement proposal ready for your review." : "Investigation finished. " + (active.shipment_investigation.blockers.length ? "A required condition was not met." : "More information or staff review is needed.")}</p>
+                    {evidenceNeedsRefresh && !replacementVerified && <p role="status" className="error">Saved evidence expired or source records changed. Start an explicit investigation refresh before relying on these findings.</p>}
+                    <p role="status">{replacementVerified ? "Historical investigation. The replacement is verified by its execution record." : historicalInvestigation ? "Historical investigation from an earlier case generation. Current order checks and the proposal below govern this case." : evidenceNeedsRefresh ? "Saved investigation requires an evidence refresh." : active.shipment_investigation.state === "active" ? "Investigation in progress. You can refresh or return later." : active.shipment_investigation.state === "proposed" ? "Investigation complete. Replacement proposal ready for your review." : "Investigation finished. " + (active.shipment_investigation.blockers.length ? "A required condition was not met." : "More information or staff review is needed.")}</p>
                     <p>{active.shipment_investigation.mode === "mock_specialists" ? "Mocked specialists. No paid calls." : active.shipment_investigation.mode === "simulated_decisions" ? "Demo: simulated Decisions responses. No paid calls." : "Rules investigation. No paid calls."}</p>
-                    {active.shipment_investigation.mode === "mock_specialists" && <section aria-label="Specialist branches">
+                    {Boolean(active.shipment_investigation.specialists?.length) && <section aria-label="Specialist branches">
                       <h3>Specialist branches</h3>
                       <p>Each specialist chooses evidence reads within its assigned scope. All branches must finish before the replacement policy checks the combined evidence.</p>
                       {active.shipment_investigation.specialists?.map(branch => <div key={branch.name}>
-                        <h4>{branch.name.replaceAll("_", " ")}</h4>
+                        <h4>{branch.name.replaceAll("_", " ")} specialist</h4>
                         <p>Branch status: {branch.state.replaceAll("_", " ")}</p>
                         <p>Assigned reads: {branch.tools.map(tool => toolLabels[tool] || tool).join(", ")}</p>
                         {branch.reason && <p>Branch outcome: {branch.reason.replaceAll("_", " ")}</p>}
@@ -591,9 +656,11 @@ function App() {
                         </li>)}</ol>
                       </details>
                     </section>}
+                    {!historicalInvestigation && active.shipment_investigation.evidence.some(row => ["expired", "dependency_changed", "future_timestamp", "conflicting_active_contents"].includes(row.applicability)) && <p role="status" className="error">Saved findings include expired, changed or conflicting evidence. Refresh the investigation before treating these findings as current.</p>}
+                    {active.shipment_investigation.planned_checks?.length ? <p>Investigation outline: {active.shipment_investigation.planned_checks.join(" → ")}</p> : null}
                     <p>Saved report: {active.shipment_investigation.report}</p>
                     <p>{active.shipment_investigation.unknowns.length} checks still unknown</p>
-                    <ol className="timeline">{active.shipment_investigation.evidence.map((row,i) => <li key={i}><strong>{toolLabels[row.tool] || row.tool}</strong>: {row.applicability !== "current" ? "Not used as current evidence" : row.value === true ? "Confirmed" : row.value === false ? "Not met" : "Needs information"}<time>{time(row.observed_at)}</time>{row.source && <details><summary>Evidence source</summary><p>Declared record scope: {row.source.tables.join(", ")}. Order {row.source.order_id}; shipment {row.source.shipment_id}.</p><p>This investigation consulted database records, not browser pages.</p><p>Observation: {row.source.observation_id}<br/>Version: {row.source.version}</p>{row.reason && <p>Evidence limitation: {row.reason.replaceAll("_", " ")}</p>}{row.customer_page && <a href={row.customer_page}>View corresponding customer page ↗</a>}</details>}</li>)}</ol>
+                    <ol className="timeline">{active.shipment_investigation.evidence.map((row,i) => <li key={i}><strong>{toolLabels[row.tool] || row.tool}</strong>: {evidenceNeedsRefresh ? "Not current: refresh required" : row.applicability !== "current" ? "Not current: " + row.applicability.replaceAll("_", " ") : row.value === true ? "Confirmed" : row.value === false ? "Not met" : "Needs information"}<time>Checked {time(row.observed_at)}{row.expires_at ? " · Valid until " + time(row.expires_at) : ""}</time>{row.source && <details><summary>Evidence source</summary><p>Declared record scope: {row.source.tables.join(", ")}. Order {row.source.order_id}; shipment {row.source.shipment_id}.</p><p>This investigation consulted database records, not browser pages.</p><p>Observation: {row.source.observation_id}<br/>Version: {row.source.version}</p>{row.reason && <p>Evidence limitation: {row.reason.replaceAll("_", " ")}</p>}{row.customer_page && <a href={row.customer_page}>View corresponding customer page ↗</a>}</details>}</li>)}</ol>
                     {active.shipment_investigation.steps.some(s => s.kind === "deterministic_continuation") && <details><summary>Why evidence gathering continued</summary>{active.shipment_investigation.steps.filter(s => s.kind === "deterministic_continuation").map(s => <p key={s.sequence}>Evidence continuation: the application selected {toolLabels[s.data.chosen_action?.tool || ""] || "the next read"} after a missing-information review choice. This was not a model choice.</p>)}</details>}
                     {active.shipment_investigation.steps.filter(s => s.kind === "continuation_unavailable").map(s => <p key={s.sequence}>Could not continue gathering evidence: {s.data.reason?.replaceAll("_", " ")}.</p>)}
                     {active.shipment_investigation.reason && <p>Review outcome: {active.shipment_investigation.reason.replaceAll("_", " ")}</p>}
@@ -601,7 +668,7 @@ function App() {
                 </section>
                 <section className="card" aria-label="Next step">
                   <h2>What to do next</h2>
-                  <p>{pending ? "We are checking the order. You can leave this page and return later." : nextStep(active)}</p>
+                  <p>{replacementVerified ? nextStep(active) : pending ? "We are checking the order. You can leave this page and return later." : evidenceNeedsRefresh ? "Saved evidence needs an explicit investigation refresh before approval or execution." : nextStep(active)}</p>
                 </section>
                 <div className="actions card">
                   <button
@@ -619,10 +686,10 @@ function App() {
                         ? "Check again"
                         : "Check order"}
                   </button>
-                  {active.status === "awaiting_review" && (
+                  {role === "approver" && active.status === "awaiting_review" && (
                     <>
                       <button
-                        disabled={locked}
+                        disabled={locked || evidenceNeedsRefresh}
                         onClick={() => confirmation("approve")}
                       >
                         Approve replacement
@@ -636,9 +703,9 @@ function App() {
                       </button>
                     </>
                   )}
-                  {active.status === "approved" && (
+                  {role === "approver" && active.status === "approved" && (
                     <button
-                      disabled={locked}
+                      disabled={locked || evidenceNeedsRefresh}
                       onClick={() => confirmation("execute")}
                     >
                       Create replacement
@@ -652,6 +719,7 @@ function App() {
                     </span>
                   )}
                 </div>
+                {role === "staff" && ["awaiting_review", "approved"].includes(active.status) && <p className="card muted">An approver must review the exact proposal and separately confirm execution.</p>}
                 {active.latest_job?.status === "failed" && (
                   <div role="alert" className="error">
                     We could not finish checking this order. Try checking again.
@@ -678,12 +746,12 @@ function App() {
                     </p>
                   </section>
                 )}
-                {active.assessment && (
+                {active.assessment && !replacementVerified && (
                   <section className="card">
                     <div className="sectionhead">
                       <h2>Order checks</h2>
                       <span className="muted">
-                        {active.assessment.decision.unknowns.length} not
+                        {evidenceNeedsRefresh ? Object.keys(requirements).length : active.assessment.decision.unknowns.length} not
                         confirmed
                       </span>
                     </div>
@@ -693,7 +761,7 @@ function App() {
                     </p>
                     <div className="requirements">
                       {Object.entries(requirements).map(([key, label]) => {
-                        const value = active.assessment!.facts[key];
+                        const value = evidenceNeedsRefresh ? null : active.assessment!.facts[key];
                         const evidence = active.assessment!.read_tools.find(
                           (row) => row.requirement === key,
                         );
@@ -759,6 +827,7 @@ function App() {
                       <li key={event.id}>
                         <div>
                           <strong>{events[event.kind] || event.kind}</strong>
+                          {event.kind === "customer_report_received" && typeof event.details.message === "string" && <p>{event.details.message}</p>}
                           <time>{time(event.created_at)}</time>
                         </div>
                       </li>
@@ -820,6 +889,7 @@ function App() {
                 : "Create this replacement?"}
             </h2>
             <p>{items(confirm.items)}</p>
+            <details open className="approval-binding"><summary>Approval binding</summary><p>Proposal {confirm.proposalId}<br/>Case {confirm.caseId} · Generation {confirm.generation}<br/>Content hash {confirm.hash}</p></details>
             <p className="muted">
               {confirm.action === "approve"
                 ? "Approve the items and quantities shown above. You will still need to choose Create replacement to set the items aside."
@@ -855,6 +925,6 @@ function App() {
 }
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {window.location.pathname.startsWith("/shop") ? <Shop /> : <App />}
+    {window.location.pathname.startsWith("/customer") ? <CustomerPortal /> : window.location.pathname.startsWith("/shop") ? <Shop /> : <App />}
   </React.StrictMode>,
 );

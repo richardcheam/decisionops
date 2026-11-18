@@ -321,7 +321,8 @@ class AdaptiveJobTests(unittest.TestCase):
     def test_graph_resume_pauses_unknown_dispatch_without_redispatch(self):
         from decisionops.commerce import adaptive_jobs as j,adaptive_workflow as w,adaptive_accounting as a
         from decisionops.commerce.adaptive_runner import tick,Interrupted
-        owned=self.claim(self.queued(),1);f=j.Fence(owned['id'],owned['token']);w.setup_checkpoints(self.engine)
+        queued=self.queued();w.setup_checkpoints(self.engine)
+        owned=self.claim(queued,1);f=j.Fence(owned['id'],owned['token'])
         with self.assertRaises(Interrupted):tick(self.engine,f,fault='after_dispatch')
         time.sleep(1.1);state=w.resume(self.engine,owned['id'])
         self.assertEqual(state['phase'],'active')

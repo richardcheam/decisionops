@@ -37,7 +37,7 @@ def setup(engine):
     return namespace
 
 
-def run(engine, fence, adapters=None, cancel=None, after_node=None,node_delay=0):
+def run(engine, fence, adapters=None, cancel=None, after_node=None,node_delay=0,tracer=None):
     if not 0<=node_delay<=.5:raise ValueError('Node delay bounded to 0..0.5s')
     adapters = adapters or {}
     initial = multi.current(engine, fence)
@@ -45,6 +45,9 @@ def run(engine, fence, adapters=None, cancel=None, after_node=None,node_delay=0)
         job = jobs.get(c, fence.job_id)
         if job['action'] != jobs.SPECIALIST_ACTION: raise ValueError('Wrong graph job partition')
         if initial['state'] == 'active': fence.check(c, initial, False)
+    from .observability import observe
+    attempt=job['claims']
+    observe(engine,initial['id'],tracer=tracer,event='resume' if attempt>1 else 'start',attempt=attempt)
     if multi.stopped(cancel): return initial
     if initial['state']=='active' and job['claims']>1:
         multi.recover(engine,fence)
@@ -61,12 +64,13 @@ def run(engine, fence, adapters=None, cancel=None, after_node=None,node_delay=0)
                 jobs.renew(engine, fence.job_id, fence.token)
                 action()
             current = multi.current(engine, fence)
+            observe(engine,initial['id'],tracer=tracer,node=name,attempt=attempt)
             if after_node is not None: after_node(name,current)
             return {name:current['state']}
         return execute
     builder = StateGraph(State)
-    builder.add_node('identity', node('identity', lambda:multi.support(engine,fence,cancel=cancel)))
-    builder.add_node('bound', node('bound', lambda:multi.branch(engine,fence,'order',adapter=adapters.get('order'),until_binding=True,cancel=cancel)))
+    builder.add_node('identity', node('identity', lambda:multi.support(engine,fence,tools=('order_manifest',),cancel=cancel)))
+    builder.add_node('bound', node('bound', lambda:multi.support(engine,fence,tools=('replacement_policy',),cancel=cancel)))
     builder.add_node('order', node('order', lambda:multi.branch(engine,fence,'order',adapter=adapters.get('order'),cancel=cancel)))
     builder.add_node('shipment', node('shipment', lambda:multi.branch(engine,fence,'shipment',adapter=adapters.get('shipment'),cancel=cancel)))
     builder.add_node('terminal', node('terminal', lambda:multi.join(engine,fence,cancel=cancel)))
@@ -87,8 +91,12 @@ def run(engine, fence, adapters=None, cancel=None, after_node=None,node_delay=0)
             with super()._cursor(pipeline=pipeline) as cursor:yield cursor
     with checkpoint_saver(url,end) as bounded:
         saver=LiveSaver(bounded.conn,end)
-        builder.compile(checkpointer=saver).invoke({'run_id':initial['id']},
-            {'configurable':{'thread_id':'commerce-specialists/v1:'+initial['id']},'recursion_limit':16})
+        try:
+            builder.compile(checkpointer=saver).invoke({'run_id':initial['id']},
+                {'configurable':{'thread_id':'commerce-specialists/v1:'+initial['id']},'recursion_limit':16})
+        except Exception:
+            observe(engine,initial['id'],tracer=tracer,event='failure',reason='worker_error',attempt=attempt)
+            raise
     return multi.current(engine,fence)
 
 

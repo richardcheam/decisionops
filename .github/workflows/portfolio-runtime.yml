@@ -1,0 +1,94 @@
+name: Verify portfolio container runtime
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portfolio-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime:
+    name: ${{ matrix.runtime }} runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [compose, kubernetes]
+    env:
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      COMMERCE_RUNTIME: ${{ matrix.runtime }}
+      COMMERCE_DEMO_MODE: mock-specialists
+      COMMERCE_STAFF_USERNAME: visitor
+      COMMERCE_DEMO_PASSWORD: fictional-runtime-approver
+      COMMERCE_STAFF_PASSWORD: fictional-runtime-approver
+      COMMERCE_HELPER_PASSWORD: fictional-runtime-investigator
+      COMMERCE_CUSTOMER_CAMILLE_PASSWORD: fictional-runtime-camille
+      COMMERCE_CUSTOMER_ALEX_PASSWORD: fictional-runtime-alex
+      COMMERCE_LANGSMITH_EXPORT: '0'
+      LANGSMITH_TRACING: 'false'
+      LANGCHAIN_TRACING_V2: 'false'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+      - name: Identify tested commit and install browser
+        working-directory: frontend
+        run: |
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          echo "Testing $COMMERCE_RUNTIME on $CANDIDATE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Build and start fresh Compose application
+        if: matrix.runtime == 'compose'
+        run: |
+          docker compose --env-file /dev/null -p decisionops-runtime -f compose.yaml build init web
+          docker compose --env-file /dev/null -p decisionops-runtime -f compose.yaml up -d --no-build --wait --wait-timeout 150
+          curl --fail --silent http://127.0.0.1:8133/health
+      - name: Build application and install in isolated kind cluster
+        if: matrix.runtime == 'kubernetes'
+        run: |
+          go install sigs.k8s.io/kind@v0.30.0
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          python -m pip install 'PyYAML==6.0.3'
+          app="decisionops-portfolio-app:$CANDIDATE_SHA"
+          web="decisionops-portfolio-web:$CANDIDATE_SHA"
+          docker build -f docker/Dockerfile.app -t "$app" .
+          docker build -f docker/Dockerfile.web -t "$web" .
+          kind create cluster --name decisionops-runtime --wait 90s
+          kind load docker-image --name decisionops-runtime "$app" "$web"
+          python -B scripts/commerce_kubernetes_rehearsal.py --context kind-decisionops-runtime --app-image "$app" --web-image "$web"
+      - name: Deployed browser journey, committed worker recovery and SQL uniqueness
+        run: |
+          if [ "$COMMERCE_RUNTIME" = kubernetes ]; then
+            kubectl --context kind-decisionops-runtime -n decisionops-local-portfolio port-forward --address 127.0.0.1 service/web 8166:8080 > /tmp/decisionops-port-forward.log 2>&1 &
+            forwarding=$!
+            trap 'kill "$forwarding" 2>/dev/null || true' EXIT
+            export COMMERCE_WEB_URL=http://127.0.0.1:8166
+            curl --fail --silent --retry 20 --retry-connrefused --retry-delay 1 "$COMMERCE_WEB_URL/health"
+          else
+            export COMMERCE_WEB_URL=http://127.0.0.1:8133
+          fi
+          (cd frontend && npx playwright test --config playwright.customer.config.ts)
+      - name: Tear down temporary runtime
+        if: always()
+        run: |
+          if [ "$COMMERCE_RUNTIME" = kubernetes ]; then
+            kind="$(go env GOPATH)/bin/kind"
+            if [ -x "$kind" ]; then "$kind" delete cluster --name decisionops-runtime; fi
+          else
+            docker compose --env-file /dev/null -p decisionops-runtime -f compose.yaml down -v
+          fi

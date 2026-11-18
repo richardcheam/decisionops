@@ -495,3 +495,24 @@ textarea { display:block; width:100%; box-sizing:border-box; padding: .7rem; mar
 
 /* Bounded staff provenance stays readable on narrow screens. */
 .timeline details p { overflow-wrap: anywhere; }
+
+.delivery-metrics { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:16px; margin:20px 0; }
+.delivery-metrics > div { background:#f3f7f4; padding:16px; border-radius:8px; }
+.delivery-metrics dt { color:#65766f; font-size:13px; }
+.delivery-metrics dd { margin:4px 0 0; font-size:30px; font-weight:700; }
+.queue-scroll { overflow-x:auto; }
+.exception-table { width:100%; border-collapse:collapse; text-align:left; font-size:13px; }
+.exception-table th { color:#65766f; font-weight:600; }
+.exception-table th, .exception-table td { border-bottom:1px solid #edf1ee; padding:12px 10px; vertical-align:top; }
+.exception-table td:first-child { padding-left:0; }
+.exception-table small { display:block; color:#65766f; margin-top:5px; }
+.exception-table button { text-align:left; width:100%; }
+.exception-table tr[aria-selected="true"] { background:#eaf3ef; }
+.conversation { max-height:390px; overflow-y:auto; margin:12px 0; }
+.chat-message { margin:10px 0; border-left:3px solid #dce7df; padding:10px 16px; overflow-wrap:anywhere; }
+.chat-message p { margin:5px 0; white-space:pre-wrap; }
+.chat-message.from-staff { background:#f3f7f4; }
+.case-links { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+.case-links button { font-size:12px; padding:6px 10px; }
+.approval-binding { overflow-wrap:anywhere; }
+@media (max-width:600px) { .delivery-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .exception-table { min-width:650px; } }

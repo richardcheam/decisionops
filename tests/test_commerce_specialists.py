@@ -65,7 +65,7 @@ class SpecialistTests(unittest.TestCase):
         multi.branch(self.engine, fence, 'order')
         before = self.saved(run)
         order_ids = {o['id'] for o in before['observations']
-                     if o['tool'] in ('payment', 'fulfilment')}
+                     if o['tool'] in ('payment', 'compensation_history')}
         self.assertEqual(len(order_ids), 2)
         class NoRedispatch:
             def choose(self, request, cancel):
@@ -74,7 +74,7 @@ class SpecialistTests(unittest.TestCase):
         after = self.saved(run)
         self.assertEqual(after['state'], 'proposed')
         self.assertEqual(order_ids, {o['id'] for o in after['observations']
-                                    if o['tool'] in ('payment', 'fulfilment')})
+                                    if o['tool'] in ('payment', 'compensation_history')})
         self.assertEqual(after['tool_attempts'], 7)
 
     def test_sibling_context_update_does_not_discard_bound_order_result(self):
@@ -202,7 +202,7 @@ class SpecialistTests(unittest.TestCase):
         partial = self.saved(run)
         self.assertTrue(retained <= {o['id'] for o in partial['observations']})
         self.assertTrue(partial['assessment']['facts']['paid'])
-        self.assertTrue(partial['assessment']['facts']['shipped'])
+        self.assertTrue(partial['assessment']['facts']['no_previous_compensation'])
         self.assertIsNone(partial['assessment']['facts']['loss_confirmed'])
         with self.engine.begin() as c:
             before_calls = c.exec_driver_sql('SELECT id,state,dispatch_count FROM commerce_specialist_calls WHERE run_id=%s ORDER BY id',

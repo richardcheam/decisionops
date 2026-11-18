@@ -9,7 +9,7 @@ from decisionops.commerce.specialist_contracts import (
 
 class SpecialistContractTests(unittest.TestCase):
     def request(self, specialist='order', **updates):
-        tools = ('payment', 'fulfilment') if specialist == 'order' else ('carrier_loss', 'fulfilment')
+        tools = ('payment', 'compensation_history') if specialist == 'order' else ('carrier_loss', 'fulfilment')
         values = dict(run_id='audit-run', call_id='audit-call', specialist=specialist, ordinal=1,
                       created_token='audit-token', generation=1, case_revision=0,
                       report='', projection={'requested_items': {'blue': 1}, 'observations': []},
@@ -59,7 +59,7 @@ class SpecialistContractTests(unittest.TestCase):
                 validate_action(request, action)
         self.assertEqual(validate_action(request, {'kind': 'read', 'tool': 'payment'}), Action('read', 'payment'))
         with self.assertRaises(ValueError):
-            validate_action(replace(request, allowed=(Action('read', 'fulfilment'),)), Action('read', 'payment'))
+            validate_action(replace(request, allowed=(Action('read', 'compensation_history'),)), Action('read', 'payment'))
         with self.assertRaises(ValueError):
             self.request(allowed=(Action('propose'),))
         with self.assertRaises(ValueError):
@@ -86,11 +86,11 @@ class SpecialistContractTests(unittest.TestCase):
 
     def test_mock_report_cues_change_actual_allowed_decisions(self):
         chooser = MockSpecialist()
-        self.assertEqual(chooser.choose(self.request()).tool, 'fulfilment')
+        self.assertEqual(chooser.choose(self.request()).tool, 'compensation_history')
         self.assertEqual(chooser.choose(self.request(report='Check payment')).tool, 'payment')
         self.assertEqual(chooser.choose(self.request('shipment')).tool, 'carrier_loss')
         self.assertEqual(chooser.choose(self.request('shipment', report='Refresh tracking')).tool, 'fulfilment')
-        self.assertEqual(chooser.choose(self.request(attempts=({'tool': 'fulfilment'},))).tool, 'payment')
+        self.assertEqual(chooser.choose(self.request(attempts=({'tool': 'compensation_history'},))).tool, 'payment')
         review = Action('request_review', reason='unknown_evidence')
         self.assertEqual(chooser.choose(self.request(allowed=(review,))), review)
 

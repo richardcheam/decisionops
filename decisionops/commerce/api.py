@@ -56,7 +56,24 @@ class ShipmentReport(StrictBody):
         return value
 
 
-def create_app(engine=None,*,password=None,username=None,store_id=None,origins=None,staff_investigation_mode=None,storefront_fixture=None):
+class ConversationSelection(StrictBody):
+    case_id: Annotated[str,Field(min_length=1,max_length=128)] | None
+
+
+class ConversationMessage(StrictBody):
+    message: Annotated[str,Field(min_length=1,max_length=2000)]
+    request_id: Annotated[str,Field(min_length=1,max_length=128)]
+    @field_validator('message')
+    @classmethod
+    def bounded_message(cls,value):
+        if not value.strip() or len(value.encode('utf-8'))>2000:raise ValueError('Message exceeds bound')
+        return value
+
+
+def create_app(engine=None,*,password=None,username=None,store_id=None,origins=None,staff_investigation_mode=None,storefront_fixture=None,staff_accounts=None,demo_clock=None,conversation_router=None,customer_accounts=None,customer_router=None,action_adapter=None):
+    if action_adapter is not None:
+        if conversation_router is not None or customer_router is not None:raise ValueError('Configure one action adapter')
+        conversation_router=action_adapter.staff();customer_router=action_adapter.customer()
     from .staff_investigations import MODES
     staff_investigation_mode=staff_investigation_mode or os.environ.get('COMMERCE_STAFF_INVESTIGATION_MODE','rules')
     if staff_investigation_mode not in MODES:raise ValueError('Staff investigation mode must be rules, mock-decisions or mock-specialists; paid modes prohibited')
@@ -66,6 +83,14 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
     origins=origins if origins is not None else set(os.environ.get('COMMERCE_ORIGINS','http://127.0.0.1:8080,http://localhost:8080').split(','))
     if len(password)<16 or not 1<=len(username)<=128:
         raise ValueError('Configure a staff password of at least 16 characters and a bounded username before startup')
+    accounts={username:{'password':password,'role':'approver'}}
+    staff_accounts=dict(staff_accounts or {})
+    helper_password=os.environ.get('COMMERCE_HELPER_PASSWORD')
+    if helper_password:staff_accounts.setdefault('staff',{'password':helper_password,'role':'staff'})
+    for name,account in staff_accounts.items():
+        if name==username or not 1<=len(name)<=128 or account.get('role') not in ('staff','approver') or len(account.get('password',''))<16:
+            raise ValueError('Invalid local staff account')
+        accounts[name]=dict(account)
     storefront_fixture=(os.environ.get('COMMERCE_STOREFRONT_FIXTURE')=='1') if storefront_fixture is None else storefront_fixture
     owned=engine is None
     engine=engine or database_engine()
@@ -89,11 +114,16 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
     def staff(credentials: HTTPBasicCredentials | None=Depends(basic)):
         if credentials is None:
             raise HTTPException(401,'Authentication required',headers={'WWW-Authenticate':'Basic realm="Commerce"'})
-        user_ok=hmac.compare_digest(credentials.username.encode(),username.encode())
-        password_ok=hmac.compare_digest(credentials.password.encode(),password.encode())
+        account=accounts.get(credentials.username)
+        user_ok=account is not None
+        password_ok=hmac.compare_digest(credentials.password.encode(),(account['password'] if account else password).encode())
         if not (user_ok and password_ok):
             raise HTTPException(401,'Invalid staff credentials',headers={'WWW-Authenticate':'Basic realm="Commerce"'})
-        return username
+        return credentials.username
+
+    def approver(actor: str=Depends(staff)):
+        if accounts[actor]['role']!='approver':raise HTTPException(403,'Approver permission required')
+        return actor
 
     def mutation(request: Request):
         if request.headers.get('content-type','').lower().split(';',1)[0].strip()!='application/json':
@@ -171,8 +201,46 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
     router=APIRouter(prefix='/api',dependencies=[Depends(staff)])
 
     @router.get('/session')
-    def session():
-        return {'username':username,'store_id':store_id,'mode':'fictional_store_rules'}
+    def session(actor: str=Depends(staff)):
+        return {'username':actor,'store_id':store_id,'mode':'fictional_store_rules','role':accounts[actor]['role']}
+
+    @router.get('/deliveries')
+    def delivery_report():
+        from .delivery import report
+        with transaction(True) as c:return report(c,store_id,demo_clock() if demo_clock else None)
+
+    @router.get('/exceptions')
+    def exception_queue():
+        from .delivery import queue
+        with transaction(True) as c:return queue(c,store_id,demo_clock() if demo_clock else None)
+
+    @router.post('/conversations',status_code=201,dependencies=[Depends(mutation)])
+    def conversation_create(body: StrictBody,actor: str=Depends(staff)):
+        from .conversations import create
+        with transaction() as c:return create(c,actor,store_id)
+
+    def conversation_owned(c,identity,actor):
+        from .conversations import owned
+        found=owned(c,identity,actor,store_id)
+        if found is None:raise HTTPException(404,'Conversation not found')
+        return found
+
+    @router.post('/conversations/{identity}/select',dependencies=[Depends(mutation)])
+    def conversation_select(identity: str,body: ConversationSelection,actor: str=Depends(staff)):
+        from .conversations import select
+        with transaction() as c:
+            conversation=conversation_owned(c,identity,actor)
+            if body.case_id:authorize_case(c,body.case_id)
+            return select(c,conversation,body.case_id)
+
+    @router.post('/conversations/{identity}/messages',dependencies=[Depends(mutation)])
+    def conversation_message(identity: str,body: ConversationMessage,actor: str=Depends(staff)):
+        from .conversations import message
+        with transaction() as c:
+            conversation=conversation_owned(c,identity,actor)
+            if conversation['selected_case_id']:authorize_case(c,conversation['selected_case_id'])
+            return message(c,engine,conversation,body.message,body.request_id,staff_investigation_mode,
+                router=conversation_router,now=demo_clock() if demo_clock else None)
 
     @router.get('/orders')
     def orders():
@@ -202,6 +270,13 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
         with transaction(True) as connection:
             authorize_case(connection,case_id)
             result=show_case(connection,case_id)
+            parcel=connection.execute(sa.select(db.delivery_parcels).where(sa.and_(
+                db.delivery_parcels.c.shipment_id==result['request']['shipment_id'],
+                db.delivery_parcels.c.store_id==store_id))).mappings().one_or_none()
+            result['delivery']=None
+            if parcel:
+                from .delivery import timeline
+                result['delivery']={**dict(parcel),'carrier_events':timeline(connection,store_id,parcel['shipment_id'])}
             job=connection.execute(sa.select(db.jobs.c.id,db.jobs.c.status,db.jobs.c.action,db.jobs.c.error_kind).where(
                 db.jobs.c.case_id==case_id).order_by(db.jobs.c.created_at.desc(),db.jobs.c.id).limit(1)).mappings().one_or_none()
             result['latest_job']=dict(job) if job else None
@@ -224,9 +299,9 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
                               and source['shipment_id']==result['request']['shipment_id']=='SHIP-'+result['order_id'].removeprefix('ORD-')):
                             evidence['customer_page']='/shop/account/orders/'+result['order_id']+'/tracking'
             investigation=result['shipment_investigation']
-            if investigation and (investigation['state']=='active' or not result['assessment']):
+            if investigation and not investigation.get('historical') and (investigation['state']=='active' or not result['assessment']):
                 result['assessment']={'facts':investigation['facts'],'decision':{'unknowns':investigation['unknowns'],'blockers':investigation['blockers'],'status':'needs_review'},'read_tools':[]}
-            if investigation and investigation['state']=='active':
+            if investigation and not investigation.get('historical') and investigation['state']=='active':
                 result['latest_job']={'id':investigation['id'],'status':investigation['job_status'],'action':'shipment_investigation','error_kind':None}
         return result
 
@@ -247,7 +322,7 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
             return {'run_id':result['id'],'state':result['state']}
 
     @router.post('/cases/{case_id}/review',dependencies=[Depends(mutation)])
-    def review(case_id: str,body: ReviewRequest,actor: str=Depends(staff)):
+    def review(case_id: str,body: ReviewRequest,actor: str=Depends(approver)):
         with transaction() as connection:
             authorize_case(connection,case_id,True)
             result=review_case(connection,case_id,body.generation,body.proposal_id,body.content_hash,body.decision,actor=actor)
@@ -261,7 +336,7 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
         return result
 
     @router.post('/cases/{case_id}/execute',status_code=202,dependencies=[Depends(mutation)])
-    def execute_job(case_id: str,body: ExecutionRequest):
+    def execute_job(case_id: str,body: ExecutionRequest,actor: str=Depends(approver)):
         with transaction() as connection:
             authorize_case(connection,case_id,True)
             result=enqueue(connection,case_id,'execute',body.operation_id)
@@ -280,4 +355,17 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
         return result
 
     app.include_router(router)
+    from .customer_api import install as install_customer_api
+    install_customer_api(app,transaction=transaction,mutation=mutation,StrictBody=StrictBody,
+        ConversationMessage=ConversationMessage,store_id=store_id,staff_names=set(accounts),
+        accounts=customer_accounts,router=customer_router)
+    web_dist=os.environ.get('COMMERCE_WEB_DIST')
+    if web_dist:
+        from fastapi.staticfiles import StaticFiles
+        from fastapi.responses import FileResponse
+        from pathlib import Path
+        @app.get('/customer',include_in_schema=False)
+        @app.get('/staff',include_in_schema=False)
+        def role_entry():return FileResponse(Path(web_dist)/'index.html')
+        app.mount('/',StaticFiles(directory=web_dist,html=True),name='workspace')
     return app
