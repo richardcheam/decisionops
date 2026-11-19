@@ -83,6 +83,9 @@ export function DeliveryWorkspace({ conversationId, request, selected, selectedO
       setDraft(message);
     } finally { messageFlight.current = false; setSending(false); }
   }
+  const parcelsPerOrder = new Map<string, number>();
+  for (const row of queue) parcelsPerOrder.set(row.order_id, (parcelsPerOrder.get(row.order_id) ?? 0) + 1);
+
   return <>
     {error && <p role="alert" className="error workspace-error">{error}</p>}
     <section className="delivery-overview" aria-label="Delivery overview">
@@ -112,6 +115,7 @@ export function DeliveryWorkspace({ conversationId, request, selected, selectedO
         {queue.map(row => <li key={row.case_id}>
           <button type="button" disabled={disabled} aria-pressed={row.case_id === selected} onClick={() => void choose(row.case_id)}>
             <strong>{row.order_id}</strong>
+            {(parcelsPerOrder.get(row.order_id) ?? 0) > 1 && <small>{row.shipment_id}</small>}
             <span>{row.city} · {plain(row.carrier_status)}</span>
             <small>{row.triggers.map(plain).join(' · ')}</small>
           </button>

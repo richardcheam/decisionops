@@ -536,7 +536,7 @@ textarea { display:block; width:100%; box-sizing:border-box; padding: .7rem; mar
 .queue-list button[aria-pressed="true"] { border-left-color: #176650; background: #eaf3ef; }
 .queue-list strong { font-size: 13px; }
 .queue-list span { font-size: 13px; }
-.queue-list small { font-size: 12px; color: #53665d; }
+.queue-list small { font-size: 12px; color: #53665d; overflow-wrap: anywhere; }
 .delivery-queue > p { margin: 0 14px 16px; }
 .delivery-chat { padding: 16px; }
 .delivery-chat .selection-summary { margin: 0; padding-bottom: 10px; border-bottom: 1px solid #e6ece9; overflow-wrap: anywhere; }

@@ -630,7 +630,7 @@ function App() {
                   </details>}
                   {active.shipment_investigation && <div aria-live="polite">
                     {evidenceNeedsRefresh && !replacementVerified && <p role="status" className="error">Saved evidence expired or source records changed. Start an explicit investigation refresh before relying on these findings.</p>}
-                    <p role="status">{replacementVerified ? "Historical investigation. The replacement is verified by its execution record." : historicalInvestigation ? "Historical investigation from an earlier case generation. Current order checks and the proposal below govern this case." : evidenceNeedsRefresh ? "Saved investigation requires an evidence refresh." : active.shipment_investigation.state === "active" ? "Investigation in progress. You can refresh or return later." : active.shipment_investigation.state === "proposed" ? "Investigation complete. Replacement proposal ready for your review." : "Investigation finished. " + (active.shipment_investigation.blockers.length ? "A required condition was not met." : "More information or staff review is needed.")}</p>
+                    <p role="status">{replacementVerified ? "Historical investigation. The replacement is verified by its execution record." : historicalInvestigation ? "Historical investigation from an earlier case generation. Current order checks and the proposal below govern this case." : active.shipment_investigation.state === "active" ? "Investigation in progress. You can refresh or return later." : active.shipment_investigation.state === "proposed" ? (evidenceNeedsRefresh ? "Investigation complete. Refresh the evidence before reviewing the replacement." : "Investigation complete. Replacement proposal ready for your review.") : "Investigation finished. " + (active.shipment_investigation.blockers.length ? "A required condition was not met." : "More information or staff review is needed.")}</p>
                     {Boolean(active.shipment_investigation.specialists?.length) && <section aria-label="Specialist branches">
                       <h3>Specialist branches</h3>
                       {active.shipment_investigation.specialists?.map(branch => <div key={branch.name}>
@@ -733,7 +733,7 @@ function App() {
                 )}
                 <section className="card">
                   <h2>Case history</h2>
-                  <details className="case-reference"><summary>Case reference</summary><p>{active.id}</p></details>
+                  <details className="case-reference"><summary>Case reference</summary><p>{active.id}<br />Parcel {active.request.shipment_id}</p></details>
                   <ol className="timeline">
                     {active.events?.map((event) => (
                       <li key={event.id}>
