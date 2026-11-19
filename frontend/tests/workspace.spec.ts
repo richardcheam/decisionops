@@ -22,7 +22,7 @@ async function login(page: Page) {
     // A closed page cannot retain a DOM input and may reject this cleanup call.
     await page.getByLabel('Password', { exact: true }).evaluateAll(nodes => nodes.forEach(node => (node as HTMLInputElement).value = '')).catch(() => undefined);
   }
-  await expect(page.getByRole('heading', { name: 'Lost shipment reviews' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Deliveries' })).toBeVisible();
 }
 
 test('superseded dialog cannot approve; fresh review records one verified replacement', async ({ page, request }) => {

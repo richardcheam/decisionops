@@ -4,7 +4,7 @@ async function signIn(page:Page) {
   await page.getByLabel('Username',{exact:true}).fill(process.env.COMMERCE_STAFF_USERNAME || 'operator');
   await page.getByLabel('Password',{exact:true}).fill(process.env.COMMERCE_STAFF_PASSWORD!);
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Lost shipment reviews'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Deliveries'})).toBeVisible();
 }
 const mode=process.env.COMMERCE_STAFF_TEST_MODE || 'rules';
 if(!['rules','mock-decisions'].includes(mode))throw new Error('Invalid COMMERCE_STAFF_TEST_MODE');

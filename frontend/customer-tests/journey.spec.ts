@@ -47,6 +47,8 @@ test('customer Lyon report reaches the same staff case and original conversation
     await customerLogin(customer);
     await customer.getByRole('button', { name: 'Open order DEMO-LYON', exact: true }).click();
     await customerAsk(customer, 'What is my delivery status?');
+    await customer.getByRole('button', { name: 'Report a missing parcel', exact: true }).click();
+    await expect(customer.getByLabel('Your message', { exact: true })).toHaveValue('My parcel never arrived. Please report it missing.');
     const filed = await customerAsk(customer, 'My parcel never arrived. Please report it missing.');
     expect(filed.case_id).toBeTruthy();
     const conversationID = await customer.getByTestId('customer-conversation').getAttribute('data-conversation-id');
@@ -60,10 +62,16 @@ test('customer Lyon report reaches the same staff case and original conversation
     await staff.getByLabel('Password', { exact: true }).fill(staffPassword);
     await staff.getByRole('button', { name: 'Sign in', exact: true }).click();
     await staff.getByRole('region', { name: 'Exception queue', exact: true }).getByRole('button').filter({ hasText: 'DEMO-LYON' }).click();
+    await expect(staff.getByRole('region', { name: 'Selected case', exact: true })
+      .getByRole('heading', { name: 'DEMO-LYON', exact: true })).toBeInViewport();
     await expect(staff.getByTestId('selected-case')).toContainText(filed.case_id);
     await expect(staff.getByRole('heading', { name: 'Case history', exact: true }).locator('..')).toContainText('My parcel never arrived. Please report it missing.');
     await runtimeProbe('pause');
-    await staffAsk(staff, 'Fix this');
+    const investigate = staff.getByRole('button', { name: 'Investigate case', exact: true });
+    await expect(investigate).toBeInViewport();
+    const started = staff.waitForResponse(response => /\/api\/conversations\/[^/]+\/messages$/.test(response.url()) && response.request().method() === 'POST');
+    await investigate.click();
+    expect((await started).ok()).toBeTruthy();
     await runtimeProbe('interrupt');
     await expect(staff.getByText('Investigation complete. Replacement proposal ready for your review.')).toBeVisible({ timeout: process.env.COMMERCE_RUNTIME ? 90_000 : 60_000 });
     const headers = auth(staffUsername, staffPassword);

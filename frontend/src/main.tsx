@@ -134,8 +134,8 @@ function nextStep(value: Case) {
   if (value.assessment?.scope_reasons?.length)
     return "This order needs a manager's review. It may include split shipments, only some items, or a previous partial refund or replacement.";
   const guidance: Record<string, string> = {
-    open: "Choose Check order to see whether a replacement is available.",
-    awaiting_review: "The checks passed. Review the items below, then approve or decline the replacement.",
+    open: value.delivery ? "Investigate the parcel to see if it can be replaced." : "Check the order to see if it can be replaced.",
+    awaiting_review: "The checks passed. Review the replacement and approve or decline it.",
     needs_review: "Some information is missing or has changed. Check again or ask your manager for help before promising a replacement.",
     blocked: "A replacement is not available for this request. See the reasons below or ask your manager for help.",
     approved: "Approved. Choose Create replacement to set these items aside. They will not be shipped yet.",
@@ -369,6 +369,7 @@ function App() {
     ["queued", "running"].includes(active.latest_job.status);
   const locked = busy || Boolean(pending);
   const replacementVerified = active?.operation?.status === "verified";
+  const canStartDeliveryInvestigation = Boolean(active?.delivery && active.status === "open");
   const historicalInvestigation = active?.shipment_investigation?.historical === true;
   const evidenceNeedsRefresh = Boolean(staleEvidence && staleEvidence.caseId === active?.id && staleEvidence.generation === active?.generation) || (!historicalInvestigation && active?.shipment_investigation?.evidence_current === false);
   function confirmation(action: "approve" | "execute") {
@@ -416,16 +417,8 @@ function App() {
   if (!auth)
     return (
       <main className="login">
-        <div className="brandmark">D</div>
-        <p className="eyebrow">DecisionOps Commerce</p>
-        <h1>
-          Make the next decision
-          <br />
-          with evidence.
-        </h1>
-        <p className="muted">
-          Sign in to check orders and arrange replacements.
-        </p>
+        <p className="eyebrow">DecisionOps</p>
+        <h1>Staff sign in</h1>
         <form onSubmit={login} className="loginform">
           <label>
             Username
@@ -456,19 +449,14 @@ function App() {
           </p>
         )}
         <nav aria-label="Application entry points"><a href="/customer">Customer help</a> · <a href="/staff">Staff workspace</a></nav>
-        <p className="footnote">
-          Demo store · Replacements need your approval
-        </p>
+        <p className="footnote">Fictional store</p>
       </main>
     );
   return (
     <>
       <header className="topbar">
         <div className="brand">
-          <span className="brandmark small">D</span>
-          <strong>
-            DecisionOps <span>Commerce</span>
-          </strong>
+          <strong>DecisionOps</strong>
         </div>
         <div className="header-right">
           <a href="/customer">Customer help</a>
@@ -490,16 +478,10 @@ function App() {
           </button>
         </div>
       </header>
-      <main className="workspace">
-        <section className="pageintro">
-          <p className="eyebrow">Staff workspace</p>
-          <h1>Lost shipment reviews</h1>
-          <p className="muted">
-            Check an order. Review the replacement. Confirm when you are ready.
-          </p>
-        </section>
+      <main className="workspace delivery-dashboard">
+        <div className="pageintro"><h1>Deliveries</h1></div>
         {error && (
-          <div role="alert" className="error">
+          <div role="alert" className="error workspace-error">
             {error}
             <button
               className="quiet"
@@ -513,85 +495,12 @@ function App() {
             </button>
           </div>
         )}
-        {conversationId && <DeliveryWorkspace key={conversationId} conversationId={conversationId} request={request} selected={selected} selectedOrder={active?.request.order_id} disabled={busy || Boolean(confirm)} onSelect={selectCase} onMessage={sendMessage} />}
-        <div className="layout">
-          <aside>
-            <section className="card">
-              <h2>Check an order</h2>
-              <p className="muted compact">
-                Select the order with the missing parcel. We will check whether
-                all its items can be replaced.
-              </p>
-              <form onSubmit={openCase}>
-                <label>
-                  Order
-                  <select
-                    aria-label="Order"
-                    value={orderId}
-                    onChange={(event) => setOrderId(event.target.value)}
-                  >
-                    {orders.map((order) => (
-                      <option key={order.id} value={order.id}>
-                        {order.id}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <p className="selection-summary">
-                  {items(
-                    Object.fromEntries(
-                      (
-                        orders.find((order) => order.id === orderId)?.lines ||
-                        []
-                      ).map((line) => [line.variant_id, line.quantity]),
-                    ),
-                  )}
-                </p>
-                <button className="primary full" disabled={busy || !orderId}>
-                  Start review
-                </button>
-              </form>
-            </section>
-            <section className="card inbox">
-              <div className="sectionhead">
-                <h2>Case inbox</h2>
-                <span className="count">{cases.length}</span>
-              </div>
-              {cases.length === 0 ? (
-                <p className="muted">No cases yet. Select an order to start.</p>
-              ) : (
-                <ul>
-                  {cases.map((row) => (
-                    <li key={row.id}>
-                      <button
-                        disabled={busy || Boolean(confirm)}
-                        aria-pressed={row.id === selected}
-                        className={
-                          "case-row " + (row.id === selected ? "selected" : "")
-                        }
-                        onClick={() => void selectCase(row.id).catch(e => setError((e as Error).message))}
-                      >
-                        <strong>{row.request.order_id}</strong>
-                        <span className={"status " + row.status}>
-                          {labels[row.status] || row.status}
-                        </span>
-                        <small>{time(row.updated_at)}</small>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          </aside>
-          <section className="casepanel">
+        <DeliveryWorkspace key={conversationId} conversationId={conversationId} request={request} selected={selected} selectedOrder={active?.request.order_id} disabled={busy || Boolean(confirm)} onSelect={selectCase} onMessage={sendMessage}>
+          <section className="casepanel" id="staff-case" tabIndex={-1} aria-label="Selected case">
             {!selected ? (
               <div className="empty card">
-                <div className="empty-icon">↗</div>
-                <h2>Choose an order to get started</h2>
-                <p className="muted">
-                  Select an order on the left and choose Start review. We will
-                  check payment, delivery, stock and the store's replacement rules.
-                </p>
+                <h2>Select a case</h2>
+                <p className="muted">Open an exception to see the parcel and its next step.</p>
               </div>
             ) : !active ? (
               <div className="card">Loading case…</div>
@@ -599,10 +508,9 @@ function App() {
               <>
                 <section className="card caseheader">
                   <div>
-                    <p className="eyebrow">Order {active.request.order_id}</p>
-                    <h2>Replacement review</h2>
+                    <h2>{active.request.order_id}</h2>
+                    <p>{active.delivery ? `${active.delivery.dispatch_origin} → ${active.delivery.city}` : active.request.shipment_id}</p>
                     <p className="muted">{items(active.request.items)}</p>
-                    <p className="muted">Case {active.id} · Parcel {active.request.shipment_id} · Updated {time(active.updated_at)}</p>
                   </div>
                   <span className={"status " + active.status}>
                     {active.operation && active.operation.status !== "verified"
@@ -610,8 +518,96 @@ function App() {
                       : labels[active.status] || "Needs review"}
                   </span>
                 </section>
+                <section className="card next-step" aria-label="Next step">
+                  <h2>Next step</h2>
+                  <p>{replacementVerified ? nextStep(active) : pending ? "We are checking the order. You can leave this page and return later." : evidenceNeedsRefresh ? "Saved evidence needs an explicit investigation refresh before approval or execution." : nextStep(active)}</p>
+                  <div className="actions">
+                  {canStartDeliveryInvestigation && (
+                    <button className="primary" disabled={locked}
+                      onClick={() => void sendMessage("Fix this", crypto.randomUUID()).catch(e => setError((e as Error).message))}>
+                      Investigate case
+                    </button>
+                  )}
+                  {!canStartDeliveryInvestigation && active.status !== "executed" && <button
+                    className={active.proposal && !evidenceNeedsRefresh ? "quiet" : "primary"}
+                    disabled={locked}
+                    onClick={() =>
+                      void perform(() =>
+                        request("/api/cases/" + active.id + "/investigate", {}),
+                      )
+                    }
+                  >
+                    {pending
+                      ? "Checking…"
+                      : active.generation
+                        ? "Check again"
+                        : "Check order"}
+                  </button>}
+                  {role === "approver" && active.status === "awaiting_review" && (
+                    <>
+                      <button
+                        className="primary"
+                        disabled={locked || evidenceNeedsRefresh}
+                        onClick={() => confirmation("approve")}
+                      >
+                        Approve replacement
+                      </button>
+                      <button
+                        className="quiet"
+                        disabled={locked}
+                        onClick={() => void review("reject")}
+                      >
+                        Decline replacement
+                      </button>
+                    </>
+                  )}
+                  {role === "approver" && active.status === "approved" && (
+                    <button
+                      className="primary"
+                      disabled={locked || evidenceNeedsRefresh}
+                      onClick={() => confirmation("execute")}
+                    >
+                      Create replacement
+                    </button>
+                  )}
+                  {pending && (
+                    <span className="muted" role="status">
+                      {active.latest_job?.status === "queued"
+                        ? "Your order check will start shortly"
+                        : "Checking order information"}
+                    </span>
+                  )}
+                  </div>
+                  {role === "staff" && ["awaiting_review", "approved"].includes(active.status) && <p className="muted">An approver must review the exact proposal and separately confirm execution.</p>}
+                </section>
+                {active.latest_job?.status === "failed" && (
+                  <div role="alert" className="error">
+                    We could not finish checking this order. Try checking again.
+                    If it continues, ask your manager for help.
+                  </div>
+                )}
+                {active.operation && (
+                  <section
+                    className={
+                      "card outcome " +
+                      (active.operation.status === "verified" ? "success" : "")
+                    }
+                  >
+                    <p className="eyebrow">Result</p>
+                    <h2>
+                      {active.operation.status === "verified"
+                        ? "Replacement confirmed"
+                        : "Replacement needs confirmation"}
+                    </h2>
+                    <p>
+                      {active.operation.status === "verified"
+                        ? "The replacement is created and the items are set aside. They have not been shipped yet."
+                        : "We could not confirm the result. Ask your manager to check this case before creating another replacement."}
+                    </p>
+                  </section>
+                )}
                 {active.delivery && <details className="card" aria-label="Carrier timeline">
-                  <summary>Carrier timeline and provenance</summary>
+                  <summary>Carrier updates</summary>
                   <p>{active.delivery.dispatch_origin} → {active.delivery.city}. {active.delivery.promised_at ? "Promised " + time(active.delivery.promised_at) : "Delivery promise unknown"}.</p>
                   {active.delivery.carrier_events.some(event => event.verified && event.status === "lost") && active.delivery.carrier_events.some(event => event.verified && event.status === "delivered") && <p className="error">Conflicting verified loss and delivery records require review.</p>}
                   <ol className="timeline">{active.delivery.carrier_events.map(event => <li key={event.id}>
@@ -622,22 +618,21 @@ function App() {
                   </li>)}</ol>
                 </details>}
                 <section className="card" aria-label="Shipment investigation">
-                  <h2>Investigate shipment</h2>
-                  <p className="muted">Tell us what happened. We will gather the required evidence before suggesting a replacement. Nothing is replaced without your exact approval.</p>
-                  <p className="muted">Plan: bind the parcel and policy, check shipment and carrier evidence alongside payment and compensation history, then check stock and replacement eligibility.</p>
+                  <h2>Investigation</h2>
+                  {active.status !== "executed" && <details open={!active.delivery} className="manual-report">
+                    <summary>Add a shipment report</summary>
                   <form onSubmit={event => void investigateShipment(event)}>
                     <label htmlFor="shipment-report">Shipment report</label>
                     <textarea id="shipment-report" rows={3} maxLength={1000} value={report} onChange={e => setReport(e.target.value)} placeholder="For example: the customer says their parcel has not arrived." disabled={locked} required />
                     {new TextEncoder().encode(report).length > 2000 && <p>Please shorten the report before submitting.</p>}
                     <button type="submit" className="primary" disabled={locked || !report.trim() || new TextEncoder().encode(report).length > 2000 || active.status === "executed"}>Investigate shipment</button>
                   </form>
+                  </details>}
                   {active.shipment_investigation && <div aria-live="polite">
                     {evidenceNeedsRefresh && !replacementVerified && <p role="status" className="error">Saved evidence expired or source records changed. Start an explicit investigation refresh before relying on these findings.</p>}
                     <p role="status">{replacementVerified ? "Historical investigation. The replacement is verified by its execution record." : historicalInvestigation ? "Historical investigation from an earlier case generation. Current order checks and the proposal below govern this case." : evidenceNeedsRefresh ? "Saved investigation requires an evidence refresh." : active.shipment_investigation.state === "active" ? "Investigation in progress. You can refresh or return later." : active.shipment_investigation.state === "proposed" ? "Investigation complete. Replacement proposal ready for your review." : "Investigation finished. " + (active.shipment_investigation.blockers.length ? "A required condition was not met." : "More information or staff review is needed.")}</p>
-                    <p>{active.shipment_investigation.mode === "mock_specialists" ? "Mocked specialists. No paid calls." : active.shipment_investigation.mode === "simulated_decisions" ? "Demo: simulated Decisions responses. No paid calls." : "Rules investigation. No paid calls."}</p>
                     {Boolean(active.shipment_investigation.specialists?.length) && <section aria-label="Specialist branches">
                       <h3>Specialist branches</h3>
-                      <p>Each specialist chooses evidence reads within its assigned scope. All branches must finish before the replacement policy checks the combined evidence.</p>
                       {active.shipment_investigation.specialists?.map(branch => <div key={branch.name}>
                         <h4>{branch.name.replaceAll("_", " ")} specialist</h4>
                         <p>Branch status: {branch.state.replaceAll("_", " ")}</p>
@@ -666,86 +661,6 @@ function App() {
                     {active.shipment_investigation.reason && <p>Review outcome: {active.shipment_investigation.reason.replaceAll("_", " ")}</p>}
                   </div>}
                 </section>
-                <section className="card" aria-label="Next step">
-                  <h2>What to do next</h2>
-                  <p>{replacementVerified ? nextStep(active) : pending ? "We are checking the order. You can leave this page and return later." : evidenceNeedsRefresh ? "Saved evidence needs an explicit investigation refresh before approval or execution." : nextStep(active)}</p>
-                </section>
-                <div className="actions card">
-                  <button
-                    className="primary"
-                    disabled={locked || active.status === "executed"}
-                    onClick={() =>
-                      void perform(() =>
-                        request("/api/cases/" + active.id + "/investigate", {}),
-                      )
-                    }
-                  >
-                    {pending
-                      ? "Checking…"
-                      : active.generation
-                        ? "Check again"
-                        : "Check order"}
-                  </button>
-                  {role === "approver" && active.status === "awaiting_review" && (
-                    <>
-                      <button
-                        disabled={locked || evidenceNeedsRefresh}
-                        onClick={() => confirmation("approve")}
-                      >
-                        Approve replacement
-                      </button>
-                      <button
-                        className="quiet"
-                        disabled={locked}
-                        onClick={() => void review("reject")}
-                      >
-                        Decline replacement
-                      </button>
-                    </>
-                  )}
-                  {role === "approver" && active.status === "approved" && (
-                    <button
-                      disabled={locked || evidenceNeedsRefresh}
-                      onClick={() => confirmation("execute")}
-                    >
-                      Create replacement
-                    </button>
-                  )}
-                  {pending && (
-                    <span className="muted" role="status">
-                      {active.latest_job?.status === "queued"
-                        ? "Your order check will start shortly"
-                        : "Checking order information"}
-                    </span>
-                  )}
-                </div>
-                {role === "staff" && ["awaiting_review", "approved"].includes(active.status) && <p className="card muted">An approver must review the exact proposal and separately confirm execution.</p>}
-                {active.latest_job?.status === "failed" && (
-                  <div role="alert" className="error">
-                    We could not finish checking this order. Try checking again.
-                    If it continues, ask your manager for help.
-                  </div>
-                )}
-                {active.operation && (
-                  <section
-                    className={
-                      "card outcome " +
-                      (active.operation.status === "verified" ? "success" : "")
-                    }
-                  >
-                    <p className="eyebrow">Result</p>
-                    <h2>
-                      {active.operation.status === "verified"
-                        ? "Replacement confirmed"
-                        : "Replacement needs confirmation"}
-                    </h2>
-                    <p>
-                      {active.operation.status === "verified"
-                        ? "The replacement is created and the items are set aside. They have not been shipped yet."
-                        : "We could not confirm the result. Ask your manager to check this case before creating another replacement."}
-                    </p>
-                  </section>
-                )}
                 {active.assessment && !replacementVerified && (
                   <section className="card">
                     <div className="sectionhead">
@@ -755,10 +670,6 @@ function App() {
                         confirmed
                       </span>
                     </div>
-                    <p className="muted compact">
-                      All checks must be confirmed before a replacement can be
-                      approved. Missing information does not mean the order failed.
-                    </p>
                     <div className="requirements">
                       {Object.entries(requirements).map(([key, label]) => {
                         const value = evidenceNeedsRefresh ? null : active.assessment!.facts[key];
@@ -822,6 +733,7 @@ function App() {
                 )}
                 <section className="card">
                   <h2>Case history</h2>
+                  <details className="case-reference"><summary>Case reference</summary><p>{active.id}</p></details>
                   <ol className="timeline">
                     {active.events?.map((event) => (
                       <li key={event.id}>
@@ -836,8 +748,8 @@ function App() {
                 </section>
                 {active.status !== "executed" && (
                   <section className="card">
-                    <h2>Need help?</h2>
-                    <p className="muted">Add a note for your manager. This saves the note; you still need to share the case with them.</p>
+                    <h2>Ask a manager</h2>
+                    <p className="muted">Save a note, then share the case with your manager.</p>
                     <label>
                       What needs checking?
                       <input
@@ -863,16 +775,78 @@ function App() {
                   </section>
                 )}
                 <details className="card">
-                  <summary>Technical details (for support)</summary>
+                  <summary>Technical details</summary>
+                  {active.shipment_investigation && <p>{active.shipment_investigation.mode === "mock_specialists" ? "Simulated specialists" : active.shipment_investigation.mode === "simulated_decisions" ? "Simulated Decisions responses" : "Rules investigation"}</p>}
                   <pre>{JSON.stringify(active, null, 2)}</pre>
                 </details>
               </>
             )}
           </section>
-        </div>
-        <footer>
-          Demo store · No real payments or shipments
-        </footer>
+        </DeliveryWorkspace>
+          <aside className="order-lookup">
+            <section className="card">
+              <h2>Check an order</h2>
+              <form onSubmit={openCase}>
+                <label>
+                  Order
+                  <select
+                    aria-label="Order"
+                    value={orderId}
+                    onChange={(event) => setOrderId(event.target.value)}
+                  >
+                    {orders.map((order) => (
+                      <option key={order.id} value={order.id}>
+                        {order.id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="selection-summary">
+                  {items(
+                    Object.fromEntries(
+                      (
+                        orders.find((order) => order.id === orderId)?.lines ||
+                        []
+                      ).map((line) => [line.variant_id, line.quantity]),
+                    ),
+                  )}
+                </p>
+                <button className="primary full" disabled={busy || !orderId}>
+                  Start review
+                </button>
+              </form>
+            </section>
+            <section className="card inbox">
+              <div className="sectionhead">
+                <h2>All cases</h2>
+                <span className="count">{cases.length}</span>
+              </div>
+              {cases.length === 0 ? (
+                <p className="muted">No cases yet. Select an order to start.</p>
+              ) : (
+                <ul>
+                  {cases.map((row) => (
+                    <li key={row.id}>
+                      <button
+                        disabled={busy || Boolean(confirm)}
+                        aria-pressed={row.id === selected}
+                        className={
+                          "case-row " + (row.id === selected ? "selected" : "")
+                        }
+                        onClick={() => void selectCase(row.id).catch(e => setError((e as Error).message))}
+                      >
+                        <strong>{row.request.order_id}</strong>
+                        <span className={"status " + row.status}>
+                          {labels[row.status] || row.status}
+                        </span>
+                        <small>{time(row.updated_at)}</small>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </aside>
       </main>
       {confirm && active && (
         <div className="modal-backdrop">
@@ -882,14 +856,13 @@ function App() {
             aria-modal="true"
             aria-labelledby="confirm-title"
           >
-            <p className="eyebrow">Please confirm</p>
             <h2 id="confirm-title">
               {confirm.action === "approve"
                 ? "Approve this replacement?"
                 : "Create this replacement?"}
             </h2>
             <p>{items(confirm.items)}</p>
-            <details open className="approval-binding"><summary>Approval binding</summary><p>Proposal {confirm.proposalId}<br/>Case {confirm.caseId} · Generation {confirm.generation}<br/>Content hash {confirm.hash}</p></details>
+            <details className="approval-binding"><summary>Approval binding</summary><p>Proposal {confirm.proposalId}<br/>Case {confirm.caseId} · Generation {confirm.generation}<br/>Content hash {confirm.hash}</p></details>
             <p className="muted">
               {confirm.action === "approve"
                 ? "Approve the items and quantities shown above. You will still need to choose Create replacement to set the items aside."

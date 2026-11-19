@@ -19,16 +19,16 @@ Use the single Compose quickstart and four configured fictional credentials in
 orders in the same shop. Use two browser profiles so customer and staff sessions
 stay separate. `visitor` is the Compose approver; `staff` is the investigator.
 
-1. Camille: `/customer`, select `DEMO-LYON`, say “My parcel never arrived. Please
-   report it missing.” Read the case reference. “This tells the shop which parcel
+1. Camille: `/customer`, select `DEMO-LYON`, then choose **Report a missing parcel**
+   and **Send message**. Read the case reference. “This tells the shop which parcel
    I mean. Repeating the report doesn’t open another case.”
 2. Staff: `/staff`, open that exact case. Show the customer’s words, overdue trigger
    and carrier timeline. “A customer report starts the work. It doesn’t prove loss.”
-3. Ask “Fix this.” Show both specialist tracks. “One checks payment and previous
+3. Choose **Investigate case**, or ask the assistant “Fix this.” Show both specialist tracks. “One checks payment and previous
    compensation; the other checks the shipment and carrier updates. Stock and the
    shop’s policy are checked too.” Ask “What’s still missing?” without restarting.
 4. Inspect one `demo-tote` for this Lyon order. Show the actual proposal ID,
-   generation and hash in the dialog. “I’m approving these exact items.” Click
+   generation and hash under **Approval binding** in the dialog. “I’m approving these exact items.” Click
    **Approve replacement → Confirm approval**. Then separately **Create replacement
    → Confirm replacement**. “Now I’m asking the shop to create it and reserve stock.”
 5. Show **Replacement confirmed** and Camille’s original conversation, including
