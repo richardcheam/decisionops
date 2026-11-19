@@ -26,10 +26,12 @@ def main():
     from decisionops.commerce.seed import seed
     from decisionops.commerce.delivery_seed import seed as delivery_seed
     from decisionops.commerce.customer_seed import seed as customer_seed
+    from decisionops.commerce.portfolio_seed import seed as portfolio_seed
     from decisionops.commerce.workflow import setup_checkpoints, graph_schema
     from decisionops.commerce.multi_agent_workflow import checkpoint_url
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8167)
+    parser.add_argument('--compact', action='store_true', help='Use the two-case portfolio seed')
     args = parser.parse_args()
     url = os.environ.get('COMMERCE_TEST_DATABASE_URL')
     if not url:
@@ -47,13 +49,16 @@ def main():
         with engine.begin() as c:
             config.attributes['connection'] = c
             command.upgrade(config, 'head')
-        seed(engine)
-        delivery_seed(engine)
-        customer_seed(engine)
+        if args.compact:
+            portfolio_seed(engine)
+        else:
+            seed(engine)
+            delivery_seed(engine)
+            customer_seed(engine)
         setup_checkpoints(engine)
         specialist_schema = checkpoint_url(engine)[0]
         subprocess.run(['npm', '--prefix', 'frontend', 'run', 'build'], cwd=ROOT, check=True)
-        env = dict(os.environ,
+        env = dict(os.environ, COMMERCE_COMPACT_DEMO='1' if args.compact else '0',
             COMMERCE_DATABASE_URL=scoped.render_as_string(hide_password=False),
             COMMERCE_STAFF_USERNAME='operator', COMMERCE_STAFF_PASSWORD='fictional-browser-demo-only',
             COMMERCE_HELPER_PASSWORD='fictional-helper-demo-only',

@@ -23,6 +23,7 @@ jobs:
         runtime: [compose, kubernetes]
     env:
       CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      COMMERCE_COMPACT_DEMO: '1'
       COMMERCE_RUNTIME: ${{ matrix.runtime }}
       COMMERCE_DEMO_MODE: mock-specialists
       COMMERCE_STAFF_USERNAME: visitor

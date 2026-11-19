@@ -29,7 +29,7 @@ services:
       COMMERCE_DATABASE_URL: postgresql+psycopg://portfolio:fictional-portfolio-db-only@postgres:5432/portfolio
       LANGSMITH_TRACING: 'false'
       LANGCHAIN_TRACING_V2: 'false'
-    command: [sh, -c, "alembic upgrade head && python -B -m decisionops.commerce.seed && python -B -m decisionops.commerce.delivery_seed && python -B -m decisionops.commerce.customer_seed && python -B -m decisionops.commerce.worker setup"]
+    command: [sh, -c, "alembic upgrade head && python -B -m decisionops.commerce.portfolio_seed && python -B -m decisionops.commerce.worker setup"]
     depends_on:
       postgres: {condition: service_healthy}
     restart: 'no'

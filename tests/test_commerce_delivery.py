@@ -49,6 +49,42 @@ class DeliveryTests(unittest.TestCase):
         from decisionops.commerce.delivery_seed import seed
         return seed(self.engine, NOW)
 
+    def test_portfolio_seed_has_two_cases_and_keeps_existing_fixture_profile(self):
+        from decisionops.commerce.delivery import queue
+        from decisionops.commerce.delivery_seed import seed as full_seed
+        from decisionops.commerce.portfolio_seed import seed
+        from decisionops.commerce.read_tools import AssessmentRequest, read_assessment
+        from decisionops.commerce import schema as db
+        import sqlalchemy as sa
+
+        seed(self.engine, NOW)
+        seed(self.engine, NOW)
+        full_seed(self.engine, NOW)
+        with self.engine.connect() as c:
+            cases = queue(c, 'demo-store', NOW)
+            self.assertEqual({row['order_id'] for row in cases}, {'DEMO-LYON', 'DEMO-OVERDUE'})
+            self.assertEqual(set(c.execute(sa.select(db.orders.c.id)).scalars()),
+                             {'DEMO-LYON', 'DEMO-OVERDUE'})
+            owners = set(c.execute(sa.select(db.customer_orders.c.customer_id,
+                                             db.customer_orders.c.order_id)))
+            self.assertEqual(owners, {('camille', 'DEMO-LYON'), ('alex', 'DEMO-OVERDUE')})
+            decisions = {row['order_id']: read_assessment(c, AssessmentRequest(
+                row['order_id'], row['shipment_id'], {'demo-tote': 1}), NOW)['decision']['status']
+                for row in cases}
+            self.assertEqual(decisions['DEMO-LYON'], 'eligible_to_propose')
+            self.assertNotEqual(decisions['DEMO-OVERDUE'], 'eligible_to_propose')
+
+    def test_portfolio_seed_preserves_existing_full_delivery_fixture(self):
+        from decisionops.commerce.delivery import queue
+        from decisionops.commerce.portfolio_seed import seed
+
+        self.seeded()
+        with self.engine.connect() as c:
+            before = queue(c, 'demo-store', NOW)
+        seed(self.engine, NOW)
+        with self.engine.connect() as c:
+            self.assertEqual(queue(c, 'demo-store', NOW), before)
+
     def test_seed_replay_known_totals_and_eligible_lyon(self):
         from decisionops.commerce.delivery import report, queue
         from decisionops.commerce.read_tools import read_assessment, AssessmentRequest
