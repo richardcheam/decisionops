@@ -16,7 +16,7 @@ spec:
         - name: migrate
           image: decisionops-github-demo-app:local
           imagePullPolicy: IfNotPresent
-          command: [sh, -c, "alembic upgrade head && python -B -m decisionops.commerce.seed && python -B -m decisionops.commerce.delivery_seed && python -B -m decisionops.commerce.customer_seed && python -B -m decisionops.commerce.worker setup"]
+          command: [sh, -c, "alembic upgrade head && python -B -m decisionops.commerce.portfolio_seed && python -B -m decisionops.commerce.worker setup"]
           envFrom:
             - configMapRef: {name: decisionops-config}
           env:

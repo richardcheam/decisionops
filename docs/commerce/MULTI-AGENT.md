@@ -8,7 +8,7 @@ The raw evidence paths in this accepted milestone record now refer to the extern
 This optional Commerce demo splits evidence gathering between two specialists while
 retaining the existing replacement policy, exact staff approval and separate execution.
 Rules remain the default. Select `mock-specialists` explicitly to exercise the new path;
-the browser identifies it as **Mocked specialists. No paid calls.** This is a fictional,
+the case’s **Technical details** identifies it as **Simulated specialists**. This is a fictional,
 local integration demonstration. It does not demonstrate live model quality, lower cost,
 faster investigations or improved business outcomes. The [verification record](https://github.com/richardcheam/decisionops/blob/e311fe0e02a0386e86d400fb417147155847da02/docs/commerce/MULTI-AGENT-VERIFICATION.md) separates executed checks and remaining gates.
 

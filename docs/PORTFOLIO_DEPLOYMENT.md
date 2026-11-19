@@ -27,7 +27,7 @@ Open `http://127.0.0.1:8133/customer` as `camille`; open
 The investigator account is `staff`. Use the corresponding configured password.
 `alex` is the second customer and owns different orders in the same shop.
 
-The init container migrates the database, seeds shop/delivery/customer records, and
+The init container migrates the database, seeds the two fictional delivery cases and their customers, and
 sets up graph checkpoints before the API and workers start. The web server forwards
 both `/api/` and `/customer-api/`; React handles `/staff` and `/customer`.
 `rules` remains available as a model-free investigation mode; `mock-specialists`
@@ -101,6 +101,7 @@ kubectl --context kind-decisionops-portfolio -n decisionops-local-portfolio \
 export COMMERCE_STAFF_USERNAME=visitor
 export COMMERCE_STAFF_PASSWORD="$COMMERCE_DEMO_PASSWORD"
 export COMMERCE_WEB_URL=http://127.0.0.1:8166
+export COMMERCE_COMPACT_DEMO=1
 (cd frontend && npx playwright test --config playwright.customer.config.ts)
 ```
 

@@ -16,14 +16,19 @@ from .delivery import SimulatedCarrier, aware, ingest_event, scan, report, week_
 from .database import database_engine
 
 SEED_ID='commerce-delivery-fr-v1'
+COMPACT_SEED_ID='commerce-delivery-fr-compact-v1'
+COMPACT_ORDERS=('DEMO-LYON', 'DEMO-OVERDUE')
 STORE_ID='demo-store'
 
 
-def seed(engine, now=None):
+def seed(engine, now=None, *, compact=False):
     with engine.connect().execution_options(isolation_level='READ COMMITTED') as c, c.begin():
         _lock(c,STORE_ID)
-        if c.execute(sa.select(db.seed_versions.c.id).where(db.seed_versions.c.id==SEED_ID)).first():
-            return {'event':'already_seeded','seed_version':SEED_ID}
+        existing = c.execute(sa.select(db.seed_versions.c.id).where(
+            db.seed_versions.c.id.in_((SEED_ID, COMPACT_SEED_ID)))).scalar_one_or_none()
+        if existing:
+            return {'event':'already_seeded','seed_version':existing}
+        seed_id = COMPACT_SEED_ID if compact else SEED_ID
         now=aware(clock(c,now))
         start,_=week_bounds(now)
         c.execute(db.policies.insert().values(id='demo-fr-policy-v1',store_id=STORE_ID,version=100,
@@ -44,6 +49,8 @@ def seed(engine, now=None):
         ]
         for suffix,city,status,nonreceipt in specs:
             order='DEMO-'+suffix
+            if compact and order not in COMPACT_ORDERS:
+                continue
             quantity=2 if suffix=='SPLIT' else 1
             c.execute(db.orders.insert().values(id=order,store_id=STORE_ID,policy_id='demo-fr-policy-v1',currency='EUR',
                 resolution_history_complete=suffix!='HISTORY'))
@@ -72,10 +79,10 @@ def seed(engine, now=None):
                     SimulatedCarrier().set_available(c,STORE_ID,shipment,False,now)
             if suffix=='REPLACED':
                 c.execute(db.resolutions.insert().values(id='DEMO-PRIOR-REPLACEMENT',order_id=order,variant_id='demo-tote',quantity=1,kind='replacement'))
-        c.execute(db.seed_versions.insert().values(id=SEED_ID))
+        c.execute(db.seed_versions.insert().values(id=seed_id))
         scan(c,STORE_ID,now)
         summary=report(c,STORE_ID,now)
-        return {'event':'seeded','seed_version':SEED_ID,'clock':now.isoformat(),
+        return {'event':'seeded','seed_version':seed_id,'clock':now.isoformat(),
                 'completed':summary['completed'],'open':summary['open'],'overdue':summary['overdue'],'exceptions':summary['exceptions']}
 
 

@@ -16,7 +16,7 @@ def verify():
     services = compose['services']
     assert set(('postgres', 'init', 'api', 'worker', 'staff-investigator', 'web')) <= services.keys()
     command = ' '.join(services['init']['command'])
-    assert command.index('alembic upgrade head') < command.index('commerce.customer_seed') < command.index('commerce.worker setup')
+    assert command.index('alembic upgrade head') < command.index('commerce.portfolio_seed') < command.index('commerce.worker setup')
     for name in ('COMMERCE_CUSTOMER_CAMILLE_PASSWORD', 'COMMERCE_CUSTOMER_ALEX_PASSWORD'):
         assert ':?' in services['api']['environment'][name], 'Explicit separate customer credentials required'
     assert services['api']['environment']['COMMERCE_STAFF_INVESTIGATION_MODE'].endswith(':-rules}')

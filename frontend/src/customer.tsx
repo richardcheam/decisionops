@@ -30,6 +30,7 @@ export function CustomerPortal() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const currentLogin = useRef(0);
+  const composer = useRef<HTMLInputElement>(null);
 
   async function request<T>(path: string, credentials: string, body?: object): Promise<T> {
     const controller = new AbortController();
@@ -139,25 +140,23 @@ export function CustomerPortal() {
 
   return <div className="customer-portal">
     <header className="customer-header">
-      <div><p className="eyebrow">Maison Paris · fictional shop</p><h1>Help with your delivery</h1></div>
+      <div><p className="customer-brand">Maison Paris</p><h1>Delivery help</h1></div>
       <nav aria-label="Application entry points"><a href="/customer">Customer help</a><a href="/staff">Staff workspace</a></nav>
     </header>
-    <p className="customer-disclosure">Portfolio demonstration with fictional orders and simulated carrier updates. No real parcels are sent.</p>
+    <p className="customer-disclosure">Fictional store</p>
     {error && <p role="alert" className="customer-error">{error}</p>}
     {!session ? <main className="customer-login card">
-      <h2>Sign in to your orders</h2>
-      <p>Use the fictional customer account supplied with this demonstration.</p>
+      <h2>Customer sign in</h2>
       <form onSubmit={event => void signIn(event)}>
         <label>Customer username<input autoComplete="username" value={username} onChange={event => setUsername(event.target.value)} required disabled={busy} /></label>
         <label>Password<input type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required disabled={busy} /></label>
         <button className="primary" disabled={busy} type="submit">{busy ? 'Signing in…' : 'Sign in'}</button>
       </form>
     </main> : <main>
-      <div className="customer-greeting"><p>Hello, {session.display_name}. We’ll keep your delivery questions here.</p><button onClick={signOut}>Sign out</button></div>
+      <div className="customer-greeting"><p>Signed in as <strong>{session.display_name}</strong></p><button onClick={signOut}>Sign out</button></div>
       <div className="customer-columns">
         <section className="card customer-orders" aria-label="Your orders">
           <h2>Your orders</h2>
-          <p>Choose the order you need help with.</p>
           {orders.length === 0 && <p>No orders are linked to this account.</p>}
           {orders.map(order => <button key={order.id} className={selected?.id === order.id ? 'customer-order selected' : 'customer-order'}
             aria-label={'Open order ' + order.id} aria-pressed={selected?.id === order.id} disabled={busy}
@@ -167,33 +166,34 @@ export function CustomerPortal() {
         </section>
         <div className="customer-main">
           <section className="card" aria-label="Your delivery conversation" data-testid="customer-conversation" data-conversation-id={conversation?.id}>
-            <h2>Let’s check your delivery</h2>
-            <p>{selected ? 'Selected order: ' + selected.id : 'Choose an order first, or ask which orders are available.'}</p>
-            {conversation?.selected_shipment_id && <p className="muted">Parcel: {conversation.selected_shipment_id}</p>}
+            <h2>Shop support</h2>
+            <p className="muted">{selected ? selected.id : 'Select an order to get help.'}{conversation?.selected_shipment_id && selected?.parcels.length !== 1 ? ' · ' + conversation.selected_shipment_id : ''}</p>
             {splitPending && <div className="customer-parcels" role="group" aria-label="Choose a parcel">
               <p>This order has more than one parcel. Which one do you mean?</p>
               {selected.parcels.map(parcel => <button key={parcel.shipment_id} disabled={busy}
                 onClick={() => void select(selected, parcel.shipment_id)}>{parcel.shipment_id}</button>)}
             </div>}
             <div className="customer-messages" role="log" aria-label="Conversation messages" aria-live="polite">
-              {conversation?.messages.length === 0 && <p className="muted">You can ask “What is my delivery status?”, report a parcel that never arrived, or ask for a case update.</p>}
               {conversation?.messages.map((entry, index) => <div className="customer-message-pair" key={index}>
                 <p className="customer-said"><strong>You</strong><br />{entry.message}</p>
                 <p className="customer-reply"><strong>Shop support</strong><br />{entry.response.text}{entry.response.case_id && <><br /><span>Case reference: {entry.response.case_id}</span></>}</p>
               </div>)}
             </div>
-            <form onSubmit={event => void send(event)}>
-              <label>Your message<input value={message} onChange={event => setMessage(event.target.value)} maxLength={2000} required disabled={busy} autoComplete="off" /></label>
+            {selected && !splitPending && <div className="customer-shortcuts">
+              <button type="button" onClick={() => { setMessage('What is my delivery status?'); composer.current?.focus(); }} disabled={busy}>Check delivery status</button>
+              <button type="button" onClick={() => { setMessage('My parcel never arrived. Please report it missing.'); composer.current?.focus(); }} disabled={busy}>Report a missing parcel</button>
+            </div>}
+            <form className="customer-composer" onSubmit={event => void send(event)}>
+              <label>Your message<input ref={composer} value={message} onChange={event => setMessage(event.target.value)} maxLength={2000} required disabled={busy} autoComplete="off" /></label>
               <button className="primary" disabled={busy || !message.trim()} type="submit">Send message</button>
             </form>
           </section>
           <section className="card" aria-label="Your case updates" aria-live="polite">
             <h2>Your case updates</h2>
-            {conversation?.cases.length === 0 && <p>When you report a missing parcel, its reference and updates will appear here.</p>}
+            {conversation?.cases.length === 0 && <p className="muted">No cases yet.</p>}
             {conversation?.cases.map(update => <article className="customer-case" key={update.case_id}>
               <h3>Case {update.case_id}</h3><p>{update.order_id} · {update.shipment_id}</p><p>{update.text}</p>
             </article>)}
-            <p className="muted">Updates come from the shop’s saved records. A replacement being created does not mean it has been shipped.</p>
           </section>
         </div>
       </div>

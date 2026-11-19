@@ -113,7 +113,7 @@ test('queue selection is independent per browser session and split order asks fo
     expect(new Set(alternatives.case_links.map((r:{order_id:string})=>r.order_id))).toEqual(new Set(['DEMO-LYON','DEMO-OVERDUE']));
     await expect(other.getByTestId('selected-case')).toContainText('No case selected');
     await queue.getByRole('button').filter({ hasText: 'DEMO-CONFLICT' }).click();
-    await page.getByText('Carrier timeline and provenance', { exact: true }).click();
+    await page.getByText('Carrier updates', { exact: true }).click();
     const timeline = page.getByLabel('Carrier timeline', { exact: true });
     await expect(timeline).toContainText('Conflicting verified loss and delivery records require review.');
     await expect(timeline).toContainText('conflicting-delivery');

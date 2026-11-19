@@ -8,6 +8,9 @@ async function runtimeProbe(phase: 'pause' | 'interrupt' | 'verify') {
   if (stdout.trim()) console.log(stdout.trim());
 }
 
+const compactDemo = process.env.COMMERCE_COMPACT_DEMO === '1';
+const alexOrder = compactDemo ? 'DEMO-OVERDUE' : 'DEMO-FLIGHT';
+
 const staffUsername = process.env.COMMERCE_STAFF_USERNAME || 'operator';
 const staffPassword = process.env.COMMERCE_STAFF_PASSWORD!;
 const camillePassword = process.env.COMMERCE_CUSTOMER_CAMILLE_PASSWORD!;
@@ -47,7 +50,13 @@ test('customer Lyon report reaches the same staff case and original conversation
     await customerLogin(customer);
     await customer.getByRole('button', { name: 'Open order DEMO-LYON', exact: true }).click();
     await customerAsk(customer, 'What is my delivery status?');
-    const filed = await customerAsk(customer, 'My parcel never arrived. Please report it missing.');
+    await customer.getByRole('button', { name: 'Report a missing parcel', exact: true }).click();
+    await expect(customer.getByLabel('Your message', { exact: true })).toHaveValue('My parcel never arrived. Please report it missing.');
+    const report = customer.waitForResponse(r => /\/customer-api\/conversations\/[^/]+\/messages$/.test(r.url()) && r.request().method() === 'POST');
+    await customer.getByRole('button', { name: 'Send message', exact: true }).click();
+    const reply = await report;
+    expect(reply.ok()).toBeTruthy();
+    const filed = await reply.json();
     expect(filed.case_id).toBeTruthy();
     const conversationID = await customer.getByTestId('customer-conversation').getAttribute('data-conversation-id');
     const caseCard = customer.getByRole('region', { name: 'Your case updates' }).getByRole('article').filter({ hasText: filed.case_id });
@@ -59,11 +68,23 @@ test('customer Lyon report reaches the same staff case and original conversation
     await staff.getByLabel('Username', { exact: true }).fill(staffUsername);
     await staff.getByLabel('Password', { exact: true }).fill(staffPassword);
     await staff.getByRole('button', { name: 'Sign in', exact: true }).click();
-    await staff.getByRole('region', { name: 'Exception queue', exact: true }).getByRole('button').filter({ hasText: 'DEMO-LYON' }).click();
+    const queue = staff.getByRole('region', { name: 'Exception queue', exact: true });
+    if (compactDemo) {
+      await expect(queue.getByRole('button')).toHaveCount(2);
+      await expect(queue).toContainText('DEMO-OVERDUE');
+      await expect(customer.getByRole('region', { name: 'Your orders' }).getByRole('button')).toHaveCount(1);
+    }
+    await queue.getByRole('button').filter({ hasText: 'DEMO-LYON' }).click();
+    await expect(staff.getByRole('region', { name: 'Selected case', exact: true })
+      .getByRole('heading', { name: 'DEMO-LYON', exact: true })).toBeInViewport();
     await expect(staff.getByTestId('selected-case')).toContainText(filed.case_id);
     await expect(staff.getByRole('heading', { name: 'Case history', exact: true }).locator('..')).toContainText('My parcel never arrived. Please report it missing.');
     await runtimeProbe('pause');
-    await staffAsk(staff, 'Fix this');
+    const investigate = staff.getByRole('button', { name: 'Investigate case', exact: true });
+    await expect(investigate).toBeInViewport();
+    const started = staff.waitForResponse(response => /\/api\/conversations\/[^/]+\/messages$/.test(response.url()) && response.request().method() === 'POST');
+    await investigate.click();
+    expect((await started).ok()).toBeTruthy();
     await runtimeProbe('interrupt');
     await expect(staff.getByText('Investigation complete. Replacement proposal ready for your review.')).toBeVisible({ timeout: process.env.COMMERCE_RUNTIME ? 90_000 : 60_000 });
     const headers = auth(staffUsername, staffPassword);
@@ -110,18 +131,20 @@ async function customerLoginAfterReload(page: Page) {
   await expect(page.getByRole('region', { name: 'Your orders', exact: true })).toBeVisible();
 }
 
-test('split shipment needs parcel selection and second customer cannot cross ownership or staff permissions', async ({ browser, request }) => {
+test('customer ownership and staff permissions hold, including split shipments in the full fixture', async ({ browser, request }) => {
   const first = await browser.newContext();
   const second = await browser.newContext();
   try {
     const camille = await first.newPage();
     const alex = await second.newPage();
     await customerLogin(camille);
-    await camille.getByRole('button', { name: 'Open order DEMO-SPLIT', exact: true }).click();
-    const ambiguous = await customerAsk(camille, 'My parcel never arrived. Please report it missing.');
-    expect(ambiguous.intent).toBe('clarify');
-    expect(ambiguous.case_id).toBeFalsy();
-    await expect(camille.getByRole('group', { name: 'Choose a parcel' }).getByRole('button')).toHaveCount(2);
+    if (!compactDemo) {
+      await camille.getByRole('button', { name: 'Open order DEMO-SPLIT', exact: true }).click();
+      const ambiguous = await customerAsk(camille, 'My parcel never arrived. Please report it missing.');
+      expect(ambiguous.intent).toBe('clarify');
+      expect(ambiguous.case_id).toBeFalsy();
+      await expect(camille.getByRole('group', { name: 'Choose a parcel' }).getByRole('button')).toHaveCount(2);
+    }
     const identity = await camille.getByTestId('customer-conversation').getAttribute('data-conversation-id');
     const orders = await (await request.get('/customer-api/orders', { headers: auth('camille', camillePassword) })).json();
     const lyon = orders.find((row: { id: string }) => row.id === 'DEMO-LYON');
@@ -154,28 +177,30 @@ test('missing selection and ambiguous references require a fresh parcel choice b
   const question = await customerAsk(page, 'Can you check whether my parcel never arrived?');
   expect(question.intent).not.toBe('report_nonreceipt');
   expect(question.case_id).toBeFalsy();
-  const ambiguous = await customerAsk(page, 'Please report DEMO-LYON or DEMO-SPLIT missing.');
-  expect(ambiguous.intent).toBe('clarify');
-  expect(ambiguous.case_id).toBeFalsy();
-  const unresolved = await customerAsk(page, 'Please report it missing.');
-  expect(unresolved.intent).toBe('clarify');
-  expect(unresolved.case_id).toBeFalsy();
-  await page.getByRole('button', { name: 'Open order DEMO-LYON', exact: true }).click();
-  const splitReference = await customerAsk(page, 'Please report DEMO-SPLIT missing.');
-  expect(splitReference.intent).toBe('clarify');
-  expect(splitReference.case_id).toBeFalsy();
-  const stillUnresolved = await customerAsk(page, 'Please report it missing.');
-  expect(stillUnresolved.intent).toBe('clarify');
-  expect(stillUnresolved.case_id).toBeFalsy();
+  if (!compactDemo) {
+    const ambiguous = await customerAsk(page, 'Please report DEMO-LYON or DEMO-SPLIT missing.');
+    expect(ambiguous.intent).toBe('clarify');
+    expect(ambiguous.case_id).toBeFalsy();
+    const unresolved = await customerAsk(page, 'Please report it missing.');
+    expect(unresolved.intent).toBe('clarify');
+    expect(unresolved.case_id).toBeFalsy();
+    await page.getByRole('button', { name: 'Open order DEMO-LYON', exact: true }).click();
+    const splitReference = await customerAsk(page, 'Please report DEMO-SPLIT missing.');
+    expect(splitReference.intent).toBe('clarify');
+    expect(splitReference.case_id).toBeFalsy();
+    const stillUnresolved = await customerAsk(page, 'Please report it missing.');
+    expect(stillUnresolved.intent).toBe('clarify');
+    expect(stillUnresolved.case_id).toBeFalsy();
+  }
   const camilleID = await page.getByTestId('customer-conversation').getAttribute('data-conversation-id');
   const alex = auth('alex', alexPassword);
   const owned = await (await request.post('/customer-api/conversations', { headers: alex, data: {} })).json();
   expect((await request.post('/customer-api/conversations/' + owned.id + '/select', { headers: alex,
     data: { order_id: 'DEMO-LYON', shipment_id: 'PARCEL-DEMO-LYON' } })).status()).toBe(404);
   expect((await request.post('/customer-api/conversations/' + owned.id + '/select', { headers: alex,
-    data: { order_id: 'DEMO-FLIGHT', shipment_id: 'PARCEL-DEMO-LYON' } })).status()).toBe(404);
+    data: { order_id: alexOrder, shipment_id: 'PARCEL-DEMO-LYON' } })).status()).toBe(404);
   expect((await request.post('/customer-api/conversations/' + camilleID + '/select', { headers: alex,
-    data: { order_id: 'DEMO-FLIGHT', shipment_id: 'PARCEL-DEMO-FLIGHT' } })).status()).toBe(404);
+    data: { order_id: alexOrder, shipment_id: 'PARCEL-' + alexOrder } })).status()).toBe(404);
 });
 
 test('late customer responses cannot replace another account’s conversation after sign-out', async ({ page }) => {
@@ -201,7 +226,7 @@ test('late customer responses cannot replace another account’s conversation af
     await page.getByLabel('Customer username', { exact: true }).fill('alex');
     await page.getByLabel('Password', { exact: true }).fill(alexPassword);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-    await expect(page.getByRole('region', { name: 'Your orders' })).toContainText('DEMO-FLIGHT');
+    await expect(page.getByRole('region', { name: 'Your orders' })).toContainText(alexOrder);
     const alexConversation = await page.getByTestId('customer-conversation').getAttribute('data-conversation-id');
     expect(alexConversation).not.toBe(original);
     const delayed = page.waitForResponse(response => /\/customer-api\/conversations\/[^/]+\/select$/.test(response.url()));
@@ -210,7 +235,7 @@ test('late customer responses cannot replace another account’s conversation af
     await (await delayed).finished();
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     await expect(page.getByTestId('customer-conversation')).toHaveAttribute('data-conversation-id', alexConversation!);
-    await expect(page.getByRole('region', { name: 'Your delivery conversation' })).not.toContainText('Selected order: DEMO-LYON');
+    await expect(page.getByRole('region', { name: 'Your delivery conversation' })).not.toContainText('DEMO-LYON');
   } finally { releaseResponse(); }
 });
 

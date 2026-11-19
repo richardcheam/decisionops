@@ -8,8 +8,7 @@ export type DeliveryReport = {
   semantics: { completed: string; open: string; overdue: string };
 };
 type Exception = CaseLink & {
-  city: string; triggers: string[]; status: string; updated_at: string;
-  promised_at: string | null; carrier_status: string; next_action: string;
+  city: string; triggers: string[]; carrier_status: string;
 };
 export type ChatReply = {
   intent: string; text: string; selected_case_id: string | null;
@@ -17,6 +16,7 @@ export type ChatReply = {
 };
 type Message = { id: string; speaker: 'You' | 'Assistant'; text: string; links?: CaseLink[] };
 type Props = {
+  children: React.ReactNode;
   conversationId: string;
   request: <T>(path: string, body?: unknown) => Promise<T>;
   selected: string;
@@ -28,7 +28,7 @@ type Props = {
 const stamp = (value: string) => new Date(value).toLocaleString('en-GB', { timeZone: 'Europe/Paris', dateStyle: 'medium', timeStyle: 'short' });
 const plain = (value: string) => value.replaceAll('_', ' ');
 
-export function DeliveryWorkspace({ conversationId, request, selected, selectedOrder, disabled, onSelect, onMessage }: Props) {
+export function DeliveryWorkspace({ conversationId, request, selected, selectedOrder, disabled, onSelect, onMessage, children }: Props) {
   const [report, setReport] = useState<DeliveryReport | null>(null);
   const [queue, setQueue] = useState<Exception[]>([]);
   const [error, setError] = useState('');
@@ -57,7 +57,12 @@ export function DeliveryWorkspace({ conversationId, request, selected, selectedO
   }, [conversationId]);
   async function choose(id: string) {
     setError('');
-    try { await onSelect(id); } catch (e) { setError((e as Error).message); }
+    try {
+      await onSelect(id);
+      if (window.matchMedia('(max-width: 760px)').matches) {
+        document.getElementById('staff-case')?.focus();
+      }
+    } catch (e) { setError((e as Error).message); }
   }
   async function send(event: React.FormEvent) {
     event.preventDefault();
@@ -78,49 +83,58 @@ export function DeliveryWorkspace({ conversationId, request, selected, selectedO
       setDraft(message);
     } finally { messageFlight.current = false; setSending(false); }
   }
-  return <div className="delivery-workspace">
-    {error && <p role="alert" className="error">{error}</p>}
-    <section className="card" aria-label="Delivery overview">
-      <div className="sectionhead"><h2>Delivery overview</h2><span className="badge">Paris dispatch · Metropolitan France</span></div>
+  const parcelsPerOrder = new Map<string, number>();
+  for (const row of queue) parcelsPerOrder.set(row.order_id, (parcelsPerOrder.get(row.order_id) ?? 0) + 1);
+
+  return <>
+    {error && <p role="alert" className="error workspace-error">{error}</p>}
+    <section className="delivery-overview" aria-label="Delivery overview">
       {!report ? <p role="status">Loading delivery totals…</p> : <>
-        <p className="muted">Week from <time data-testid="report-start" dateTime={report.start}>{stamp(report.start)}</time> until <time data-testid="report-end" dateTime={report.end}>{stamp(report.end)}</time> (end excluded) · {report.timezone}</p>
         <dl className="delivery-metrics">
-          <div><dt>Completed this week</dt><dd>{report.completed}</dd></div>
+          <div><dt>Delivered this week</dt><dd>{report.completed}</dd></div>
           <div><dt>Open parcels</dt><dd>{report.open}</dd></div>
           <div><dt>Overdue parcels</dt><dd>{report.overdue}</dd></div>
-          <div><dt>Operational exceptions</dt><dd>{report.exceptions}</dd></div>
+          <div><dt>Exceptions</dt><dd>{report.exceptions}</dd></div>
         </dl>
-        <p className="muted">Completed: {report.semantics.completed}. Open: {report.semantics.open}. Overdue: {report.semantics.overdue}.</p>
-        <p className="muted">Data as of <time data-testid="report-freshness" dateTime={report.as_of}>{stamp(report.as_of)}</time> · Europe/Paris. In-app case updates refresh automatically.</p>
-        <details><summary>Cases in this report</summary><div className="case-links">{report.case_links.map(link => <button key={link.case_id} disabled={disabled} onClick={() => void choose(link.case_id)}>Open {link.order_id} · {link.shipment_id}</button>)}</div></details>
+        <div className="report-period"><span>Paris time · <time data-testid="report-start" dateTime={report.start}>{stamp(report.start)}</time>–<time data-testid="report-end" dateTime={report.end}>{stamp(report.end)}</time></span><span>Updated <time data-testid="report-freshness" dateTime={report.as_of}>{stamp(report.as_of)}</time></span></div>
+        <details className="report-details">
+          <summary>Report details</summary>
+          <p className="muted">Times use {report.timezone}. The end time is exclusive.</p>
+          <ul className="report-definitions">
+            <li>{report.semantics.completed}</li>
+            <li>{report.semantics.open}</li>
+            <li>{report.semantics.overdue}</li>
+          </ul>
+          <div className="case-links">{report.case_links.map(link => <button key={link.case_id} disabled={disabled} onClick={() => void choose(link.case_id)}>Open {link.order_id} · {link.shipment_id}</button>)}</div>
+        </details>
       </>}
     </section>
-    <section className="card" aria-label="Exception queue">
+    <section className="card delivery-queue" aria-label="Exception queue">
       <div className="sectionhead"><h2>Exception queue</h2><span className="count">{queue.length}</span></div>
-      <p className="muted">An overdue parcel or a customer report needs investigation. Neither confirms loss. Delivered parcels with nonreceipt remain here.</p>
-      {!queue.length ? <p className="muted">No operational exceptions to show.</p> : <div className="queue-scroll"><table className="exception-table">
-        <thead><tr><th scope="col">Order / parcel</th><th scope="col">Trigger / carrier</th><th scope="col">Timing</th><th scope="col">Case / next action</th></tr></thead>
-        <tbody>{queue.map(row => <tr key={row.case_id} aria-selected={row.case_id === selected}>
-          <td><button disabled={disabled} aria-pressed={row.case_id === selected} onClick={() => void choose(row.case_id)}>{row.order_id}<small>{row.shipment_id} · {row.city}</small></button></td>
-          <td>{row.triggers.map(plain).join(', ')}<small>Carrier: {plain(row.carrier_status)}</small></td>
-          <td>{row.promised_at ? <>Promised <time dateTime={row.promised_at}>{stamp(row.promised_at)}</time></> : 'Promise unknown'}<small>Updated <time dateTime={row.updated_at}>{stamp(row.updated_at)}</time></small></td>
-          <td><small>{row.case_id}</small>{plain(row.status)}<small>{plain(row.next_action)}</small></td>
-        </tr>)}</tbody>
-      </table></div>}
+      {!queue.length ? <p className="muted">No exceptions.</p> : <ul className="queue-list">
+        {queue.map(row => <li key={row.case_id}>
+          <button type="button" disabled={disabled} aria-pressed={row.case_id === selected} onClick={() => void choose(row.case_id)}>
+            <strong>{row.order_id}</strong>
+            {(parcelsPerOrder.get(row.order_id) ?? 0) > 1 && <small>{row.shipment_id}</small>}
+            <span>{row.city} · {plain(row.carrier_status)}</span>
+            <small>{row.triggers.map(plain).join(' · ')}</small>
+          </button>
+        </li>)}
+      </ul>}
     </section>
-    <section className="card" aria-label="Workspace chat">
-      <h2>Delivery assistant</h2>
-      <p className="muted">Ask about deliveries, open an exception, then ask “Fix this” to delegate its investigation. “What’s still missing?” reads the saved progress.</p>
-      <p data-testid="selected-case" className="selection-summary">{selected ? `Selected case: ${selectedOrder ? selectedOrder + ' · ' : ''}${selected}` : 'No case selected. Open a queue or report link to select one.'}</p>
+    {children}
+    <section className="card delivery-chat" aria-label="Workspace chat">
+      <h2>Assistant</h2>
+      <p data-testid="selected-case" className="selection-summary">{selected ? <><strong>{selectedOrder || 'Selected case'}</strong><small>{selected}</small></> : 'No case selected'}</p>
       <div role="log" aria-label="Conversation" aria-live="polite" className="conversation">
         {messages.map(row => <div key={row.id} className={'chat-message ' + (row.speaker === 'You' ? 'from-staff' : '')}><strong>{row.speaker}</strong><p>{row.text}</p>{!!row.links?.length && <div className="case-links">{row.links.map(link => <button key={link.case_id} disabled={disabled} onClick={() => void choose(link.case_id)}>Open {link.order_id} · {link.shipment_id}</button>)}</div>}</div>)}
       </div>
       <form onSubmit={event => void send(event)}>
         <label htmlFor="workspace-message">Message</label>
-        <textarea id="workspace-message" value={draft} onChange={event => setDraft(event.target.value)} maxLength={1000} rows={2} required disabled={disabled || sending} placeholder="How many deliveries did we complete this week?" />
+        <textarea id="workspace-message" value={draft} onChange={event => setDraft(event.target.value)} maxLength={1000} rows={2} required disabled={disabled || sending} placeholder={selected ? 'What’s still missing?' : 'How many parcels arrived this week?'} />
         <button className="primary" disabled={disabled || sending || !draft.trim()}>Send message</button>
-        {sending && <span className="muted" role="status"> Reading saved store information…</span>}
+        {sending && <span className="muted" role="status"> Checking…</span>}
       </form>
     </section>
-  </div>;
+  </>;
 }

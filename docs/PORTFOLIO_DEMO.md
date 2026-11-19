@@ -15,30 +15,29 @@ Time savings and live-model quality must be measured in an authorized pilot.
 ## Present it in five minutes
 
 Use the single Compose quickstart and four configured fictional credentials in
-[the README](../README.md). Camille owns Lyon and the split order; Alex owns other
-orders in the same shop. Use two browser profiles so customer and staff sessions
+[the README](../README.md). Camille owns the Lyon order. Alex owns the Lille order. Use two browser profiles so customer and staff sessions
 stay separate. `visitor` is the Compose approver; `staff` is the investigator.
 
-1. Camille: `/customer`, select `DEMO-LYON`, say “My parcel never arrived. Please
-   report it missing.” Read the case reference. “This tells the shop which parcel
+1. Camille: `/customer`, select `DEMO-LYON`, then choose **Report a missing parcel**
+   and **Send message**. Read the case reference. “This tells the shop which parcel
    I mean. Repeating the report doesn’t open another case.”
 2. Staff: `/staff`, open that exact case. Show the customer’s words, overdue trigger
    and carrier timeline. “A customer report starts the work. It doesn’t prove loss.”
-3. Ask “Fix this.” Show both specialist tracks. “One checks payment and previous
+3. Choose **Investigate case**, or ask the assistant “Fix this.” Show both specialist tracks. “One checks payment and previous
    compensation; the other checks the shipment and carrier updates. Stock and the
    shop’s policy are checked too.” Ask “What’s still missing?” without restarting.
 4. Inspect one `demo-tote` for this Lyon order. Show the actual proposal ID,
-   generation and hash in the dialog. “I’m approving these exact items.” Click
+   generation and hash under **Approval binding** in the dialog. “I’m approving these exact items.” Click
    **Approve replacement → Confirm approval**. Then separately **Create replacement
    → Confirm replacement**. “Now I’m asking the shop to create it and reserve stock.”
 5. Show **Replacement confirmed** and Camille’s original conversation, including
    after reload. “The replacement was created. It hasn’t been shipped.” Alex’s
    session cannot access Camille’s records; the investigator cannot approve it.
 
-Second example: open `DEMO-CONFLICT`. The carrier records say both lost and delivered.
-The application keeps both and asks staff to review. `DEMO-OVERDUE` is merely late;
-`DEMO-REPLACED` already has a replacement; `DEMO-HISTORY` lacks a complete history.
-A split order asks which parcel is meant; partial replacement remains unsupported.
+Second example: open `DEMO-OVERDUE` for Lille. The parcel is late and the carrier
+still shows it in transit. Staff can investigate it, but the shop’s lost-parcel
+policy does not support a replacement. The full test fixtures retain split parcels,
+conflicting carrier updates and the other business scenarios.
 
 ## Run the local checks without a model
 
@@ -51,7 +50,7 @@ uv sync --locked --only-group commerce
 npm --prefix frontend ci
 export COMMERCE_TEST_DATABASE_URL='postgresql+psycopg://richard@127.0.0.1:55479/commerce_delivery_test'
 .venv/bin/python -B scripts/commerce_ci_tests.py postgres
-.venv/bin/python -B scripts/commerce_customer_browser.py
+.venv/bin/python -B scripts/commerce_customer_browser.py --compact
 .venv/bin/python -B scripts/commerce_delivery_browser.py
 .venv/bin/python -B scripts/commerce_delivery_recovery.py
 .venv/bin/python -B -m decisionops.commerce.customer_evaluation --simulate-adapter
@@ -69,9 +68,7 @@ passwords. Then:
 
 ```bash
 .venv/bin/alembic upgrade head
-.venv/bin/python -B -m decisionops.commerce.seed
-.venv/bin/python -B -m decisionops.commerce.delivery_seed
-.venv/bin/python -B -m decisionops.commerce.customer_seed
+.venv/bin/python -B -m decisionops.commerce.portfolio_seed
 .venv/bin/python -B -m decisionops.commerce.worker setup
 npm --prefix frontend run build
 .venv/bin/python -B scripts/commerce_delivery_local.py --port 8155

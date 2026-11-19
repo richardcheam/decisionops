@@ -45,12 +45,12 @@ bash scripts/demo.sh health
 ```
 
 1. Open **http://127.0.0.1:8133/customer** as **camille**. Select **DEMO-LYON** and
-   say **“My parcel never arrived. Please report it missing.”** Keep the returned
+   choose **Report a missing parcel → Send message**. Keep the returned
    case reference. Leave the conversation open.
 2. In a separate browser session, open **http://127.0.0.1:8133/staff** as **visitor**.
    Open the **same case reference** in the exception queue. The customer report,
    overdue alert and carrier records remain separate records.
-3. Ask **“Fix this”**. Watch the order and shipment specialist tracks and sources.
+3. Click **Investigate case**. Watch the order and shipment specialist tracks and sources.
    **“What’s still missing?”** reads progress without replacing a proposal or approval.
 4. Review the proposal for **one demo-tote** from Lyon, including its ID, generation
    and content hash. Click **Approve replacement → Confirm approval**. Nothing has
@@ -58,9 +58,9 @@ bash scripts/demo.sh health
 5. Staff see **Replacement confirmed**. Camille’s original conversation shows that
    the replacement was created and has **not been shipped**. Reloading retains the
    conversation and current outcome.
-6. **alex** owns different orders and cannot access Camille’s order, parcel, case
-   or conversation. The **staff** investigator can investigate but cannot approve
-   or execute. **DEMO-SPLIT** asks for a parcel; **DEMO-CONFLICT** requires review.
+6. **alex** owns **DEMO-OVERDUE**, a Lille parcel still in transit. It shows why a
+   late parcel does not qualify for the same replacement. The **staff** investigator
+   can investigate, while **visitor** can approve and confirm.
 
 Queue updates run in the background without chat. “Notifications” mean in-app case
 updates. Reporting counts distinct parcels with verified delivered events in the
@@ -75,7 +75,9 @@ integration is a later step; this local demo retains Basic auth and optional sta
 and approver roles plus server-bound customer ownership.
 
 Stop with `bash scripts/demo.sh stop`. Seeds are insert-once; replay preserves staff
-work. For a new current-week launch, explicitly reset only the fictional demo volume:
+work. A fresh demo has two cases. An existing volume keeps its original fixtures.
+To switch to the two-case seed, first save any demo work you want to keep. The
+following explicit reset deletes the fictional database:
 
 ```bash
 COMMERCE_DEMO_RESET=decisionops-github-demo bash scripts/demo.sh reset

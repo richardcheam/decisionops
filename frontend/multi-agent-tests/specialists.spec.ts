@@ -30,7 +30,9 @@ async function openInvestigation(page: Page, request: APIRequestContext, order: 
   await page.getByLabel('Username',{exact:true}).fill(username);
   await page.getByLabel('Password',{exact:true}).fill(password!);
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
-  await expect(page.getByText('Mocked specialists. No paid calls.', { exact: true })).toBeVisible();
+  await page.getByText('Technical details', { exact: true }).click();
+  await expect(page.getByText('Simulated specialists', { exact: true })).toBeVisible();
+  await page.getByText('Technical details', { exact: true }).click();
   return opened.id as string;
 }
 
