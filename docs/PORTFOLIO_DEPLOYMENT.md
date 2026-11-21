@@ -138,10 +138,27 @@ A private ignored `runs/portfolio-restore-*/` directory retains the synthetic du
 verification summary. In a real pilot, a restore test must separately cover the
 actual storage, credentials, backup schedule and recovery objectives.
 
-## What was actually checked in this session
+## Runtime evidence from PR #14
 
-These results were observed on the integrated working tree with schema 0011 and must
-be rerun/pinned to the final candidate by the lead before claiming exact-SHA evidence.
+[Runtime CI](https://github.com/richardcheam/decisionops/actions/runs/44406587710)
+tested the reviewed commit `b18eeab02dcbccd357422861c310c0b26791cb42`.
+A fresh Compose launch and an isolated kind install each passed all five customer
+browser tests. The Kubernetes run restored the original application Pod template
+after an injected API failure and passed the browser suite after rollback.
+Both runtimes recovered from a worker-process exit after a specialist commit.
+The worker reused two committed calls, and PostgreSQL contained one replacement
+and one stock reservation after repeated confirmation.
+
+[Commerce regression CI](https://github.com/richardcheam/decisionops/actions/runs/44406587606)
+tested a PR merge commit with the same source tree. The required PostgreSQL
+suite passed 265 checks, and full discovery recorded 607 passes and four
+optional skips. Mid-task termination of the ordinary Kubernetes worker Pod
+and schema downgrade remain untested.
+
+## Earlier local validation
+
+These checks were run locally on the integrated working tree with schema 0011.
+The local runtime limitations explain why the deployed tests ran in CI.
 
 | Check | Observed result |
 |---|---|
@@ -190,7 +207,7 @@ Commerce-only application path.
 Implementation references: [Kustomize documentation](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/),
 [Terraform AWS EKS resource](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/eks_cluster).
 
-## Draft PR runtime workflow
+## Runtime CI workflow
 
 The `Verify portfolio container runtime` workflow checks out the PR head commit
 and records it in each job summary. It builds and launches the root Compose stack

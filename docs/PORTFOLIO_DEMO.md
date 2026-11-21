@@ -111,7 +111,39 @@ up a case. Local fake-exporter and installed-SDK serialization checks cover this
 hosted LangSmith delivery remains unverified.
 
 [Checkpoint](PORTFOLIO_CHECKPOINT.md) records the candidate and actual command results.
-[Deployment notes](PORTFOLIO_DEPLOYMENT.md) distinguish static validation and disposable
-restore from pending container/cluster launch, deployed browser/recovery and rollback.
+[Deployment notes](PORTFOLIO_DEPLOYMENT.md#runtime-evidence-from-pr-14) link the
+passing Compose, Kubernetes, browser, recovery, and application rollback checks from CI.
 AWS resources are prepared only. No provisioning, paid calls, hosted export, real
 carrier integration, push or publication is part of these local checks.
+
+## Compare live and simulated specialist decisions
+
+Use the same five fictional cases with rules, deterministic specialists, and an
+OpenAI specialist adapter. Both specialist modes use the same graph and customer
+and staff routing. The wrong-owner and ambiguous-parcel cases check routing
+boundaries without calling the model. A missing proposal in the resolution
+case is recorded as an outcome.
+
+Use a disposable loopback PostgreSQL database, an authorized OpenAI API key,
+and a model supporting Structured Outputs. Choose the model and request cap
+before running the evaluation. Set the key in the environment without saving it
+in the checkout. The command makes paid OpenAI requests when the specialist
+needs to choose an action.
+
+```bash
+uv sync --locked --only-group commerce --only-group commerce-api
+.venv/bin/python -m decisionops.commerce.live_specialist_evaluation --model "$EVAL_OPENAI_MODEL" --max-calls 24
+```
+
+The report includes the expected and observed outcomes, source hashes, tool
+attempts, case durations, provider call durations, token usage, and per-case
+counts of provider reads applied, review choices, fallbacks, and other
+dispositions. A failed or unavailable provider decision can fall back to
+deterministic behavior. Check those counts before attributing a passing case
+to the model. Token usage covers responses that reported it. Billed cost
+requires the corresponding provider billing evidence.
+
+To also check hosted LangSmith delivery, set an authorized `LANGSMITH_API_KEY`
+and add `--langsmith`. Search the `decisionops-portfolio` project using the
+investigation ID in the report. Confirm the investigation events are visible.
+Flushing the local exporter only establishes that the local queue drained.
