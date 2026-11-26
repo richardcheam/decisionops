@@ -1,0 +1,84 @@
+/* Shared theme tokens for the DecisionOps Control room and Daylight views. */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-16: 64px;
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  --font-display: "Inter Tight Variable", "Inter Tight", "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #0d1113;
+  --panel: #151b1e;
+  --panel-raised: #1d2529;
+  --panel-sunken: #0a0e10;
+  --line: #263035;
+  --line-strong: #64737a;
+  --ink: #e8eef0;
+  --ink-muted: #a3b1b7;
+  --ink-subtle: #8695a0;
+  --action: #c6f36b;
+  --on-action: #0d1416;
+  --action-hover: #d6ff85;
+  --accent: #c6f36b;
+  --accent-soft: #2a3527;
+  --focus: #c6f36b;
+  --track-order: #b49cff;
+  --track-order-soft: #282a39;
+  --track-shipment: #62b6ff;
+  --track-shipment-soft: #1e2e39;
+  --track-coordinator: #e8eef0;
+  --ok: #3fd9b5;
+  --ok-soft: #1b3633;
+  --warn: #ffb547;
+  --warn-soft: #363124;
+  --danger: #ff7a59;
+  --danger-soft: #362826;
+  --scrim: #05080acc;
+  --shadow-raised: 0 0 0 1px #263035, 0 16px 40px #00000080;
+  --shadow-live: 0 0 0 1px #c6f36b, 0 0 24px #c6f36b33;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --canvas: #eef1f2;
+  --panel: #ffffff;
+  --panel-raised: #ffffff;
+  --panel-sunken: #f4f6f7;
+  --line: #dde3e5;
+  --line-strong: #7a878c;
+  --ink: #0d1416;
+  --ink-muted: #45545a;
+  --ink-subtle: #5b6a71;
+  --action: #0d1416;
+  --on-action: #c6f36b;
+  --action-hover: #2a3438;
+  --accent: #3c6300;
+  --accent-soft: #eff3eb;
+  --focus: #3c6300;
+  --track-order: #5b3fd0;
+  --track-order-soft: #f4f2fc;
+  --track-shipment: #0a62a8;
+  --track-shipment-soft: #eef4f9;
+  --track-coordinator: #0d1416;
+  --ok: #0a7560;
+  --ok-soft: #ebf4f2;
+  --warn: #8a5200;
+  --warn-soft: #f6f1eb;
+  --danger: #bb3a1c;
+  --danger-soft: #faefed;
+  --scrim: #0d141699;
+  --shadow-raised: 0 1px 2px #0d141614, 0 12px 32px #0d14161f;
+  --shadow-live: 0 0 0 1px #3c6300, 0 0 16px #3c630026;
+}

@@ -31,6 +31,11 @@ export function CustomerPortal() {
   const [error, setError] = useState('');
   const currentLogin = useRef(0);
   const composer = useRef<HTMLInputElement>(null);
+  const transcript = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const log = transcript.current;
+    if (log) log.scrollTop = log.scrollHeight;
+  }, [conversation?.id, conversation?.messages.length]);
 
   async function request<T>(path: string, credentials: string, body?: object): Promise<T> {
     const controller = new AbortController();
@@ -46,6 +51,15 @@ export function CustomerPortal() {
       if (!response.ok) {
         if (response.status === 401) throw new CustomerRequestError('Please check your customer username and password.', response.status);
         if (response.status === 404) throw new CustomerRequestError('That order or conversation is not available to this account.', response.status);
+        if (response.status === 403 || response.status === 503) {
+          const body = await response.json().catch(() => null);
+          if (body?.detail === 'Local assistant unavailable. Check the model and try again.') {
+            throw new CustomerRequestError(body.detail, response.status);
+          }
+          if (body?.detail === 'Origin is not permitted') {
+            throw new CustomerRequestError('This address is not enabled for the demo. Use the demo address in the setup instructions.', response.status);
+          }
+        }
         throw new CustomerRequestError('We could not finish that request. Please try again.', response.status);
       }
       return await response.json() as T;
@@ -167,13 +181,13 @@ export function CustomerPortal() {
         <div className="customer-main">
           <section className="card" aria-label="Your delivery conversation" data-testid="customer-conversation" data-conversation-id={conversation?.id}>
             <h2>Shop support</h2>
-            <p className="muted">{selected ? selected.id : 'Select an order to get help.'}{conversation?.selected_shipment_id && selected?.parcels.length !== 1 ? ' · ' + conversation.selected_shipment_id : ''}</p>
+            <p className="muted">{selected ? selected.id : 'Ask what I can help with, or select an order.'}{conversation?.selected_shipment_id && selected?.parcels.length !== 1 ? ' · ' + conversation.selected_shipment_id : ''}</p>
             {splitPending && <div className="customer-parcels" role="group" aria-label="Choose a parcel">
               <p>This order has more than one parcel. Which one do you mean?</p>
               {selected.parcels.map(parcel => <button key={parcel.shipment_id} disabled={busy}
                 onClick={() => void select(selected, parcel.shipment_id)}>{parcel.shipment_id}</button>)}
             </div>}
-            <div className="customer-messages" role="log" aria-label="Conversation messages" aria-live="polite">
+            <div ref={transcript} className="customer-messages" role="log" aria-label="Conversation messages" aria-live="polite">
               {conversation?.messages.map((entry, index) => <div className="customer-message-pair" key={index}>
                 <p className="customer-said"><strong>You</strong><br />{entry.message}</p>
                 <p className="customer-reply"><strong>Shop support</strong><br />{entry.response.text}{entry.response.case_id && <><br /><span>Case reference: {entry.response.case_id}</span></>}</p>
@@ -191,7 +205,7 @@ export function CustomerPortal() {
           <section className="card" aria-label="Your case updates" aria-live="polite">
             <h2>Your case updates</h2>
             {conversation?.cases.length === 0 && <p className="muted">No cases yet.</p>}
-            {conversation?.cases.map(update => <article className="customer-case" key={update.case_id}>
+            {conversation?.cases.map(update => <article className={"customer-case" + (update.replacement_created ? " done" : "")} key={update.case_id}>
               <h3>Case {update.case_id}</h3><p>{update.order_id} · {update.shipment_id}</p><p>{update.text}</p>
             </article>)}
           </section>

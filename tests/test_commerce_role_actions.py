@@ -39,6 +39,13 @@ class RoleActionTests(unittest.TestCase):
         adapter=ModelActionAdapter(lambda _: {'kind':'read','tool':'payment'})
         self.assertEqual(adapter.choose(request,None),Action('read',tool='payment'))
 
+    def test_staff_questions_find_exceptions_and_read_replacement_status(self):
+        from decisionops.commerce.role_actions import DemoStaffRouter
+        router=DemoStaffRouter()
+        self.assertEqual(router.choose('Which parcels are late?').kind,'overdue')
+        self.assertEqual(router.choose('Can we replace this parcel?').kind,'status')
+        self.assertEqual(router.choose('Investigate this case for a replacement').kind,'investigate')
+
     def test_reporting_instructions_and_negated_history_never_file(self):
         from decisionops.commerce.role_actions import clear_report_intent,DemoCustomerRouter
         negatives=('How to report my parcel missing?','I did not report my parcel missing.',

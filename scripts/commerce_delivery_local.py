@@ -16,10 +16,11 @@ sys.path.insert(0,str(ROOT))
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port',type=int,default=8155)
+    parser.add_argument('--mode', choices=('mock-specialists', 'llm'), default='mock-specialists')
     args=parser.parse_args()
     if not os.environ.get('COMMERCE_DATABASE_URL'):parser.error('Set an isolated COMMERCE_DATABASE_URL')
     if len(os.environ.get('COMMERCE_STAFF_PASSWORD',''))<16:parser.error('Set an explicit fictional COMMERCE_STAFF_PASSWORD of at least 16 characters')
-    env=dict(os.environ,COMMERCE_WEB_DIST=str(ROOT/'frontend/dist'),COMMERCE_STAFF_INVESTIGATION_MODE='mock-specialists',
+    env=dict(os.environ,COMMERCE_WEB_DIST=str(ROOT/'frontend/dist'),COMMERCE_STAFF_INVESTIGATION_MODE=args.mode,
         COMMERCE_ORIGINS=f'http://127.0.0.1:{args.port}',LANGSMITH_TRACING='false',LANGCHAIN_TRACING_V2='false')
     children=[]
     def stop(*_):

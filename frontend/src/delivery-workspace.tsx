@@ -35,6 +35,11 @@ export function DeliveryWorkspace({ conversationId, request, selected, selectedO
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const transcript = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const log = transcript.current;
+    if (log) log.scrollTop = log.scrollHeight;
+  }, [messages.length]);
   const messageFlight = useRef(false);
   const latestRequest = useRef(request);
   latestRequest.current = request;
@@ -126,7 +131,7 @@ export function DeliveryWorkspace({ conversationId, request, selected, selectedO
     <section className="card delivery-chat" aria-label="Workspace chat">
       <h2>Assistant</h2>
       <p data-testid="selected-case" className="selection-summary">{selected ? <><strong>{selectedOrder || 'Selected case'}</strong><small>{selected}</small></> : 'No case selected'}</p>
-      <div role="log" aria-label="Conversation" aria-live="polite" className="conversation">
+      <div ref={transcript} role="log" aria-label="Conversation" aria-live="polite" className="conversation">
         {messages.map(row => <div key={row.id} className={'chat-message ' + (row.speaker === 'You' ? 'from-staff' : '')}><strong>{row.speaker}</strong><p>{row.text}</p>{!!row.links?.length && <div className="case-links">{row.links.map(link => <button key={link.case_id} disabled={disabled} onClick={() => void choose(link.case_id)}>Open {link.order_id} · {link.shipment_id}</button>)}</div>}</div>)}
       </div>
       <form onSubmit={event => void send(event)}>

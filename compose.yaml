@@ -3,7 +3,25 @@ name: decisionops-github-demo
 x-logging: &bounded_logs
   driver: json-file
   options: {max-size: 10m, max-file: "3"}
+x-local-model: &local_model
+  COMMERCE_LLM_MODEL: ${COMMERCE_LLM_MODEL:-}
+  COMMERCE_OLLAMA_URL: http://ollama:11434
 services:
+  ollama:
+    profiles: [llm]
+    image: ${COMMERCE_OLLAMA_IMAGE:-ollama/ollama:latest}
+    pull_policy: never
+    logging: *bounded_logs
+    environment:
+      OLLAMA_NO_CLOUD: "1"
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - ${COMMERCE_OLLAMA_MODEL_DIR:-./runs/ollama-models}:/root/.ollama/models:ro
+    healthcheck:
+      test: [CMD, ollama, list]
+      interval: 3s
+      timeout: 5s
+      retries: 20
   postgres:
     image: ${COMMERCE_PORTFOLIO_POSTGRES_IMAGE:-postgres:16.15-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4}
     logging: *bounded_logs
@@ -38,14 +56,14 @@ services:
     image: decisionops-github-demo-app:local
     logging: *bounded_logs
     environment:
-      <<: *store
+      <<: [*store, *local_model]
       COMMERCE_STAFF_USERNAME: visitor
       COMMERCE_STAFF_PASSWORD: ${COMMERCE_DEMO_PASSWORD:?Set an explicit invitation password (at least 16 characters)}
       COMMERCE_HELPER_PASSWORD: ${COMMERCE_HELPER_PASSWORD:-}
       COMMERCE_CUSTOMER_CAMILLE_PASSWORD: ${COMMERCE_CUSTOMER_CAMILLE_PASSWORD:?Set Camille's distinct fictional password (at least 16 characters)}
       COMMERCE_CUSTOMER_ALEX_PASSWORD: ${COMMERCE_CUSTOMER_ALEX_PASSWORD:?Set Alex's distinct fictional password (at least 16 characters)}
       COMMERCE_STAFF_INVESTIGATION_MODE: ${COMMERCE_DEMO_MODE:-rules}
-      COMMERCE_ORIGINS: ${COMMERCE_DEMO_ORIGIN:-http://127.0.0.1:${COMMERCE_DEMO_PORT:-8133}}
+      COMMERCE_ORIGINS: ${COMMERCE_DEMO_ORIGIN:-http://127.0.0.1:${COMMERCE_DEMO_PORT:-8133},http://localhost:${COMMERCE_DEMO_PORT:-8133}}
     depends_on:
       init: {condition: service_completed_successfully}
     healthcheck:
@@ -75,7 +93,8 @@ services:
   staff-investigator:
     image: decisionops-github-demo-app:local
     logging: *bounded_logs
-    environment: *store
+    environment:
+      <<: [*store, *local_model]
     # Bounded display pacing also makes the worker-restart boundary observable.
     command: [python, -B, -m, decisionops.commerce.staff_investigations, --step-delay, '0.5']
     depends_on:

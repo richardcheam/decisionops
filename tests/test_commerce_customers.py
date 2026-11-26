@@ -46,6 +46,27 @@ class CustomerTests(unittest.TestCase):
         import uuid
         return client.post('/customer-api/conversations/'+identity+'/messages',json={'message':message,'request_id':key or uuid.uuid4().hex},auth=(owner,'fictional-'+owner+'-test-only'))
 
+    def test_shop_guidance_and_order_summary_use_owned_data(self):
+        client=self.fixture()
+        auth=('camille','fictional-camille-test-only')
+        identity=client.post('/customer-api/conversations',json={},auth=auth).json()['id']
+        for question, intent, phrase in (
+            ('How do I return an item?', 'returns_help', 'return instructions'),
+            ('Can I get a refund?', 'refund_help', 'refund status'),
+            ('Can I change my shipping address?', 'order_change_help', 'contact the shop'),
+            ('How can I talk to someone?', 'support_help', 'order reference'),
+        ):
+            with self.subTest(question=question):
+                reply=self.say(client,identity,question)
+                self.assertEqual(reply.status_code,200)
+                self.assertEqual(reply.json()['intent'],intent)
+                self.assertIn(phrase,reply.json()['text'])
+        split=self.say(client,identity,'What did I order in DEMO-SPLIT?').json()
+        self.assertEqual(split['intent'],'order_summary')
+        self.assertIn('2 parcels',split['text'])
+        blocked=self.say(client,identity,'What did I order in DEMO-OVERDUE?')
+        self.assertEqual(blocked.status_code,404)
+
     def test_owned_routes_reject_same_store_second_customer_and_cross_role_actions(self):
         client=self.fixture();identity=self.conversation(client)
         result=self.say(client,identity);self.assertEqual(result.status_code,200,result.text)

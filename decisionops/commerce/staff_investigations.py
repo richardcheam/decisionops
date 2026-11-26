@@ -1,4 +1,4 @@
-"""Staff-only durable investigation; rules default and mock-only optional transport."""
+"""Staff-only durable investigations, with mock and local model modes."""
 import argparse,json,signal,time,os
 from threading import Event
 import sqlalchemy as sa
@@ -6,7 +6,7 @@ from . import schema as db,adaptive_investigations as service,adaptive_jobs as j
 from .cases import lock_case,event,clock,identifier
 from .adaptive_tools import PROJECTIONS
 
-MODES=('rules','mock-decisions','mock-specialists')
+MODES=('rules','mock-decisions','mock-specialists','llm')
 
 def expire_run(c,run_id):
     """Bounded system cleanup after the immutable deadline; no dispatch or reset."""
@@ -38,8 +38,10 @@ def reap_expired(engine):
         with service.transaction(engine) as c:expire_run(c,run_id)
 
 
-def enqueue(c,engine,case_id,report,request_id,generation,mode='rules'):
-    if mode not in MODES:raise ValueError('Staff investigation supports rules, mock-decisions or mock-specialists only')
+def enqueue(c,engine,case_id,report,request_id,generation,mode='rules',*,model=None):
+    if mode not in MODES or (mode=='llm')!=(model is not None):
+        raise ValueError('Invalid staff investigation mode or missing local model')
+    specialists = mode in ('mock-specialists','llm')
     case=lock_case(c,case_id)
     overdue=c.execute(sa.select(db.adaptive_runs.c.id).where(sa.and_(db.adaptive_runs.c.case_id==case_id,db.adaptive_runs.c.state=='active',db.adaptive_runs.c.deadline<=sa.func.clock_timestamp(),db.adaptive_runs.c.contracts['staff_ui'].as_boolean()==True))).scalar_one_or_none()
     if overdue:
@@ -52,7 +54,7 @@ def enqueue(c,engine,case_id,report,request_id,generation,mode='rules'):
             return service.inspect_connection(c,saved['run_id'])
     active=c.execute(sa.select(db.adaptive_runs).where(sa.and_(db.adaptive_runs.c.case_id==case_id,db.adaptive_runs.c.state=='active'))).mappings().one_or_none()
     if active:
-        if active['contracts'].get('staff_ui') and any(saved['run_id']==active['id'] and saved['report']==report for saved in previous) and bool(active['contracts'].get('specialists'))==(mode=='mock-specialists') and bool(active['contracts'].get('api'))==(mode=='mock-decisions'):
+        if active['contracts'].get('staff_ui') and any(saved['run_id']==active['id'] and saved['report']==report for saved in previous) and bool(active['contracts'].get('specialists'))==specialists and active['contracts'].get('specialist_model')==model and bool(active['contracts'].get('api'))==(mode=='mock-decisions'):
             if generation not in (active['generation']-1,active['generation']):raise ValueError('Case changed; refresh before investigating')
             event(c,case_id,'staff_investigation_requested',{'request_id':request_id,'run_id':active['id'],'report':report,'expected_generation':generation,'coalesced':True,'mode':mode},clock(c))
             return service.inspect_connection(c,active['id'])
@@ -72,7 +74,7 @@ def enqueue(c,engine,case_id,report,request_id,generation,mode='rules'):
         staff_text=report.encode('utf-8')[:700].decode('utf-8','ignore')
         customer_text='\n'.join(reports).encode('utf-8')[:1200].decode('utf-8','ignore')
         context=staff_text+'\nCustomer reports (untrusted context; not carrier evidence):\n'+customer_text
-    run=service.start(engine,case_id,context,scheduled=True,api=api,connection=c,staff_ui=True,specialists=mode=='mock-specialists')
+    run=service.start(engine,case_id,context,scheduled=True,api=api,connection=c,staff_ui=True,specialists=specialists,specialist_model=model)
     event(c,case_id,'staff_investigation_requested',{'request_id':request_id,'run_id':run['id'],'report':report,'expected_generation':generation,'mode':mode},clock(c))
     return run
 
@@ -84,8 +86,11 @@ def view(c,case_id):
     case=c.execute(sa.select(db.cases).where(db.cases.c.id==case_id)).mappings().one()
     historical=(run['generation']!=case['generation'] or run['request']!=case['request']
         or run['request']['order_id']!=case['order_id'])
+    mode = ('llm' if run['contracts'].get('specialist_model') else
+            'mock_specialists' if run['contracts'].get('specialists') else
+            'simulated_decisions' if run['contracts'].get('api') else 'rules')
     if run.get('evidence_error'):
-        return {'id':run_id,'generation':run['generation'],'historical':historical,'state':'review','report':run['report'],'mode':'mock_specialists' if run['contracts'].get('specialists') else 'rules',
+        return {'id':run_id,'generation':run['generation'],'historical':historical,'state':'review','report':run['report'],'mode':mode,
             'reason':run['evidence_error'],'job_status':run['job']['status'],'unknowns':list(run['assessment']['facts']),
             'blockers':[],'facts':run['assessment']['facts'],'steps':[],'evidence':[],'specialists':[],
             'evidence_current':False,'planned_checks':[]}
@@ -131,7 +136,7 @@ def view(c,case_id):
     facts=dict(run['assessment']['facts'])
     from .adaptive_evidence import TOOLS
     for tool in changed:facts[TOOLS[tool]]=None
-    return {'generation':run['generation'],'historical':historical,'evidence_current':not changed,'planned_checks':['Bind order and policy','Check shipment and carrier','Check payment and compensation','Check inventory and join evidence'],'specialists':branches,'id':run['id'],'state':run['state'],'report':run['report'],'mode':'mock_specialists' if run['contracts'].get('specialists') else 'simulated_decisions' if run['contracts'].get('api') else 'rules',
+    return {'generation':run['generation'],'historical':historical,'evidence_current':not changed,'planned_checks':['Bind order and policy','Check shipment and carrier','Check payment and compensation','Check inventory and join evidence'],'specialists':branches,'id':run['id'],'state':run['state'],'report':run['report'],'mode':mode,
         'job_status':run['job']['status'],'reason':run['terminal'].get('reason') if run['terminal'] else None,
         'unknowns':[fact for fact,value in facts.items() if value is None],
         'blockers':[fact for fact,value in facts.items() if value is False],

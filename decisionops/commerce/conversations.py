@@ -1,5 +1,6 @@
 """Typed conversation routing. Server state owns scope; no model business authority."""
 from dataclasses import dataclass
+from datetime import datetime
 import json
 import re
 import sqlalchemy as sa
@@ -7,6 +8,13 @@ from . import schema as db
 from .cases import clock,identifier,show_case
 
 from .role_actions import STAFF_KINDS as KINDS,StaffAction as Intent,DemoStaffRouter as DemoRouter,explicit_orders
+
+STAFF_HELP = (
+    'I can show delivery totals, list parcels that need attention, investigate a case, '
+    'or tell you what is still missing. Try “Which parcels are late?” '
+    'or open a case and ask “What’s still missing?” An authorized staff member approves '
+    'and confirms replacements from the case screen.'
+)
 
 class BoundedRouter:
     """Optional transport gets bounded text and emits exactly one typed intent.
@@ -72,7 +80,7 @@ def status(c,case):
             return {'intent':'status','text':text,'proposal_id':case['proposal_id'],'evidence_current':current}
         if case['investigation_id']:
             return {'intent':'status','text':'Saved rules investigation requires review. Open the case for its recorded findings; explicitly refresh to establish current evidence.', 'evidence_current':False}
-        return {'intent':'status','text':'No saved investigation. Choose Fix this to start.'}
+        return {'intent':'status','text':'No saved investigation yet. Ask “Investigate this case” to check the carrier records, previous compensation, and stock.'}
     if investigation['reason']=='invalid_committed_evidence':
         return {'intent':'status','text':'Saved evidence failed validation and requires staff review. No replacement proposal is authorized.',
             'investigation':investigation,'evidence_current':False}
@@ -91,7 +99,7 @@ def status(c,case):
     else:text='Investigation needs review. Missing: '+(', '.join(investigation['unknowns']) or investigation['reason'] or 'staff decision')
     return {'intent':'status','text':text,'investigation':investigation,'evidence_current':not stale}
 
-def message(c,engine,conversation,text,request_id,mode,router=None,now=None):
+def message(c,engine,conversation,text,request_id,mode,router=None,now=None,*,model=None):
     previous=c.execute(sa.select(db.conversation_messages).where(sa.and_(
         db.conversation_messages.c.conversation_id==conversation['id'],db.conversation_messages.c.request_id==request_id))).mappings().one_or_none()
     if previous:
@@ -100,7 +108,10 @@ def message(c,engine,conversation,text,request_id,mode,router=None,now=None):
     references=explicit_orders(text)
     # Scope ambiguity is resolved by staff, before any configured router can
     # choose a case or request an investigation on their behalf.
-    intent=Intent('clarify') if len(references)>1 else (router or DemoRouter()).choose(text)
+    if len(references)>1:
+        intent=Intent('clarify')
+    else:
+        intent=(router or DemoRouter()).choose(text)
     if len(references)==1:
         intent=Intent(intent.kind,references[0])
     elif not references and intent.order_id is not None:
@@ -124,14 +135,22 @@ def message(c,engine,conversation,text,request_id,mode,router=None,now=None):
             intent=Intent('clarify');selected=None
             select(c,conversation,None)
     result={'intent':intent.kind,'selected_case_id':selected}
-    if intent.kind=='weekly_deliveries':
+    if intent.kind=='help':
+        result.update(text=STAFF_HELP)
+    elif intent.kind=='weekly_deliveries':
         from .delivery import report
         value=report(c,store,now)
         result.update(report=value,case_links=value['case_links'],text=f"{value['completed']} deliveries completed this week ({value['start']} to {value['end']}, Europe/Paris).")
-    elif intent.kind=='problems':
+    elif intent.kind in ('problems','overdue'):
         from .delivery import queue
         rows=queue(c,store,now)
-        result.update(text=f'{len(rows)} delivery exceptions need attention. In-app case updates are shown in the queue.',case_links=[{k:r[k] for k in ('case_id','order_id','shipment_id')} for r in rows])
+        if intent.kind=='overdue':
+            as_of=clock(c,now)
+            rows=[row for row in rows if datetime.fromisoformat(row['promised_at']) < as_of]
+            text_reply=f'There are {len(rows)} overdue parcels in the exception queue.'
+        else:
+            text_reply=f'{len(rows)} delivery exceptions need attention. In-app case updates are shown in the queue.'
+        result.update(text=text_reply,case_links=[{k:r[k] for k in ('case_id','order_id','shipment_id')} for r in rows])
     elif intent.kind in ('status','investigate') and selected:
         case=authorized_case(c,selected,store)
         if case is None:raise LookupError('Case not found')
@@ -142,9 +161,11 @@ def message(c,engine,conversation,text,request_id,mode,router=None,now=None):
             if existing:result.update(status(c,case))
             else:
                 from .staff_investigations import enqueue
-                run=enqueue(c,engine,selected,text,'CHAT-'+conversation['id']+'-'+request_id,case['generation'],mode)
+                run=enqueue(c,engine,selected,text,'CHAT-'+conversation['id']+'-'+request_id,case['generation'],mode,model=model)
                 result.update(text='Investigation requested. The coordinator binds the case, then the shipment and order specialists gather evidence.',investigation={'id':run['id'],'state':run['state']})
         else:result.update(status(c,case))
+    elif intent.kind=='clarify' and not references:
+        result.update(text=STAFF_HELP)
     else:
         result.update(intent='clarify',text='Select the exact case and parcel to continue.' if not links else 'Several cases or parcels match. Select the exact case.',case_links=links)
     # Serialize timestamps once so replay returns byte-equivalent JSON values.
