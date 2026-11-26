@@ -16,8 +16,11 @@ from .delivery import SimulatedCarrier, aware, ingest_event, scan, report, week_
 from .database import database_engine
 
 SEED_ID='commerce-delivery-fr-v1'
-COMPACT_SEED_ID='commerce-delivery-fr-compact-v1'
-COMPACT_ORDERS=('DEMO-LYON', 'DEMO-OVERDUE')
+COMPACT_SEED_ID='commerce-delivery-fr-compact-v2'
+COMPACT_ORDERS_BY_VERSION = {
+    'commerce-delivery-fr-compact-v1': ('DEMO-LYON', 'DEMO-OVERDUE'),
+    COMPACT_SEED_ID: ('DEMO-LYON', 'DEMO-OVERDUE', 'DEMO-CONFLICT'),
+}
 STORE_ID='demo-store'
 
 
@@ -25,7 +28,7 @@ def seed(engine, now=None, *, compact=False):
     with engine.connect().execution_options(isolation_level='READ COMMITTED') as c, c.begin():
         _lock(c,STORE_ID)
         existing = c.execute(sa.select(db.seed_versions.c.id).where(
-            db.seed_versions.c.id.in_((SEED_ID, COMPACT_SEED_ID)))).scalar_one_or_none()
+            db.seed_versions.c.id.in_((SEED_ID, *COMPACT_ORDERS_BY_VERSION)))).scalar_one_or_none()
         if existing:
             return {'event':'already_seeded','seed_version':existing}
         seed_id = COMPACT_SEED_ID if compact else SEED_ID
@@ -49,7 +52,7 @@ def seed(engine, now=None, *, compact=False):
         ]
         for suffix,city,status,nonreceipt in specs:
             order='DEMO-'+suffix
-            if compact and order not in COMPACT_ORDERS:
+            if compact and order not in COMPACT_ORDERS_BY_VERSION[seed_id]:
                 continue
             quantity=2 if suffix=='SPLIT' else 1
             c.execute(db.orders.insert().values(id=order,store_id=STORE_ID,policy_id='demo-fr-policy-v1',currency='EUR',

@@ -36,8 +36,22 @@ stay separate. `visitor` is the Compose approver; `staff` is the investigator.
 
 Second example: open `DEMO-OVERDUE` for Lille. The parcel is late and the carrier
 still shows it in transit. Staff can investigate it, but the shop’s lost-parcel
-policy does not support a replacement. The full test fixtures retain split parcels,
-conflicting carrier updates and the other business scenarios.
+policy does not support a replacement.
+
+Third example: open `DEMO-CONFLICT` for Saint-Denis. The carrier records say both
+lost and delivered. Staff need to resolve the discrepancy before they can offer a
+replacement. The full test fixtures also cover split parcels and other scenarios.
+
+## Other questions to try
+
+- As Camille, open Lyon and ask “What did I order?” The assistant reads the items
+  and parcel count from that order.
+- Before selecting an order, ask “How do I return an item?”, “Can I get a refund?”,
+  or “Can I change my shipping address?” The assistant explains what to give the
+  shop so staff can help.
+- As staff, ask “Which parcels are late?” to see the overdue cases in the queue.
+  Open one and ask “Can we replace this parcel?” to get the current case status
+  and next step.
 
 ## Run the local checks without a model
 

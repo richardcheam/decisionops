@@ -45,6 +45,9 @@ class ConversationTests(unittest.TestCase):
             'proposal_id':proposal['id'],'content_hash':proposal['content_hash'],'decision':'approve'}).json()
         for question in ("What's still missing?",'status','Fix this'):
             self.assertEqual(self.say(client,identity,question).status_code,200)
+        guidance=self.say(client,identity,'What can you help me?').json()
+        self.assertEqual(guidance['intent'],'help')
+        self.assertEqual(guidance['selected_case_id'],case['id'])
         after=client.get('/api/cases/'+case['id']).json()
         self.assertEqual(after['approval'],approved['approval']);self.assertEqual(after['proposal'],proposal)
         self.assertEqual(self.say(client,identity,'Fix this','FIX-ONCE').json(),result.json())

@@ -1,1 +1,19 @@
-:root{font-family:system-ui,sans-serif;color:#243d3a;background:#f3f7f5;line-height:1.65}body{margin:0}main{max-width:800px;margin:3rem auto;padding:2rem;background:white;border-radius:12px}h1{line-height:1.2;font-size:2.3rem}h2{margin-top:2rem}.tag{color:#256d60;font-weight:600}a{color:#176c5b}a.button{display:inline-block;padding:.65rem 1rem;background:#176c5b;color:white;border-radius:6px;text-decoration:none}code{background:#eef4f1;padding:.1rem .25rem}details{padding:1rem;border:1px solid #d9e5df;border-radius:8px}summary{cursor:pointer}img{max-width:100%;height:auto;margin-top:1rem}li{margin:.7rem 0}@media(max-width:640px){main{margin:0;padding:1.2rem;border-radius:0}h1{font-size:1.8rem}}
+/* DecisionOps — Control room, static walkthrough page. Values mirror src/tokens.css (no build step here). */
+:root{--canvas:#0d1113;--panel:#151b1e;--sunken:#0a0e10;--line:#263035;--line-strong:#64737a;--ink:#e8eef0;--ink-muted:#a3b1b7;--accent:#c6f36b;--on-accent:#0d1416;color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:var(--canvas);line-height:1.65;-webkit-font-smoothing:antialiased}
+body{margin:0}
+main{max-width:820px;margin:3rem auto;padding:2.5rem;background:var(--panel);border:1px solid var(--line);border-radius:16px}
+h1{font-family:"Inter Tight",Inter,ui-sans-serif,system-ui,sans-serif;font-size:2.6rem;line-height:1.1;letter-spacing:-.03em;font-weight:600;margin:.5rem 0 1.25rem}
+h2{font-family:"Inter Tight",Inter,ui-sans-serif,system-ui,sans-serif;font-size:1.35rem;letter-spacing:-.01em;font-weight:600;margin-top:2.5rem;padding-top:1.5rem;border-top:1px solid var(--line)}
+p,li{color:var(--ink-muted)}
+strong{color:var(--ink)}
+.tag{display:inline-flex;align-items:center;gap:.5rem;font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink)}
+.tag::before{content:"";width:10px;height:10px;border-radius:2px;background:var(--accent)}
+a{color:var(--accent);text-underline-offset:3px}
+a.button{display:inline-block;padding:.7rem 1.1rem;background:var(--accent);color:var(--on-accent);border-radius:8px;text-decoration:none;font-weight:600}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+code{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.9em;background:var(--sunken);border:1px solid var(--line);border-radius:4px;padding:.1rem .3rem;color:var(--ink)}
+details{padding:1rem 1.1rem;border:1px solid var(--line);border-radius:12px;background:var(--sunken)}
+summary{cursor:pointer;color:var(--ink);font-weight:500}
+img{max-width:100%;height:auto;margin-top:1rem;border-radius:8px;border:1px solid var(--line)}
+li{margin:.7rem 0}
+@media(max-width:640px){main{margin:0;padding:1.25rem;border-radius:0;border-width:0}h1{font-size:1.9rem}}

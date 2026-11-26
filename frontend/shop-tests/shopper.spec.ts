@@ -140,7 +140,7 @@ test("scripted staff handoff: old tracking stays unknown and source is a record,
   await expect(
     page
       .getByText(
-        "This rules run consulted database records, not browser pages.",
+        "This investigation consulted database records, not browser pages.",
         { exact: true },
       )
       .first(),

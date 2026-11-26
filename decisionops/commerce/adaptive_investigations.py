@@ -240,14 +240,16 @@ def finish(connection,run,case,history,reason, *, blocker=False,stale=False):
     return step(connection,run,'terminal',terminal,state=state,pending_token=None,pending_context=None,terminal=terminal)
 
 
-def start(engine,case_id,report, *, deadline_seconds=240,policy='fixed',scheduled=False,session=None,api=None,connection=None,staff_ui=False,specialists=False):
+def start(engine,case_id,report, *, deadline_seconds=240,policy='fixed',scheduled=False,session=None,api=None,connection=None,staff_ui=False,specialists=False,specialist_model=None):
     if not isinstance(report,str) or len(report.encode('utf-8'))>2000:raise ValueError('Report must be at most 2000 UTF-8 bytes')
     if type(deadline_seconds) not in (int,float) or not math.isfinite(deadline_seconds) or not 0<deadline_seconds<=240:
         raise ValueError('Deadline must be positive and at most 240 seconds')
     if policy not in ('fixed','cue','fake-override','fake-invalid','fake-unavailable','fake-refuse'):
         raise ValueError('Unknown model-free policy')
     if specialists and (not scheduled or api is not None or session is not None):
-        raise ValueError('Specialists require isolated model-free scheduled jobs')
+        raise ValueError('Specialists require scheduled jobs without other adapters')
+    if specialist_model is not None and (not specialists or not isinstance(specialist_model,str) or not specialist_model):
+        raise ValueError('Local model requires a scheduled specialist investigation')
     if api is not None:
         from .api_decisions import config_for
         api=config_for(api).record()
@@ -272,7 +274,7 @@ def start(engine,case_id,report, *, deadline_seconds=240,policy='fixed',schedule
         run_id=identifier('ARUN')
         c.execute(db.adaptive_runs.insert().values(id=run_id,case_id=case_id,generation=updated['generation'],
             case_revision=updated['case_revision'],request=json.loads(canonical(case['request'])),report=report,
-            contracts={**({'staff_ui':True,'continue_missing_evidence':not specialists} if staff_ui else {}),'observations':CONTRACT,'actions':ACTION_CONTRACT,'policy':policy,**({'specialists':'commerce-specialists/v1'} if specialists else {}),**({'session':session} if session else {}),**({'api':api} if api else {}),**({'executor':'commerce-adaptive-jobs/v1'} if scheduled else {})},
+            contracts={**({'staff_ui':True,'continue_missing_evidence':not specialists} if staff_ui else {}),'observations':CONTRACT,'actions':ACTION_CONTRACT,'policy':policy,**({'specialists':'commerce-specialists/v1'} if specialists else {}),**({'specialist_model':specialist_model} if specialist_model else {}),**({'session':session} if session else {}),**({'api':api} if api else {}),**({'executor':'commerce-adaptive-jobs/v1'} if scheduled else {})},
             state='active',created_at=now,deadline=now+timedelta(seconds=deadline_seconds)))
         if scheduled:
             c.execute(db.adaptive_jobs.insert().values(id=identifier('AJOB'),run_id=run_id,created_at=now,action='multi_agent_investigate/v1' if specialists else 'adaptive_investigate/v1'))

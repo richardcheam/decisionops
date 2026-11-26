@@ -31,7 +31,7 @@ def main():
     from decisionops.commerce.multi_agent_workflow import checkpoint_url
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8167)
-    parser.add_argument('--compact', action='store_true', help='Use the two-case portfolio seed')
+    parser.add_argument('--compact', action='store_true', help='Use the three-case portfolio seed')
     args = parser.parse_args()
     url = os.environ.get('COMMERCE_TEST_DATABASE_URL')
     if not url:

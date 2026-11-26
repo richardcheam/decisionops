@@ -864,9 +864,9 @@ claims work with an expiring lease and fenced token. `worker.py` runs `workflow.
 with PostgreSQL LangGraph checkpoints. `cases.py` owns the business lifecycle;
 `execution.py` owns the atomic ledger, reservation and reconciliation. Graph state
 cannot grant approval. `read_tools.py` still derives actual evidence, and the
-original eligibility function decides false versus unknown. React lives in
-`frontend/src/main.tsx`; image definitions are in `docker/`, service wiring in
-`tests/compose/ci.yaml`. Migration 0004 adds jobs; graph tables live separately in
+original eligibility function decides false versus unknown. The React staff workspace
+is in `frontend/src/staff/workspace.tsx`. Image definitions are in `docker/` and
+service wiring is in `tests/compose/ci.yaml`. Migration 0004 adds jobs. Graph tables live separately in
 `commerce_graph` and are set up by the worker, not Alembic.
 
 ### Start and sign in
@@ -1118,7 +1118,7 @@ curl --fail http://127.0.0.1:8080/health
 
 As an immediate workaround for an older image with static upstream DNS, restart
 web after recreating API. A browser-facing HTML 502 now produces a service
-unavailable message instead of a JSON parser error (`frontend/src/main.tsx`).
+unavailable message instead of a JSON parser error (`frontend/src/staff/workspace.tsx`).
 Do not bypass authentication or expose API ports to work around a proxy failure.
 
 A failed browser diagnostic initially included a password input's value in its
@@ -1157,7 +1157,7 @@ undo code with a known compatible image, never by changing business records.
 ## Staff interface: plain language and automatic checks
 
 Nontechnical staff use STAFF-GUIDE.md; deployment, credentials and recovery remain
-operator responsibilities. `frontend/src/main.tsx` displays familiar product labels,
+operator responsibilities. `frontend/src/staff/case-panel.tsx` displays familiar product labels,
 plain next steps and distinct failed/missing checks. Start review saves a case and
 queues its investigation automatically. Approve and Create replacement remain
 explicit decisions; the backend still binds their exact contents and evidence.

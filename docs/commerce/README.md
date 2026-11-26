@@ -60,7 +60,7 @@ response without a second reservation. A trace/checkpoint cannot prove execution
 | Business schema and record-derived facts | schema.py, read_tools.py, migrations/versions/ |
 | Case/review/transaction guarantees | cases.py, execution.py |
 | Durable scheduling and recovery | jobs.py, workflow.py, worker.py |
-| Staff boundary and interface | api.py, frontend/src/main.tsx |
+| Staff boundary and interface | [Commerce API](../../decisionops/commerce/api.py), [staff workspace](../../frontend/src/staff/workspace.tsx) |
 | Disposable demonstrations | scripts/commerce_*_walkthrough.py |
 
 Local milestones completed and tested: normalized/evidence assessment, PostgreSQL

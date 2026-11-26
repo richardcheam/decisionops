@@ -14,7 +14,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from .database import database_engine
 from . import schema as db
-from .cases import open_case, show_case, review_case, escalate_case
+from .cases import open_case, show_case, review_case, escalate_case, lock_case, identifier
+from .role_actions import ModelActionAdapter, ModelUnavailable
 from .jobs import enqueue, get_job
 from .execution import reconcile
 from .read_tools import AssessmentRequest
@@ -71,12 +72,21 @@ class ConversationMessage(StrictBody):
 
 
 def create_app(engine=None,*,password=None,username=None,store_id=None,origins=None,staff_investigation_mode=None,storefront_fixture=None,staff_accounts=None,demo_clock=None,conversation_router=None,customer_accounts=None,customer_router=None,action_adapter=None):
+    from .staff_investigations import MODES
+    staff_investigation_mode=staff_investigation_mode or os.environ.get('COMMERCE_STAFF_INVESTIGATION_MODE','rules')
+    if staff_investigation_mode not in MODES:raise ValueError('Unknown staff investigation mode')
+    model_name = None
+    if staff_investigation_mode == 'llm':
+        if any(adapter is not None for adapter in (action_adapter, conversation_router, customer_router)):
+            raise ValueError('LLM mode uses the configured local model')
+        from .local_llm import LocalModel
+        model = LocalModel.from_environment()
+        model_name = model.model
+        action_adapter = ModelActionAdapter(model.route, timeout_seconds=5, fallback=False)
     if action_adapter is not None:
         if conversation_router is not None or customer_router is not None:raise ValueError('Configure one action adapter')
         conversation_router=action_adapter.staff();customer_router=action_adapter.customer()
-    from .staff_investigations import MODES
-    staff_investigation_mode=staff_investigation_mode or os.environ.get('COMMERCE_STAFF_INVESTIGATION_MODE','rules')
-    if staff_investigation_mode not in MODES:raise ValueError('Staff investigation mode must be rules, mock-decisions or mock-specialists; paid modes prohibited')
+    session_mode = 'local_llm' if model_name else 'fictional_store_rules'
     password=password if password is not None else os.environ.get('COMMERCE_STAFF_PASSWORD','')
     username=username or os.environ.get('COMMERCE_STAFF_USERNAME','operator')
     store_id=store_id or os.environ.get('COMMERCE_STORE_ID','demo-store')
@@ -165,6 +175,10 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
     async def unavailable(request,error):
         return JSONResponse(status_code=503,content={'detail':'Database unavailable. Check PostgreSQL readiness and migrations.'})
 
+    @app.exception_handler(ModelUnavailable)
+    async def model_unavailable(request,error):
+        return JSONResponse(status_code=503,content={'detail':'Local assistant unavailable. Check the model and try again.'})
+
     @app.exception_handler(ValueError)
     async def conflict(request,error):
         return JSONResponse(status_code=409,content={'detail':str(error)})
@@ -176,7 +190,7 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
             with transaction(True) as connection:validate_readiness(connection)
         except SchemaNotReady:
             raise HTTPException(503,'Business schema is not ready for this release; check migrations and schema compatibility') from None
-        return {'status':'ready','mode':'fictional_store_rules'}
+        return {'status':'ready','mode':session_mode}
 
     if storefront_fixture:
         def customer_rows(order_id=None,tracking=False):
@@ -202,7 +216,7 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
 
     @router.get('/session')
     def session(actor: str=Depends(staff)):
-        return {'username':actor,'store_id':store_id,'mode':'fictional_store_rules','role':accounts[actor]['role']}
+        return {'username':actor,'store_id':store_id,'mode':session_mode,'role':accounts[actor]['role']}
 
     @router.get('/deliveries')
     def delivery_report():
@@ -240,7 +254,7 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
             conversation=conversation_owned(c,identity,actor)
             if conversation['selected_case_id']:authorize_case(c,conversation['selected_case_id'])
             return message(c,engine,conversation,body.message,body.request_id,staff_investigation_mode,
-                router=conversation_router,now=demo_clock() if demo_clock else None)
+                router=conversation_router,now=demo_clock() if demo_clock else None,model=model_name)
 
     @router.get('/orders')
     def orders():
@@ -309,6 +323,12 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
     def investigate_case_job(case_id: str,body: StrictBody):
         with transaction() as connection:
             authorize_case(connection,case_id,True)
+            if model_name:
+                from .staff_investigations import enqueue as start
+                case = lock_case(connection, case_id)
+                run = start(connection,engine,case_id,'Staff requested a case check.',
+                            identifier('STAFF-CHECK'),case['generation'],staff_investigation_mode,model=model_name)
+                return {'run_id':run['id'],'state':run['state']}
             result=enqueue(connection,case_id,'investigate')
         result.pop('token',None)
         return result
@@ -318,7 +338,7 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
         from .staff_investigations import enqueue as start
         with transaction() as connection:
             authorize_case(connection,case_id,True)
-            result=start(connection,engine,case_id,body.report,body.request_id,body.expected_generation,staff_investigation_mode)
+            result=start(connection,engine,case_id,body.report,body.request_id,body.expected_generation,staff_investigation_mode,model=model_name)
             return {'run_id':result['id'],'state':result['state']}
 
     @router.post('/cases/{case_id}/review',dependencies=[Depends(mutation)])

@@ -41,6 +41,18 @@ def run(engine, fence, adapters=None, cancel=None, after_node=None,node_delay=0,
     if not 0<=node_delay<=.5:raise ValueError('Node delay bounded to 0..0.5s')
     adapters = adapters or {}
     initial = multi.current(engine, fence)
+    model_name = initial['contracts'].get('specialist_model')
+    if model_name:
+        if adapters:
+            raise ValueError('A local model investigation uses its saved model')
+        from .local_llm import LocalModel
+        from .specialist_contracts import ModelDirectedSpecialist
+
+        def choose(request, **limits):
+            return LocalModel.from_environment(model=model_name).specialist(request, **limits)
+
+        adapter = ModelDirectedSpecialist(choose, enabled=True)
+        adapters = {'order': adapter, 'shipment': adapter}
     with service.transaction(engine, readonly=True) as c:
         job = jobs.get(c, fence.job_id)
         if job['action'] != jobs.SPECIALIST_ACTION: raise ValueError('Wrong graph job partition')

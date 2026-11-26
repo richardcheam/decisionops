@@ -22,6 +22,19 @@ async function ask(page: Page, message: string) {
   return response.json();
 }
 
+test('staff can sign in from a bookmark for a case that no longer exists', async ({ page }) => {
+  await page.goto('/staff#case=CASE-STALE-DEMO-BOOKMARK');
+  const usernameInput = page.getByLabel('Username', { exact: true });
+  await expect(usernameInput).toHaveValue('');
+  await usernameInput.fill(username);
+  await page.getByLabel('Password', { exact: true }).fill(password!);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Exception queue', exact: true })).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('That case link is no longer available');
+  await expect(page.getByTestId('selected-case')).toHaveText('No case selected');
+  await expect(page).toHaveURL('/staff');
+});
+
 test('delivery questions expose computed totals and explicit links; Lyon investigation needs exact approval then confirmation', async ({ page, request, browser }) => {
   await login(page);
   const report = await (await request.get('/api/deliveries', { headers })).json();
@@ -71,8 +84,8 @@ test('delivery questions expose computed totals and explicit links; Lyon investi
   expect((await detail()).generation).toBe(before.generation);
   await page.getByRole('button', { name: 'Approve replacement', exact: true }).click();
   const approval = page.getByRole('dialog');
-  await expect(approval).toContainText(before.proposal.id);
-  await expect(approval).toContainText(before.proposal.content_hash);
+  await expect(approval.getByText('Proposal ' + before.proposal.id, { exact: false })).toBeVisible();
+  await expect(approval.getByText('Content hash ' + before.proposal.content_hash, { exact: false })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create replacement', exact: true })).toHaveCount(0);
   await approval.getByRole('button', { name: 'Confirm approval', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Create replacement', exact: true })).toBeEnabled();

@@ -48,7 +48,16 @@ test('customer Lyon report reaches the same staff case and original conversation
     const customer = await customerContext.newPage();
     const staff = await staffContext.newPage();
     await customerLogin(customer);
+    const help = await customerAsk(customer, 'What can you help me?');
+    expect(help.intent).toBe('help');
+    await expect(customer.getByRole('log')).toContainText('track a parcel');
+    await expect(customer.getByRole('log')).toContainText('report it missing');
+    expect((await customerAsk(customer, 'How do I return an item?')).intent).toBe('returns_help');
+    await expect(customer.getByRole('log')).toContainText('return instructions');
     await customer.getByRole('button', { name: 'Open order DEMO-LYON', exact: true }).click();
+    const summary = await customerAsk(customer, 'What did I order?');
+    expect(summary.intent).toBe('order_summary');
+    await expect(customer.getByRole('log')).toContainText('DEMO-LYON includes');
     await customerAsk(customer, 'What is my delivery status?');
     await customer.getByRole('button', { name: 'Report a missing parcel', exact: true }).click();
     await expect(customer.getByLabel('Your message', { exact: true })).toHaveValue('My parcel never arrived. Please report it missing.');
@@ -68,17 +77,25 @@ test('customer Lyon report reaches the same staff case and original conversation
     await staff.getByLabel('Username', { exact: true }).fill(staffUsername);
     await staff.getByLabel('Password', { exact: true }).fill(staffPassword);
     await staff.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await staffAsk(staff, 'What can you help me?');
+    await expect(staff.getByRole('log')).toContainText('delivery totals');
+    await expect(staff.getByRole('log')).toContainText('investigate a case');
     const queue = staff.getByRole('region', { name: 'Exception queue', exact: true });
     if (compactDemo) {
-      await expect(queue.getByRole('button')).toHaveCount(2);
+      await expect(queue.getByRole('button')).toHaveCount(3);
       await expect(queue).toContainText('DEMO-OVERDUE');
-      await expect(customer.getByRole('region', { name: 'Your orders' }).getByRole('button')).toHaveCount(1);
+      await expect(queue).toContainText('DEMO-CONFLICT');
+      const orders = customer.getByRole('region', { name: 'Your orders' });
+      await expect(orders.getByRole('button')).toHaveCount(2);
+      await expect(orders.getByRole('button', { name: 'Open order DEMO-CONFLICT', exact: true })).toBeVisible();
     }
     await queue.getByRole('button').filter({ hasText: 'DEMO-LYON' }).click();
     await expect(staff.getByRole('region', { name: 'Selected case', exact: true })
       .getByRole('heading', { name: 'DEMO-LYON', exact: true })).toBeInViewport();
     await expect(staff.getByTestId('selected-case')).toContainText(filed.case_id);
     await expect(staff.getByRole('heading', { name: 'Case history', exact: true }).locator('..')).toContainText('My parcel never arrived. Please report it missing.');
+    await staffAsk(staff, 'Which parcels are late?');
+    await expect(staff.getByRole('log')).toContainText('overdue parcels in the exception queue');
     await runtimeProbe('pause');
     const investigate = staff.getByRole('button', { name: 'Investigate case', exact: true });
     await expect(investigate).toBeInViewport();
