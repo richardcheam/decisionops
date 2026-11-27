@@ -1,6 +1,6 @@
 # Optional adaptive Commerce investigation — design for review
 
-Status: Stage 1 library implemented under separate authorization; the complete adaptive workflow remains proposed. No model execution. Inspected baseline: origin/main `b27e2d7cda764ef6e52f99eff3e5a9f30a45d0f5` (PR #9 integrated). This document and its [implementation plan](../plans/2026-10-14-adaptive-commerce-investigation.md) describe the planned full workflow. Current Stage 1 library behavior is specified separately; later-stage commands and capabilities are not available.
+Status: Stage 1 library implemented under separate authorization; the complete adaptive workflow remains proposed. No model execution. Inspected baseline: origin/main `b27e2d7cda764ef6e52f99eff3e5a9f30a45d0f5` (PR #9 integrated). This document and its [implementation plan](https://github.com/richardcheam/decisionops/blob/18009217f16f0624d275b14e19f4d72d49bcb505/docs/superpowers/plans/2026-10-14-adaptive-commerce-investigation.md) describe the planned full workflow. Current Stage 1 library behavior is specified separately; later-stage commands and capabilities are not available.
 
 ## Goal and boundaries
 

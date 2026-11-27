@@ -1,4 +1,7 @@
-# Delivery workspace operation
+# Delivery workspace operation for the original staff-only demo
+
+For the current customer-to-staff demo, use the [demo guide](PORTFOLIO_DEMO.md).
+The launch and walkthrough below use the original staff-only delivery fixtures.
 
 Use the root Compose demo in README, or run the same app locally against an
 **isolated, disposable PostgreSQL16 UTF8 database**. Preserve historical volumes

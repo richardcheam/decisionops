@@ -1,52 +1,88 @@
-# Commerce architecture
+# DecisionOps architecture
 
-The supported demo uses fictional PostgreSQL records. Rules are the default; the
-optional specialists use mocked choices. Neither mode ships goods or contacts customers.
+DecisionOps connects a customer conversation to a staff case. The application
+uses customer reports and carrier updates to find the case, then checks business
+records before it offers a replacement. PostgreSQL stores the case and its
+history. React displays progress and FastAPI checks identity and access.
+
+[Run the demo](PORTFOLIO_DEMO.md) · [Set up a local model](LOCAL_MODEL.md)
+
+## Who reads what
+
+| Role | Reads or decisions |
+|---|---|
+| Customer chat router | Selects a supported action for the signed-in customer, such as checking an owned order or reporting a missing parcel |
+| Staff chat router | Selects a supported action such as showing overdue deliveries, checking a case or starting an investigation |
+| Order specialist | `payment`, `compensation_history` |
+| Shipment specialist | `fulfilment`, `carrier_loss` |
+| LangGraph coordinator | `order_manifest`, `replacement_policy`, `inventory` |
+
+There are seven available investigation read tools. The coordinator reads the
+manifest and replacement policy first. The two specialist branches can then run
+in parallel. The shipment specialist checks fulfilment before carrier loss.
+The coordinator reads stock after both branches complete and passes the committed
+evidence to Commerce for an eligibility check. If the evidence is missing, stale
+or conflicting, Commerce can stop the case for review. A confirmed blocker such
+as earlier compensation can also prevent a proposal.
+[Tool registry](../decisionops/commerce/workflow_registry.py) ·
+[Specialist execution and join](../decisionops/commerce/multi_agent.py)
 
 ```mermaid
 flowchart TD
-    D[(PostgreSQL<br/>Committed progress)] -. reuse on restart .-> B[Parcel bound to order]
-    B --> O[Order specialist<br/>Remaining payment]
-    B --> S[Shipment specialist<br/>Tracking evidence]
-    O --> J[Deterministic join<br/>Evidence and safety checks]
+    C[Coordinator checks order items and policy] --> O[Order specialist checks payment and prior compensation]
+    C --> S[Shipment specialist checks fulfilment and carrier loss]
+    O --> J[Coordinator joins results and checks stock when both branches complete]
     S --> J
+    J --> E[Commerce determines eligibility]
+    E -->|Eligible| A[Staff approve the exact proposal]
+    A --> X[Staff separately confirm creation]
+    E -->|Unresolved| R[Staff review the case]
 ```
 
-The parcel must be bound before payment and tracking can overlap, and restart
-reuses PostgreSQL commitments instead of redispatching completed specialist work.
+## Modes and authority
 
-The coordinator reads the order manifest and store policy first; the Order
-specialist's explicit fulfilment read then binds the parcel before the split.
-The two branches can make bounded mocked tool choices; the diagram shows only the
-work remaining after that dependency, not two independent full investigations.
+| Mode | What selects actions |
+|---|---|
+| `mock-specialists` | The README quickstart. Built-in chat routers and simulated specialist choices run without a model. |
+| `rules` | The launcher default when no mode is set. Built-in chat routers and a fixed investigation policy. |
+| `llm` | One local Ollama model can select actions for both chats and both specialists. The app checks each choice against the role’s allowed actions. An unavailable model produces a chat error or sends the investigation to staff review. |
+| `mock-decisions` | An API and test mode that simulates decision responses. The Compose launcher exposes the other three modes. |
 
-Browser requests enter `api.py`; `staff_investigations.enqueue` admits/coalesces
-requests and invalidates an older proposal/approval on genuinely new investigation.
-`staff_investigations.work_once` claims the specialist or legacy rules job partition.
-The browser polls committed state while work runs. The separate execution worker
-handles only explicitly requested execution jobs: `cases.review_case` binds exact
-approval, then `execution.execute` revalidates, locks and commits fictional effects.
-Model output never has approval or execution authority.
+A model call selects an action. A read fetches evidence, and Commerce decides
+eligibility from that evidence. This means a single case can involve chat
+decisions, specialist choices, and application-driven reads or rechecks. The
+number of reads and model calls varies with the case, mode and retries.
+The integration tests use a local protocol stub. Live-model accuracy and latency
+remain unverified. [Role actions](../decisionops/commerce/role_actions.py) ·
+[Local transport tests](../tests/test_commerce_local_llm.py)
 
-Only the remaining payment and tracking branches can overlap. Tracking depends on
-manifest, fulfilment and replacement policy;
-there is no hidden all-records read inside a selected specialist tool. Order owns
-payment/fulfilment; Shipment owns carrier evidence and an explicit fulfilment refresh.
-Other mandatory conditions remain coordinator reads. On partial branch failure, those
-completion reads are skipped and the join discloses the remaining unknowns. Tracking alone cannot establish
-eligibility. See `adaptive_tools.DEPENDENCIES` and `PROJECTIONS` for exact SQL fields.
+## Approval, confirmation and recovery
 
-`multi_agent_workflow.py` defines actual graph nodes/fan-out/join. PostgreSQL commits
-immutable observations, reservation/disposition history, attempts, case revision and
-lease tokens. Checkpoints contain reconstructable progress, not ownership. On restart,
-committed branch calls are reused; uncertain decisions are not redispatched. No inference
-or tool wait holds a business transaction. `multi_agent.read` validates scope/dependencies;
-`multi_agent.join` calls the existing deterministic proposal safety path. Fresh safety
-reads cannot fill an unread evidence gap or become policy observations.
+The API checks who owns an order or case. A customer report records what the
+customer says, while carrier and order records establish the business facts.
+Commerce checks the proposal’s ID, generation and content hash when an authorized
+staff member approves it. Separate confirmation requests creation. The execution
+worker rechecks the records and uses a database transaction to create one replacement
+record and reserve stock. Reconciliation checks the saved result that the customer
+sees in their original conversation.
 
-The [evidence summary](EVIDENCE.md) links success, partial failure and restart to tests.
-It distinguishes admission-only wrong-case checks from unverified final-join scenarios.
-Mocked local specialists have no demonstrated speed/quality gain over fixed-order rules.
-Langfuse is not installed or exporting telemetry; local redacted summaries suffice.
-Deep Agents would duplicate this bounded controller and is omitted. The historical
-browser navigation benchmark is separate and its page evidence cannot authorize Commerce.
+The investigation worker records completed reads and tool decisions in PostgreSQL.
+LangGraph checkpoints progress. A restarted worker reconstructs its progress from
+committed records and reuses completed work. An uncertain model decision can
+require staff review. The execution worker checks for previously committed effects
+so a repeated confirmation cannot reserve stock a second time.
+[Browser acceptance](../frontend/customer-tests/journey.spec.ts) ·
+[Recovery walkthrough](../scripts/commerce_delivery_recovery.py)
+
+## Code map
+
+| To follow | Start here |
+|---|---|
+| Customer and staff pages | [Frontend entry](../frontend/src/main.tsx), [customer portal](../frontend/src/customer.tsx), [staff workspace](../frontend/src/staff/workspace.tsx) |
+| Identity, case access and endpoints | [Commerce API](../decisionops/commerce/api.py), [customer API](../decisionops/commerce/customer_api.py) |
+| Investigation admission and progress | [Staff investigations](../decisionops/commerce/staff_investigations.py), [LangGraph workflow](../decisionops/commerce/multi_agent_workflow.py) |
+| Eligibility and approval | [Eligibility rules](../decisionops/commerce/eligibility.py), [cases](../decisionops/commerce/cases.py) |
+| Creation, reservation and result checks | [Execution](../decisionops/commerce/execution.py), [worker](../decisionops/commerce/worker.py) |
+| Model configuration and prompts | [Local model transport](../decisionops/commerce/local_llm.py) |
+
+[Maintainer and historical references](ARCHIVE.md)

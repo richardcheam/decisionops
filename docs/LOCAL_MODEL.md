@@ -28,7 +28,8 @@ ollama ps
 The download is about 1.4 GB. In `ollama ps`, the **PROCESSOR** column shows whether
 Ollama is using the GPU. The check prints warmup time separately, then checks three
 chat actions and one specialist decision using the same transport as the app.
-Each decision must finish within 4.5 seconds. If the 1.7B model is too slow or
+The script marks a decision as passing only if it matches the expected action
+and finishes in under 4.5 seconds. If the 1.7B model is too slow or
 uses too much memory, repeat with `qwen3:0.6b` (about 523 MB).
 [Model sizes](https://ollama.com/library/qwen3/tags)
 
@@ -72,6 +73,33 @@ Open Lyon and ask staff to investigate. Check that it proposes a replacement onl
 after the records support one. Then try Lille and Saint-Denis and check that
 neither gets a replacement proposal. Creation still takes staff approval and a
 separate confirmation.
+
+## Use the Compose launcher
+
+If you already have a local Ollama image and model files, you can run the whole
+stack in Docker. First set the fictional credentials in the
+[quickstart](../README.md#run-the-demo). Then point the launcher at the existing
+model directory.
+
+```bash
+export COMMERCE_DEMO_MODE=llm
+export COMMERCE_LLM_MODEL=qwen3:1.7b
+export COMMERCE_OLLAMA_MODEL_DIR='/absolute/path/to/ollama/models'
+bash scripts/demo.sh build
+bash scripts/demo.sh start
+bash scripts/demo.sh health
+```
+
+Set `COMMERCE_OLLAMA_IMAGE` if your local image uses a tag other than
+`ollama/ollama:latest`. Compose mounts the model files read-only, disables Ollama
+cloud features, and checks that the specified model is installed. Sign in as
+`visitor` on the [staff page](http://127.0.0.1:8133/staff).
+
+## What the checks cover
+
+The [automated tests](../tests/test_commerce_local_llm.py) exercise the Ollama
+protocol with a local stub. Running the model check above measures your machine's
+response time and checks the expected actions for those examples. Live-model accuracy and latency still need to be measured on the target hardware.
 
 ## Where to make changes
 

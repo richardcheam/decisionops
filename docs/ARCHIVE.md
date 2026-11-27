@@ -1,4 +1,32 @@
-# Archive and curation
+# Maintainer guides and project history
+
+## Maintainer guides
+
+- [Deployment and restore](PORTFOLIO_DEPLOYMENT.md)
+- [Commerce operating runbook](commerce/RUNBOOK.md)
+- [Worker lifecycle and recovery](WORKFLOW-WORKER-LIFECYCLE.md)
+- [Release procedures](RELEASE.md)
+
+### Reset the local demo
+
+Use this only for the fictional Compose demo. It removes that demo’s PostgreSQL
+volume and all saved cases, messages and replacements. Set the fictional
+credentials and mode from the [quickstart](../README.md#run-the-demo) first.
+
+```bash
+COMMERCE_DEMO_RESET=decisionops-github-demo bash scripts/demo.sh reset
+bash scripts/demo.sh start
+```
+
+## Project history
+
+- [Original staff-only delivery workspace](DELIVERY_WORKSPACE.md), with its [verification](DELIVERY_VERIFICATION.md) and [supervisor review](DELIVERY_SUPERVISION.md)
+- [Portfolio release handoff](PORTFOLIO-HANDOFF.md)
+- [Older Commerce experiments](commerce/README.md) and [diagnostic fixture notes](HISTORICAL-DIAGNOSTICS.md)
+- [Design specifications](superpowers/specs/) and [project evidence](EVIDENCE.md)
+- [Retired portfolio checkpoint](https://github.com/richardcheam/decisionops/blob/18009217f16f0624d275b14e19f4d72d49bcb505/docs/PORTFOLIO_CHECKPOINT.md)
+
+## Archived release material
 
 Archive ID: **2026-11-14-portfolio-release**, alongside the existing
 **2026-10-16-wrapup** archive. Operator-local location:
