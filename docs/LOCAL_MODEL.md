@@ -116,3 +116,5 @@ response time and checks the expected actions for those examples. Live-model acc
 A failed model check prints the error and exits with a nonzero status. If the
 connection is refused, check that Ollama is running. If a decision is wrong,
 inspect the prompt and try the same question again before changing business rules.
+
+For a measured comparison with the rules, see the [local Ollama benchmark](LOCAL_BENCHMARK.md).
