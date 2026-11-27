@@ -6,8 +6,8 @@ Reviewed follow-up source: `1baf05e685a5a662267ec2add9661324fd6b4812`, branch
 `feat/commerce-staff-investigation`. Final documentation commit follows that source.
 No publication, paid calls, model loads, dependency changes or original-runtime work.
 
-[Staff instructions and exact clean-checkout startup/stop](../../docs/commerce/STAFF-ASSISTANT.md).
-[One-shop read-only pilot boundary](../../docs/commerce/PILOT-HANDOFF.md).
+[Staff instructions and exact clean-checkout startup/stop](https://github.com/richardcheam/decisionops/blob/a816f6191af1b2ebda9863e1fa20ffdcf6416a14/docs/commerce/STAFF-ASSISTANT.md).
+[One-shop read-only pilot boundary](https://github.com/richardcheam/decisionops/blob/a816f6191af1b2ebda9863e1fa20ffdcf6416a14/docs/commerce/PILOT-HANDOFF.md).
 The temporary clean checkout was stopped/removed after 28 generated files were
 copied and individually SHA-256 verified. The original staff demo stays on 55521;
 its processes/data were retained and only the tested generated UI assets updated.

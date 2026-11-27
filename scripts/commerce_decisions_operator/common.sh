@@ -5,5 +5,5 @@ export COMMERCE_DATABASE_URL='postgresql+psycopg://commerce_decisions:decisions-
 export PYTHONPATH="$PWD"
 export OPENAI_LOG=error
 EVIDENCE="$PWD/runs/decisions-manual-evidence"
-CONFIG='docs/commerce/examples/api-decisions-proposed.json'
+CONFIG='scripts/commerce_decisions_operator/api-decisions-proposed.json'
 APPROVED_HASH='b318cc81100b474bf1cad6815bd9ed8f39a064db9f1cdf55debff8eb2a54da09'

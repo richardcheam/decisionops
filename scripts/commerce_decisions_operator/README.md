@@ -2,8 +2,21 @@
 
 Richard executed the archived predecessor once. These relocated sources were not
 run during wrapup. Original consumed attempt markers remain in place; do not delete
-them or recreate the old budget to obtain another run. See the archive/evidence
-index and Decisions live walkthrough before considering any new experiment.
+them or recreate the old budget to obtain another run. See the
+[maintainer index](../../docs/ARCHIVE.md#project-history) for historical results.
+
+## Check the configuration offline
+
+From the checkout root with the locked Commerce dependencies installed:
+
+```bash
+PYTHONPATH="$PWD" .venv/bin/python -B scripts/commerce_decisions_operator/verify_config.py
+```
+
+The verifier reads the adjacent [Decisions configuration](api-decisions-proposed.json)
+and checks its approved document hash and budget caps without opening an API client.
+
+## Historical operator procedure
 
 Only after Richard issues a new RUN LIVE TEST for the Decisions configuration:
 

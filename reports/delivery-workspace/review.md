@@ -2,7 +2,7 @@
 
 This is the historical implementation review. The dedicated follow-up supervisor
 audit and additional corrections are described in
-[DELIVERY_SUPERVISION.md](../../docs/DELIVERY_SUPERVISION.md).
+[DELIVERY_SUPERVISION.md](https://github.com/richardcheam/decisionops/blob/a816f6191af1b2ebda9863e1fa20ffdcf6416a14/docs/DELIVERY_SUPERVISION.md).
 
 Base:3eccbdf2db4a5db1a8a749c6c3a3112b751648c3. Reviews and fixes stayed local.
 No external messaging, paid product/evaluation calls, model downloads or real
@@ -42,7 +42,7 @@ Confirmed findings and corrections:
   runner is now the documented verification entry point.
 
 The final evidence matrix and measured comparison boundaries are in
-[DELIVERY_VERIFICATION.md](../../docs/DELIVERY_VERIFICATION.md). Raw local diagnostic
+[DELIVERY_VERIFICATION.md](https://github.com/richardcheam/decisionops/blob/a816f6191af1b2ebda9863e1fa20ffdcf6416a14/docs/DELIVERY_VERIFICATION.md). Raw local diagnostic
 logs/checkpoints remain outside tracked product source in
 `/tmp/decisionops-delivery-session/`. Final broad-suite results are recorded by the
 lead after completion; reviewer approval alone is not a substitute for those checks.

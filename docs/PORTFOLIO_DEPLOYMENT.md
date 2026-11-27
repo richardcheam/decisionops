@@ -5,44 +5,16 @@ both background workers. The shop, customers, orders and carrier data are fictio
 The default works without a model key or tracing credentials. No command here
 requires publishing a repository, sending traces or connecting a real carrier.
 
-## One Compose quickstart
+## Compose launch
 
-Choose four different fictional passwords of at least 16 characters. Configure
-these in your shell; do not put real passwords in screenshots, commands committed
-to Git, or the guide:
+Use the [README quickstart](../README.md#run-the-demo). The init container
+migrates PostgreSQL, seeds the three fictional cases and sets up checkpoints
+before the API and workers start. Nginx forwards both `/api/` and
+`/customer-api/`. Check health with `bash scripts/demo.sh health`.
 
-```bash
-export COMMERCE_DEMO_PASSWORD='fictional-manager-demo-only'
-export COMMERCE_HELPER_PASSWORD='fictional-investigator-only'
-export COMMERCE_CUSTOMER_CAMILLE_PASSWORD='fictional-camille-demo-only'
-export COMMERCE_CUSTOMER_ALEX_PASSWORD='fictional-alex-demo-only'
-export COMMERCE_DEMO_MODE=mock-specialists
-bash scripts/demo.sh build
-bash scripts/demo.sh start
-bash scripts/demo.sh health
-```
-
-Open `http://127.0.0.1:8133/customer` as `camille`; open
-`http://127.0.0.1:8133/staff` in another browser session as `visitor`.
-The investigator account is `staff`. Use the corresponding configured password.
-`alex` is the second customer and owns different orders in the same shop.
-
-The init container migrates the database, seeds the two fictional delivery cases and their customers, and
-sets up graph checkpoints before the API and workers start. The web server forwards
-both `/api/` and `/customer-api/`; React handles `/staff` and `/customer`.
-`rules` remains available as a model-free investigation mode; `mock-specialists`
-shows both specialist tracks. Neither mode makes paid model calls.
-
-In Camille's conversation, select the Lyon order and report that the parcel did
-not arrive. Keep the returned case reference. Staff open that same case, investigate,
-review the exact proposal, approve, then confirm creation separately. Return to
-Camille's original conversation to see the reconciled replacement result. A created
-replacement and reserved item do not mean a parcel was shipped. Do not claim tracking
-until a verified shipment exists.
-
-`bash scripts/demo.sh stop` preserves the named database volume. Deleting the
-fictional database additionally requires the existing explicit reset guard documented
-by `scripts/demo.sh`; stopping the app does not silently delete records.
+`bash scripts/demo.sh stop` keeps the database volume. Use the
+[fictional demo reset](ARCHIVE.md#reset-the-fictional-compose-demo) to rehearse
+the Lyon flow on a fresh database.
 
 ## Kubernetes uses the same app
 
@@ -138,27 +110,23 @@ A private ignored `runs/portfolio-restore-*/` directory retains the synthetic du
 verification summary. In a real pilot, a restore test must separately cover the
 actual storage, credentials, backup schedule and recovery objectives.
 
-## What was actually checked in this session
+## Local worker recovery checks
 
-These results were observed on the integrated working tree with schema 0011 and must
-be rerun/pinned to the final candidate by the lead before claiming exact-SHA evidence.
+Install the locked Commerce profile and set `COMMERCE_TEST_DATABASE_URL` to a
+disposable loopback PostgreSQL database as in the [runbook](commerce/RUNBOOK.md#model-free-regression-checks).
+From the checkout, run:
 
-| Check | Observed result |
-|---|---|
-| `python3 scripts/commerce_deployment_verify.py` | Passed seven packaging checks over 12 Kubernetes objects. |
-| `kubectl v1.34.3 kustomize deploy/kubernetes` | Rendered successfully, offline. Binary checksum verified against official download. |
-| Rendered manifests against upstream Kubernetes v1.34.3 OpenAPI definitions | All 12 objects passed offline JSON Schema validation, translating the Kubernetes `int-or-string` format to the matching JSON Schema union. |
-| Terraform 1.12.2 `fmt -check` | Passed. |
-| Terraform `init -backend=false -input=false` | Installed signed HashiCorp AWS provider 6.73.0; lock file retained. No AWS API request required. |
-| Terraform `validate` | Passed provider schema/configuration validation. No plan or apply. |
-| Direct PostgreSQL restore script | Passed on 0011: 49 user tables matched, restored replacement reconciled, two populated worker graphs restored. Evidence: ignored `runs/portfolio-restore-5xkein7l/verification.json`. |
-| Docker runtime | Blocked: account cannot access `/var/run/docker.sock`. |
-| Alternate local runtime | Root-only containerd socket; user namespace mapping refused by host. No permissions changed. |
-| Isolated cluster | Unverified: no usable local runtime; named kind context is absent. |
-| Cluster browser, worker business recovery and rollback | Unverified; prepared scripts and local application tests do not establish deployed results. |
+```bash
+.venv/bin/python -B scripts/commerce_delivery_recovery.py
+.venv/bin/python -B scripts/commerce_worker_walkthrough.py
+.venv/bin/python -B scripts/commerce_execution_walkthrough.py
+```
 
-All container/database records are synthetic. No AWS provisioning, ECR push, hosted
-telemetry, paid model call or real integration was performed.
+The delivery check interrupts a worker after committed specialist work and checks
+that the resumed investigation reuses that progress. It also exercises repeated
+execution confirmation and verifies a single replacement and stock reservation.
+These direct-local checks cover worker and database behavior. Use the runtime
+CI results for the tested commit to verify deployed behavior and rollback.
 
 ## Prepared AWS staging and dependency purposes
 
@@ -180,7 +148,7 @@ See that folder's README for the preparation boundary and validation commands.
 | Optional LangSmith adapter | Allowlisted investigation metadata when explicitly enabled; no default export. |
 | Nginx/Compose | One local app quickstart and both API route proxies. |
 | Kubernetes/Kustomize | Same app and workers packaged for isolated deployment and rollout. |
-| Terraform/AWS provider | Prepared staging resources; local validation only in this session. |
+| Terraform/AWS provider | Prepared staging resources and offline configuration validation. |
 | PyYAML | Local manifest contract checks/rehearsal input; not a business dependency. |
 | PostgreSQL dump/restore tools | Disposable recovery rehearsal. |
 

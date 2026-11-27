@@ -2,8 +2,8 @@
 
 Base d2f174e3753567c39027b0b7076e87598eabe29d preserved on the prior release branch.
 Implementation commit 8d2f614 is on feat/commerce-shop-fixture; later commit adds only
-this handoff/screenshots. [Launch guide and two-view demo](../../docs/commerce/CLOTHING-STOREFRONT.md).
-[Future browser contract/acceptance tests](../../docs/commerce/BROWSER-INVESTIGATION-DESIGN.md).
+this handoff/screenshots. [Launch guide and two-view demo](https://github.com/richardcheam/decisionops/blob/a816f6191af1b2ebda9863e1fa20ffdcf6416a14/docs/commerce/CLOTHING-STOREFRONT.md).
+[Future browser contract/acceptance tests](https://github.com/richardcheam/decisionops/blob/a816f6191af1b2ebda9863e1fa20ffdcf6416a14/docs/commerce/BROWSER-INVESTIGATION-DESIGN.md).
 
 Screenshots: [shop](shop-home.png), [product options](shop-product.png),
 [order history](shop-orders.png), [order detail](shop-order.png),

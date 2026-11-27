@@ -2,9 +2,13 @@
 import importlib.util,unittest,json,threading
 from datetime import datetime,timezone,timedelta
 from dataclasses import replace
+from pathlib import Path
 from decisionops.commerce.adaptive_policies import PolicyRequest,Action
 from decisionops.commerce.adaptive_recommendations import Request,validate
 from decisionops.commerce.api_decisions import ApiConfig,OpenAIAdapter,ApiUncertain,wire_request
+
+NANO_CONFIG = Path(__file__).resolve().parents[1] / 'data/commerce/api-nano-proposed.json'
+
 
 @unittest.skipUnless(importlib.util.find_spec('openai'),'Optional commerce-api SDK profile required')
 class SDKDecisionTests(unittest.TestCase):
@@ -72,10 +76,9 @@ class SDKDecisionTests(unittest.TestCase):
         self.assertEqual(OpenAIAdapter().choose(r,threading.Event()).elapsed_ms,0)
 
     def test_nano_proposed_config_sdk_mock_compatibility_and_reservation(self):
-        from pathlib import Path
         from decimal import Decimal
         import httpx
-        cfg=ApiConfig(**json.loads((Path(__file__).resolve().parents[1]/'docs/commerce/examples/api-nano-proposed.json').read_text()))
+        cfg=ApiConfig(**json.loads(NANO_CONFIG.read_text()))
         self.assertEqual(cfg.model,'gpt-5-nano-2025-08-07')
         self.assertEqual(cfg.maximum(),Decimal('0.00225280'))
         self.assertEqual(cfg.maximum()*cfg.max_requests,Decimal('0.02703360'))
@@ -90,9 +93,8 @@ class SDKDecisionTests(unittest.TestCase):
         self.assertEqual(seen[0]['max_output_tokens'],1024)
         self.assertEqual(result.status,'success')
     def test_nano_credentials_and_config_presence_do_not_authorize_live_dispatch(self):
-        from pathlib import Path
         from unittest.mock import patch
-        cfg=ApiConfig(**json.loads((Path(__file__).resolve().parents[1]/'docs/commerce/examples/api-nano-proposed.json').read_text()))
+        cfg=ApiConfig(**json.loads(NANO_CONFIG.read_text()))
         r=replace(self.request(),api=cfg.record())
         with patch.dict('os.environ',{'OPENAI_API_KEY':'fictional-present-not-authority'}):
             with patch('openai.AsyncOpenAI',side_effect=AssertionError('Unauthorized SDK construction')):
