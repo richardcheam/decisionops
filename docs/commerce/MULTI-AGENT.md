@@ -1,5 +1,9 @@
 # Bounded specialists: local reviewer guide
 
+> **Historical milestone.** This guide records an earlier specialist design.
+> For current tool assignments, see [Who reads what](../ARCHITECTURE.md#who-reads-what).
+> The shipment specialist now owns `fulfilment` and `carrier_loss`.
+
 For the supported standalone release,start with the [root quickstart](../../README.md).
 The raw evidence paths in this accepted milestone record now refer to the external
 [archive](../ARCHIVE.md);the [publishable summary](../EVIDENCE.md) requires no private path.
