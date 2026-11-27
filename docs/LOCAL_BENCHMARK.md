@@ -44,8 +44,11 @@ reservation after repeated confirmation. The dependency-free profile reported
 
 ## Protocol
 
-Compare the built-in rules and the app’s Ollama mode on paired fictional
-customer and staff workflows. Each arm starts in a fresh PostgreSQL schema
+The benchmark compares two complete product modes: built-in rules and local
+Ollama. The original brief also called for a fixed-choice version of the same
+specialist graph, which this run did not include. The comparison measures the
+overall product trade-off and leaves the isolated effect of model-directed
+reads open. Each arm starts in a fresh PostgreSQL schema
 with matched source data. The five frozen cases cover a verified replacement,
 a split parcel that needs clarification, wrong-owner access, stale carrier
 evidence and a carrier outage. The wrong-owner case is an access control
