@@ -2,7 +2,6 @@ name: Verify and deploy workflow viewer
 
 on:
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -14,16 +13,19 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out source
+      - name: Check out the archived report and its exporter
         uses: actions/checkout@v6
+        with:
+          ref: 0cf3de4bc0e54a58f2f26d844059fd83b187c2ed
+          persist-credentials: false
 
       - name: Set up supported Python
         uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
 
-      - name: Run model-free test suite
-        run: python -m unittest discover -s tests
+      - name: Run the archived viewer tests without models
+        run: python -m unittest discover -s tests -p test_workflow_report.py
 
       - name: Export the committed report as the site index
         run: |

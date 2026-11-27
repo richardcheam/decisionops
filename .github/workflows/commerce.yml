@@ -2,9 +2,8 @@ name: Verify commerce without models
 
 on:
   pull_request:
-    branches: [main]
   push:
-    branches: [main, feat/commerce-eligibility, feat/commerce-fake-provider, feat/commerce-local-providers]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -32,7 +31,7 @@ jobs:
 
   postgres:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16.15-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4
@@ -75,35 +74,22 @@ jobs:
       - name: Durable worker and checkpoint recovery
         run: .venv/bin/python -B scripts/commerce_worker_walkthrough.py
 
-  browser:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      COMMERCE_TEST_DATABASE_URL: postgresql+psycopg://commerce:local-demo-only@127.0.0.1:55432/commerce
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-node@v6
         with:
-          python-version-file: .python-version
-      - name: Install pinned package manager and locked commerce profile
+          node-version: '24'
+      - name: Browser regressions on fresh local fixtures
         run: |
-          python -m pip install 'uv==0.12.19'
-          uv sync --locked --only-group commerce --only-group commerce-api --no-python-downloads
-      - name: Build locked app, interface and browser runner
+          npm --prefix frontend ci
+          (cd frontend && npx playwright install --with-deps chromium)
+          .venv/bin/python -B scripts/commerce_delivery_browser.py
+      - name: Backup, restore and reconcile in a fresh PostgreSQL database
         run: |
-          python -B scripts/commerce_local_setup.py
-          docker compose --project-directory . -f tests/compose/ci.yaml --profile app build
-          docker build -f docker/Dockerfile.browser -t decisionops-commerce-browser:local .
-      - name: Start PostgreSQL; migrate, seed, and await app readiness
-        run: |
-          docker compose --project-directory . -f tests/compose/ci.yaml --profile app up -d --wait
-          curl --fail http://127.0.0.1:8080/health
-      - name: Real browser workflow (zero skipped tests required)
-        run: .venv/bin/python -B scripts/commerce_browser_walkthrough.py
-      - name: Restore a backup in a separate database
-        run: python -B scripts/commerce_backup_walkthrough.py
-      - name: Recover failed configuration and database outage
-        run: python -B scripts/commerce_release_walkthrough.py
-      - name: Stop stack; preserve diagnostics, never export credentials or dumps
-        if: always()
-        run: docker compose --project-directory . -f tests/compose/ci.yaml --profile app down
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          .venv/bin/python -B scripts/commerce_portfolio_restore.py
+      - name: Compare supported actions with simulated model choices
+        run: .venv/bin/python -B -m decisionops.commerce.customer_evaluation --simulate-adapter
+      - name: Compare delivery decisions and restart behavior on PostgreSQL
+        env:
+          COMMERCE_COMPARISON_POSTGRES: '1'
+        run: .venv/bin/python -B -m unittest discover -s tests -p test_commerce_comparison.py -v

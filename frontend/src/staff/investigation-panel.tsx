@@ -133,7 +133,6 @@ function EvidenceList({ evidence, needsRefresh }: { evidence: Investigation["evi
                 <p>This investigation consulted database records, not browser pages.</p>
                 <p>Observation: {source.observation_id}<br />Version: {source.version}</p>
                 {row.reason && <p>Evidence limitation: {row.reason.replaceAll("_", " ")}</p>}
-                {row.customer_page && <a href={row.customer_page}>View corresponding customer page ↗</a>}
               </details>
             )}
           </li>

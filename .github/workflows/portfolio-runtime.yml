@@ -2,7 +2,6 @@ name: Verify portfolio container runtime
 
 on:
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -84,6 +83,11 @@ jobs:
             export COMMERCE_WEB_URL=http://127.0.0.1:8133
           fi
           (cd frontend && npx playwright test --config playwright.customer.config.ts)
+      - name: Recover PostgreSQL after a Compose outage
+        if: matrix.runtime == 'compose'
+        env:
+          COMMERCE_WEB_URL: http://127.0.0.1:8133
+        run: python -B scripts/commerce_runtime_probe.py outage
       - name: Tear down temporary runtime
         if: always()
         run: |

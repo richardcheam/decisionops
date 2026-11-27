@@ -1,4 +1,4 @@
-"""Rehearse the same app on an explicitly named disposable kind/k3d cluster.
+"""Rehearse the same app on an explicitly named disposable kind cluster.
 
 Requires built/loaded local images, kubectl, and operator-supplied synthetic secrets.
 Never creates a cloud cluster, changes Docker permissions or changes another namespace.
@@ -22,14 +22,14 @@ NAMESPACE = 'decisionops-local-portfolio'
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--context', required=True, help='Explicit kind-* or k3d-* disposable context')
+    parser.add_argument('--context', required=True, help='Explicit kind-* disposable context')
     parser.add_argument('--kubectl', default='kubectl')
     parser.add_argument('--port', type=int, default=8166)
     parser.add_argument('--app-image', required=True, help='Built and loaded app image tagged with candidate SHA')
     parser.add_argument('--web-image', required=True, help='Built and loaded web image tagged with candidate SHA')
     args = parser.parse_args()
-    if not args.context.startswith(('kind-', 'k3d-')):
-        parser.error('Only explicit disposable kind-* or k3d-* contexts are accepted')
+    if not args.context.startswith('kind-'):
+        parser.error('Only explicit disposable kind-* contexts are accepted')
     if not 1024 <= args.port <= 65535:
         parser.error('Use an unprivileged local port')
     required = {'COMMERCE_STAFF_PASSWORD': 'COMMERCE_DEMO_PASSWORD', 'COMMERCE_HELPER_PASSWORD': 'COMMERCE_HELPER_PASSWORD',

@@ -71,7 +71,7 @@ class ConversationMessage(StrictBody):
         return value
 
 
-def create_app(engine=None,*,password=None,username=None,store_id=None,origins=None,staff_investigation_mode=None,storefront_fixture=None,staff_accounts=None,demo_clock=None,conversation_router=None,customer_accounts=None,customer_router=None,action_adapter=None):
+def create_app(engine=None,*,password=None,username=None,store_id=None,origins=None,staff_investigation_mode=None,staff_accounts=None,demo_clock=None,conversation_router=None,customer_accounts=None,customer_router=None,action_adapter=None):
     from .staff_investigations import MODES
     staff_investigation_mode=staff_investigation_mode or os.environ.get('COMMERCE_STAFF_INVESTIGATION_MODE','rules')
     if staff_investigation_mode not in MODES:raise ValueError('Unknown staff investigation mode')
@@ -101,7 +101,6 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
         if name==username or not 1<=len(name)<=128 or account.get('role') not in ('staff','approver') or len(account.get('password',''))<16:
             raise ValueError('Invalid local staff account')
         accounts[name]=dict(account)
-    storefront_fixture=(os.environ.get('COMMERCE_STOREFRONT_FIXTURE')=='1') if storefront_fixture is None else storefront_fixture
     owned=engine is None
     engine=engine or database_engine()
 
@@ -192,26 +191,6 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
             raise HTTPException(503,'Business schema is not ready for this release; check migrations and schema compatibility') from None
         return {'status':'ready','mode':session_mode}
 
-    if storefront_fixture:
-        def customer_rows(order_id=None,tracking=False):
-            from .shop_fixture import shopper_orders,ORDER_IDS,require_fixture_database
-            if store_id!='demo-store' or order_id is not None and order_id not in ORDER_IDS:
-                raise HTTPException(404,'Fictional order not found')
-            with transaction(True) as c:
-                try:require_fixture_database(c)
-                except ValueError:raise HTTPException(404,'Fictional storefront is unavailable') from None
-                rows=shopper_orders(c,order_id,tracking)
-            if order_id is None:return rows
-            found=next((row for row in rows if row['id']==order_id),None)
-            if found is None:raise HTTPException(404,'Fictional order not found')
-            return found
-        @app.get('/demo-shop/orders')
-        def customer_orders():return customer_rows()
-        @app.get('/demo-shop/orders/{order_id}')
-        def customer_order(order_id: str):return customer_rows(order_id)
-        @app.get('/demo-shop/orders/{order_id}/tracking')
-        def customer_tracking(order_id: str):return customer_rows(order_id,True)
-
     router=APIRouter(prefix='/api',dependencies=[Depends(staff)])
 
     @router.get('/session')
@@ -301,17 +280,6 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
             result['operation']=reconcile(connection,operation) if operation else None
             from .staff_investigations import view
             result['shipment_investigation']=view(connection,case_id)
-            if storefront_fixture and result['shipment_investigation']:
-                from .shop_fixture import ORDER_IDS
-                if result['order_id'] in ORDER_IDS:
-                    for evidence in result['shipment_investigation']['evidence']:
-                        source=evidence['source']
-                        if source['order_id']!=result['order_id']:continue
-                        if evidence['tool']=='order_manifest':
-                            evidence['customer_page']='/shop/account/orders/'+result['order_id']
-                        elif (evidence['tool'] in ('fulfilment','carrier_loss')
-                              and source['shipment_id']==result['request']['shipment_id']=='SHIP-'+result['order_id'].removeprefix('ORD-')):
-                            evidence['customer_page']='/shop/account/orders/'+result['order_id']+'/tracking'
             investigation=result['shipment_investigation']
             if investigation and not investigation.get('historical') and (investigation['state']=='active' or not result['assessment']):
                 result['assessment']={'facts':investigation['facts'],'decision':{'unknowns':investigation['unknowns'],'blockers':investigation['blockers'],'status':'needs_review'},'read_tools':[]}

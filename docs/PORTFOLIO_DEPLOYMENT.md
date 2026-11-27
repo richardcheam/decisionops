@@ -54,7 +54,7 @@ python3 scripts/commerce_kubernetes_rehearsal.py \
   --web-image decisionops-portfolio-web:"$candidate_sha"
 ```
 
-The rehearsal accepts only an explicit `kind-*` or `k3d-*` context and uses the
+The rehearsal accepts only an explicit `kind-*` context and uses the
 `decisionops-local-portfolio` namespace. It refuses to replace existing namespace
 credentials, which avoids resetting a previous database password. It waits for
 PostgreSQL and successful migrations before applying the application workloads.
@@ -101,10 +101,11 @@ export COMMERCE_TEST_DATABASE_URL='postgresql+psycopg://richard@127.0.0.1:55479/
 ```
 
 It never dumps or changes the database in that URL. It creates new uniquely named
-source and target databases, migrates and seeds synthetic source records, creates
-and reconciles an actual approved replacement, dumps and restores the source, compares
-all user tables by row count and content hash, validates readiness/guards, and
-reconciles the restored replacement. Both generated databases are dropped afterward.
+source and target databases and seeds the same three cases as Compose. It runs
+the simulated specialist workflow for Lyon, creates and reconciles the approved
+replacement, then dumps the source and restores it into the target. It compares
+all user tables by row count and content hash, checks readiness, and reconciles
+the restored replacement. The rehearsal drops both generated databases afterward.
 It also compares the saved investigation and execution graph progress after restore.
 A private ignored `runs/portfolio-restore-*/` directory retains the synthetic dump and
 verification summary. In a real pilot, a restore test must separately cover the
@@ -128,41 +129,13 @@ execution confirmation and verifies a single replacement and stock reservation.
 These direct-local checks cover worker and database behavior. Use the runtime
 CI results for the tested commit to verify deployed behavior and rollback.
 
-## Prepared AWS staging and dependency purposes
-
-`infra/terraform/aws-staging` prepares private EKS plus one managed node, private
-PostgreSQL 16 on RDS, immutable app/web ECR repositories, and a private encrypted,
-versioned backup bucket. It assumes an existing reviewed VPC and private subnets.
-It does not apply resources, publish images, establish a public endpoint or connect
-merchant systems. Choose a supported EKS version and review IAM, network access,
-state storage, TLS/identity, backups and costs before an authorized plan/apply.
-See that folder's README for the preparation boundary and validation commands.
-
-| Component | Purpose in the delivered workflow |
-|---|---|
-| React/TypeScript and Vite/Node | Customer/staff screens and browser build. |
-| Python/FastAPI/Pydantic | Typed customer/staff requests and backend access checks. |
-| PostgreSQL/SQLAlchemy/psycopg/Alembic | Durable business records, transactions, access and migrations. |
-| LangGraph/Postgres checkpoint saver | Staff specialist workflow and restart progress. |
-| Playwright | Real browser customer/staff acceptance. |
-| Optional LangSmith adapter | Allowlisted investigation metadata when explicitly enabled; no default export. |
-| Nginx/Compose | One local app quickstart and both API route proxies. |
-| Kubernetes/Kustomize | Same app and workers packaged for isolated deployment and rollout. |
-| Terraform/AWS provider | Prepared staging resources and offline configuration validation. |
-| PyYAML | Local manifest contract checks/rehearsal input; not a business dependency. |
-| PostgreSQL dump/restore tools | Disposable recovery rehearsal. |
-
-Older model-training libraries elsewhere in the repository are not required by this
-Commerce-only application path.
-
-Implementation references: [Kustomize documentation](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/),
-[Terraform AWS EKS resource](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/eks_cluster).
-
 ## Draft PR runtime workflow
 
 The `Verify portfolio container runtime` workflow checks out the PR head commit
 and records it in each job summary. It builds and launches the root Compose stack
 and installs the same images in an isolated kind cluster in separate jobs. The
+Compose job stops PostgreSQL after the browser journey and checks for HTTP 503,
+restored readiness and the same verified Lyon records after restart. The
 Kubernetes job observes an injected API failure, restores the original deployment
 template and runs the customer browser suite against the rolled-back application.
 

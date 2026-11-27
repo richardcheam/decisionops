@@ -166,7 +166,7 @@ test('staff can read the workspace but cannot approve or execute or use another 
 });
 
 
-test('rules refresh makes a new valid proposal actionable while old specialist findings remain historical', async ({ page, request }) => {
+test('rules refresh preserves historical findings and a superseded dialog cannot approve', async ({ page, request }) => {
   const id=process.env.COMMERCE_STALE_CASE_ID;
   if (!id) throw new Error('Run commerce_delivery_browser.py for the persisted stale-evidence fixture');
   await login(page,'/#case='+id);
@@ -185,9 +185,83 @@ test('rules refresh makes a new valid proposal actionable while old specialist f
   const reply=await ask(page,"What's still missing?");
   expect(reply.evidence_current).toBe(true);expect(reply.proposal_id).toBe(current.proposal.id);
   await page.getByRole('button',{name:'Approve replacement',exact:true}).click();
+  const oldApproval=page.getByRole('dialog');
+  await expect(oldApproval).toContainText(current.proposal.id);
+  const queued=await request.post('/api/cases/'+id+'/investigate',{headers,data:{}});
+  expect(queued.status()).toBe(202);
+  await expect.poll(async()=> (await detail()).generation,{timeout:30_000}).toBeGreaterThan(current.generation);
+  const refreshed=await detail();
+  expect(refreshed.status).toBe('awaiting_review');
+  expect(refreshed.proposal.id).not.toBe(current.proposal.id);
+  const attempted=page.waitForResponse(response=>response.url().endsWith('/api/cases/'+id+'/review') && response.request().method()==='POST');
+  await oldApproval.getByRole('button',{name:'Confirm approval',exact:true}).click();
+  expect((await attempted).status()).toBe(409);
+  await expect(page.getByRole('alert')).toBeVisible();
+  expect((await detail()).approval).toBeNull();
+  expect((await detail()).operation).toBeNull();
+  await page.getByRole('button',{name:'Refresh case',exact:true}).click();
+  await page.getByRole('button',{name:'Approve replacement',exact:true}).click();
+  await expect(page.getByRole('dialog')).toContainText(refreshed.proposal.id);
   await page.getByRole('button',{name:'Confirm approval',exact:true}).click();
   await expect(page.getByRole('button',{name:'Create replacement',exact:true})).toBeEnabled();
   const approved=await detail();
   await ask(page,'status');
   expect((await detail()).approval.operation_id).toBe(approved.approval.operation_id);
+});
+
+test('missing compensation records and confirmed stock shortage remain distinct and cannot be approved', async ({ page, request }) => {
+  for (const scenario of [
+    {
+      slug: 'HISTORY', variant: 'shirt-blue-M', status: 'Needs more information',
+      reason: 'We need the full refund and replacement history before continuing.',
+      requirement: 'no_previous_compensation', value: null,
+    },
+    {
+      slug: 'STOCK', variant: 'shirt-red-M', status: 'Replacement unavailable',
+      reason: 'There are not enough items available for this replacement.',
+      requirement: 'stock_available', value: false,
+    },
+  ]) {
+    const opened = await request.post('/api/cases', { headers, data: {
+      order_id: 'ORD-' + scenario.slug, shipment_id: 'SHIP-' + scenario.slug, items: { [scenario.variant]: 1 },
+    } });
+    expect(opened.status()).toBe(201);
+    const { id } = await opened.json();
+    await login(page, '/staff#case=' + id);
+    const selected = page.getByRole('region', { name: 'Selected case', exact: true });
+    await selected.getByRole('button', { name: 'Check order', exact: true }).click();
+    await expect(selected.getByText(scenario.status, { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(selected.getByText(scenario.reason, { exact: true })).toBeVisible();
+    await expect(selected.getByRole('button', { name: 'Approve replacement', exact: true })).toHaveCount(0);
+    await expect(selected.getByRole('button', { name: 'Create replacement', exact: true })).toHaveCount(0);
+    const detail = await (await request.get('/api/cases/' + id, { headers })).json();
+    expect(detail.assessment.facts[scenario.requirement]).toBe(scenario.value);
+    expect(detail.proposal).toBeNull();
+    expect(detail.operation).toBeNull();
+  }
+});
+
+test('staff cannot switch cases while an order check is pending', async ({ page }) => {
+  await login(page);
+  const queue = page.getByRole('region', { name: 'Exception queue', exact: true });
+  await queue.getByRole('button').filter({ hasText: 'DEMO-OVERDUE' }).click();
+  const selection = page.getByTestId('selected-case');
+  await expect(selection).toContainText('DEMO-OVERDUE');
+  let release!: () => void;
+  let entered!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const intercepted = new Promise<void>(resolve => { entered = resolve; });
+  await page.route('**/api/conversations/*/messages', async route => {
+    entered();
+    await held;
+    await route.continue();
+  });
+  try {
+    await page.getByRole('button', { name: 'Investigate case', exact: true }).click();
+    await intercepted;
+    await expect(queue.getByRole('button').filter({ hasText: 'DEMO-CONFLICT' })).toBeDisabled();
+    await expect(selection).toContainText('DEMO-OVERDUE');
+  } finally {
+    release();
+  }
 });
