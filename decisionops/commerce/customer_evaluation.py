@@ -223,7 +223,7 @@ def run_flow(client, engine, case, adapter, row):
         row['investigation_state'] = investigation['state']
         row['investigation_reason'] = investigation['reason']
         row['specialists'] = [
-            {k: item[k] for k in ('specialist', 'state', 'disposition', 'error', 'tool') if k in item}
+            {k: item[k] for k in ('name', 'state', 'tools', 'reason') if k in item}
             for item in investigation['specialists']
         ]
     proposal = saved['proposal']
