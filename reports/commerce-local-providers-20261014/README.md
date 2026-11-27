@@ -48,6 +48,6 @@ This establishes adapter integration and limited reference-policy agreement only
 It does **not** establish held-out generalisation, business value or production
 accuracy. Historical incident results remain separate and unchanged.
 
-Reproduce from [RUNBOOK](../../docs/commerce/RUNBOOK.md#optional-cached-local-laya-and-gliclass-routing).
+Reproduce from [RUNBOOK](https://github.com/richardcheam/decisionops/blob/a816f6191af1b2ebda9863e1fa20ffdcf6416a14/docs/commerce/RUNBOOK.md#optional-cached-local-laya-and-gliclass-routing).
 Source-review/CI contract doubles do not load/download models. All runs here were
 agent-executed; no Richard-run commands or model verification are claimed.

@@ -10,6 +10,6 @@ explicitly used staff approval/confirmation controls; no Richard-run test is cla
 - browser-summary.json: two runs and one explicitly approved fictional operation/reservation;
   requests/continuations are distinctly recorded. Raw records/logs in runs/staff-assistant/.
 
-[Operational walkthrough](../../docs/commerce/STAFF-ASSISTANT.md) includes actual local
+[Operational walkthrough](https://github.com/richardcheam/decisionops/blob/a816f6191af1b2ebda9863e1fa20ffdcf6416a14/docs/commerce/STAFF-ASSISTANT.md) includes actual local
 checks, retained failures and isolated startup/shutdown. Original traces, frozen
 fixtures, branches, application and volume were preserved. No CI/publication/deployment.
