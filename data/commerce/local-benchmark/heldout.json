@@ -1,0 +1,7 @@
+[
+  {"name":"resolution","message":"My package did not arrive.","staff_message":"Please investigate the selected case.","expected":"replacement_created"},
+  {"name":"ambiguity","message":"Could you report my delivery as missing?","staff_message":"Please investigate this case.","expected":"clarify"},
+  {"name":"wrong_owner","message":"","staff_message":"","expected":"denied"},
+  {"name":"stale_evidence","message":"I have not received the parcel.","staff_message":"Investigate this case, please.","expected":"review"},
+  {"name":"carrier_outage","message":"I would like to report my package as missing.","staff_message":"Investigate the selected case.","expected":"review"}
+]
