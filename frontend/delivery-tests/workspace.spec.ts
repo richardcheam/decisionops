@@ -209,19 +209,19 @@ test('rules refresh preserves historical findings and a superseded dialog cannot
   expect((await detail()).approval.operation_id).toBe(approved.approval.operation_id);
 });
 
-test('missing compensation records and confirmed stock shortage remain distinct and cannot be approved', async ({ page, request }) => {
-  for (const scenario of [
-    {
-      slug: 'HISTORY', variant: 'shirt-blue-M', status: 'Needs more information',
-      reason: 'We need the full refund and replacement history before continuing.',
-      requirement: 'no_previous_compensation', value: null,
-    },
-    {
-      slug: 'STOCK', variant: 'shirt-red-M', status: 'Replacement unavailable',
-      reason: 'There are not enough items available for this replacement.',
-      requirement: 'stock_available', value: false,
-    },
-  ]) {
+for (const scenario of [
+  {
+    slug: 'HISTORY', variant: 'shirt-blue-M', status: 'Needs more information',
+    reason: 'We need the full refund and replacement history before continuing.',
+    requirement: 'no_previous_compensation', value: null,
+  },
+  {
+    slug: 'STOCK', variant: 'shirt-red-M', status: 'Replacement unavailable',
+    reason: 'There are not enough items available for this replacement.',
+    requirement: 'stock_available', value: false,
+  },
+]) {
+  test(`ORD-${scenario.slug} shows "${scenario.status}" without offering a replacement`, async ({ page, request }) => {
     const opened = await request.post('/api/cases', { headers, data: {
       order_id: 'ORD-' + scenario.slug, shipment_id: 'SHIP-' + scenario.slug, items: { [scenario.variant]: 1 },
     } });
@@ -238,8 +238,8 @@ test('missing compensation records and confirmed stock shortage remain distinct 
     expect(detail.assessment.facts[scenario.requirement]).toBe(scenario.value);
     expect(detail.proposal).toBeNull();
     expect(detail.operation).toBeNull();
-  }
-});
+  });
+}
 
 test('staff cannot switch cases while an order check is pending', async ({ page }) => {
   await login(page);

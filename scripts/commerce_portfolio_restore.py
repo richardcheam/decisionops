@@ -105,6 +105,8 @@ def main():
             if reconcile(c, operation)['status'] != 'verified':
                 raise RuntimeError('Synthetic replacement did not reconcile before backup')
         graph_before = inspect_graph(original, execution_job['id'])
+        if not graph_before['values']:
+            raise RuntimeError('Lyon execution did not save graph checkpoints')
         expected = snapshot(original)
         specialist_schema, _ = multi_agent_workflow.checkpoint_url(original)
         if not expected[f'{specialist_schema}.checkpoints']['rows']:
