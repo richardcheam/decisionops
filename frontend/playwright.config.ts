@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
-  testDir: './tests',
+  testDir: './customer-tests',
   outputDir: './artifacts/results',
   workers: 1,
   forbidOnly: true,
@@ -9,7 +9,7 @@ export default defineConfig({
   timeout: 45_000,
   use: {
     actionTimeout: 10_000,
-    baseURL: process.env.COMMERCE_WEB_URL || 'http://127.0.0.1:8080',
+    baseURL: process.env.COMMERCE_WEB_URL || 'http://127.0.0.1:8133',
     // Credentials live in request headers: never export a browser trace.
     trace: 'off',
     screenshot: 'only-on-failure',

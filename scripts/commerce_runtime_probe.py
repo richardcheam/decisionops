@@ -4,6 +4,9 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import time
+from urllib.error import HTTPError
+from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 NAMESPACE = "decisionops-local-portfolio"
@@ -59,7 +62,7 @@ with database_engine().connect() as connection:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("phase", choices=("pause", "interrupt", "verify"))
+    parser.add_argument("phase", choices=("pause", "interrupt", "verify", "outage"))
     args = parser.parse_args()
     if os.environ.get("GITHUB_ACTIONS") != "true":
         parser.error("This probe requires the disposable GitHub Actions environment")
@@ -85,7 +88,37 @@ def main():
         return json.loads(result.stdout)
 
     evidence = ROOT / "runs" / f"runtime-{mode}-interruption.json"
-    if args.phase == "pause":
+    if args.phase == "outage":
+        if mode != "compose":
+            parser.error("The database outage probe uses the disposable Compose project")
+
+        def wait_for_status(expected):
+            deadline = time.monotonic() + 45
+            while time.monotonic() < deadline:
+                try:
+                    with urlopen(os.environ["COMMERCE_WEB_URL"] + "/health", timeout=6) as response:
+                        status = response.status
+                except HTTPError as error:
+                    with error:
+                        status = error.code
+                except OSError:
+                    status = None
+                if status == expected:
+                    return
+                time.sleep(1)
+            raise RuntimeError(f"The web proxy did not return {expected} before the deadline")
+
+        before = snapshot()
+        try:
+            run([*base, "stop", "postgres"], check=True)
+            wait_for_status(503)
+        finally:
+            run([*base, "start", "postgres"], check=True)
+            wait_for_status(200)
+        if snapshot() != before:
+            raise RuntimeError("Database restart changed verified Lyon records")
+        print("Compose database outage returned HTTP 503. Readiness and Lyon records recovered.")
+    elif args.phase == "pause":
         run(pause, check=True)
         if mode == "kubernetes":
             pods = run([*base, "get", "pods", "-l", "app=staff-investigator", "-o", "name"],

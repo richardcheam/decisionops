@@ -48,7 +48,7 @@ export type Case = {
   shipment_investigation?: {
     id: string; generation?: number; historical?: boolean; state: string; report: string; mode: string; reason: string | null;
     unknowns: string[]; blockers: string[]; evidence_current?: boolean; planned_checks?: string[];
-    evidence: {tool: string; value: boolean | null; applicability: string; status: string; reason: string | null; observed_at: string; expires_at?: string; customer_page?: string; source?: {kind:string;observation_id:string;version:string;order_id:string;shipment_id:string;tables:string[]}}[];
+    evidence: {tool: string; value: boolean | null; applicability: string; status: string; reason: string | null; observed_at: string; expires_at?: string; source?: {kind:string;observation_id:string;version:string;order_id:string;shipment_id:string;tables:string[]}}[];
     steps: {sequence: number; kind: string; data: {specialist?: string; tool?: string; status?: string; chosen_action?: {tool?: string; kind?: string}; reason?: string}; created_at: string}[];
     specialists?: {name: string; state: string; tools: string[]; reason?: string | null; observations: string[]}[];
   } | null;

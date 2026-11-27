@@ -11,7 +11,9 @@ class PortfolioPackagingTests(unittest.TestCase):
         launcher=(ROOT/'scripts/demo.sh').read_text()
         self.assertIn('-f compose.yaml',launcher)
         self.assertNotIn('build-cached',launcher)
-        self.assertTrue((ROOT/'tests/compose/ci.yaml').is_file())
+        self.assertEqual(list((ROOT / 'tests/compose').glob('*.yaml')), [])
+        self.assertEqual(sorted(path.name for path in (ROOT / 'docker').glob('Dockerfile*')),
+                         ['Dockerfile.app', 'Dockerfile.web'])
 
     def test_supported_build_has_no_sibling_or_private_configuration_dependency(self):
         text=(ROOT/'compose.yaml').read_text()

@@ -25,6 +25,13 @@ async function customerLogin(page: Page, user='camille', password=camillePasswor
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Your orders', exact: true })).toBeVisible();
 }
+async function staffLogin(page: Page) {
+  await page.goto('/staff');
+  await page.getByLabel('Username', { exact: true }).fill(staffUsername);
+  await page.getByLabel('Password', { exact: true }).fill(staffPassword);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Exception queue', exact: true })).toBeVisible();
+}
 async function customerAsk(page: Page, message: string) {
   await page.getByLabel('Your message', { exact: true }).fill(message);
   const reply = page.waitForResponse(r => /\/customer-api\/conversations\/[^/]+\/messages$/.test(r.url()) && r.request().method() === 'POST');
@@ -73,10 +80,7 @@ test('customer Lyon report reaches the same staff case and original conversation
     const repeat = await customerAsk(customer, 'My parcel never arrived. Please report it missing.');
     expect(repeat.case_id).toBe(filed.case_id);
 
-    await staff.goto('/staff');
-    await staff.getByLabel('Username', { exact: true }).fill(staffUsername);
-    await staff.getByLabel('Password', { exact: true }).fill(staffPassword);
-    await staff.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await staffLogin(staff);
     await staffAsk(staff, 'What can you help me?');
     await expect(staff.getByRole('log')).toContainText('delivery totals');
     await expect(staff.getByRole('log')).toContainText('investigate a case');
@@ -104,6 +108,12 @@ test('customer Lyon report reaches the same staff case and original conversation
     expect((await started).ok()).toBeTruthy();
     await runtimeProbe('interrupt');
     await expect(staff.getByText('Investigation complete. Replacement proposal ready for your review.')).toBeVisible({ timeout: process.env.COMMERCE_RUNTIME ? 90_000 : 60_000 });
+    const branches = staff.getByRole('region', { name: 'Specialist branches' });
+    await expect(branches.getByRole('heading', { name: 'order specialist' })).toBeVisible();
+    await expect(branches.getByRole('heading', { name: 'shipment specialist' })).toBeVisible();
+    await branches.getByText('Specialist decisions and read results', { exact: true }).click();
+    await expect(branches.getByText('Decision choice', { exact: false }).first()).toBeVisible();
+    await expect(branches.getByText('Read result', { exact: false }).first()).toBeVisible();
     const headers = auth(staffUsername, staffPassword);
     const before = await (await request.get('/api/cases/' + filed.case_id, { headers })).json();
     expect(before.approval).toBeNull();
@@ -138,6 +148,67 @@ test('customer Lyon report reaches the same staff case and original conversation
     expect((await request.post('/api/cases/' + filed.case_id + '/execute', { headers, data: { operation_id: finalCase.operation.operation_id } })).status()).toBe(409);
     await runtimeProbe('verify');
   } finally { await customerContext.close(); await staffContext.close(); }
+});
+
+for (const scenario of [
+  {
+    order: 'DEMO-OVERDUE', city: 'Lille',
+    carrier: 'in transit · Verified record',
+  },
+  {
+    order: 'DEMO-CONFLICT', city: 'Saint-Denis',
+    carrier: 'Conflicting verified loss and delivery records require review.',
+  },
+]) {
+  test(`${scenario.city} carrier evidence leaves the case for staff without a replacement`, async ({ page, request }) => {
+    await staffLogin(page);
+    const queue = page.getByRole('region', { name: 'Exception queue', exact: true });
+    await queue.getByRole('button').filter({ hasText: scenario.order }).click();
+    const selected = page.getByRole('region', { name: 'Selected case', exact: true });
+    await expect(selected.getByRole('heading', { name: scenario.order, exact: true })).toBeVisible();
+    await expect(selected).toContainText(scenario.city);
+    await selected.getByText('Carrier updates', { exact: true }).click();
+    await expect(selected.getByLabel('Carrier timeline')).toContainText(scenario.carrier);
+
+    await selected.getByRole('button', { name: 'Investigate case', exact: true }).click();
+    const investigation = selected.getByRole('region', { name: 'Shipment investigation' });
+    await expect(investigation.getByText(/^Investigation finished\./)).toBeVisible({ timeout: 60_000 });
+    await expect(selected.getByText('We need an up-to-date confirmation from the carrier that the parcel is lost.')).toBeVisible();
+    await expect(selected.getByRole('button', { name: 'Approve replacement', exact: true })).toHaveCount(0);
+    await expect(selected.getByRole('button', { name: 'Create replacement', exact: true })).toHaveCount(0);
+
+    const headers = auth(staffUsername, staffPassword);
+    const cases = await (await request.get('/api/cases', { headers })).json();
+    const row = cases.find((candidate: { order_id: string }) => candidate.order_id === scenario.order);
+    expect(row).toBeTruthy();
+    const detail = await (await request.get('/api/cases/' + row.id, { headers })).json();
+    expect(detail.status).toBe('needs_review');
+    expect(detail.assessment.facts.loss_confirmed).toBeNull();
+    expect(detail.proposal).toBeNull();
+    expect(detail.approval).toBeNull();
+    expect(detail.operation).toBeNull();
+  });
+}
+
+test('staff proxy outage offers a safe retry and clears the password', async ({ page }) => {
+  await page.route('**/api/session', route => route.fulfill({
+    status: 502, contentType: 'text/html', body: '<h1>Bad gateway</h1>',
+  }));
+  await page.goto('/staff');
+  await page.getByLabel('Username', { exact: true }).fill(staffUsername);
+  const password = page.getByLabel('Password', { exact: true });
+  await password.fill('fictional-proxy-outage-only');
+  const signIn = page.getByRole('button', { name: 'Sign in', exact: true });
+  await signIn.click();
+  const alert = page.getByRole('alert');
+  await expect(alert).toContainText('Try again');
+  await expect(alert).not.toContainText(/Bad gateway|PostgreSQL|database|migration|JSON/);
+  await expect(password).toHaveValue('');
+
+  await page.unroute('**/api/session');
+  await password.fill(staffPassword);
+  await signIn.click();
+  await expect(page.getByRole('region', { name: 'Delivery overview' })).toBeVisible();
 });
 
 async function customerLoginAfterReload(page: Page) {

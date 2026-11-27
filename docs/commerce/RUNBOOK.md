@@ -44,3 +44,19 @@ has a verifier for its [configuration](../../scripts/commerce_decisions_operator
 The [Nano configuration](../../data/commerce/api-nano-proposed.json) is an SDK
 test fixture. Its tests use mocked HTTP and verify that supplying credentials and
 a configuration alone cannot authorize a live request.
+
+## Model-free evaluation
+
+The [frozen eligibility regression](../../data/commerce/regression-v1.json) checks
+policy decisions. The customer/staff comparison exercises the same cases with
+the rules, simulated specialists, and a simulated model adapter. The delivery
+comparison checks identical cases across investigation modes.
+
+```bash
+python3 -B -S -m decisionops.commerce.evaluation
+.venv/bin/python -B -m decisionops.commerce.customer_evaluation --simulate-adapter
+.venv/bin/python -B -m decisionops.commerce.comparison --postgres
+```
+
+These comparisons exercise the application and typed action interfaces. Live-model
+quality and latency require separate measurements.

@@ -25,17 +25,16 @@ def main():
     parser.add_argument('--pg-bin', type=Path, help='Directory containing pg_dump and pg_restore')
     args = parser.parse_args()
     from sqlalchemy.engine import make_url
+    from sqlalchemy import select
     from alembic import command
     from alembic.config import Config
     from decisionops.commerce.database import database_engine
-    from decisionops.commerce.seed import seed
-    from decisionops.commerce.delivery_seed import seed as delivery_seed
+    from decisionops.commerce.portfolio_seed import seed
     from decisionops.commerce.workflow import setup_checkpoints, inspect_graph
     from decisionops.commerce.schema_readiness import validate_readiness, SUPPORTED_REVISION
-    from decisionops.commerce.cases import open_case, show_case, review_case
-    from decisionops.commerce import jobs
+    from decisionops.commerce.cases import show_case, review_case
+    from decisionops.commerce import jobs, multi_agent_workflow, schema, staff_investigations
     from decisionops.commerce.worker import work_once
-    from decisionops.commerce.read_tools import AssessmentRequest
     from decisionops.commerce.execution import reconcile
     raw = os.environ.get('COMMERCE_TEST_DATABASE_URL')
     if not raw:
@@ -82,23 +81,18 @@ def main():
             config.attributes['connection'] = c
             command.upgrade(config, 'head')
         seed(original)
-        delivery_seed(original)
-        try:
-            from decisionops.commerce.customer_seed import seed as customer_seed
-        except ImportError:
-            raise RuntimeError('Customer seed is required; wait for the integrated portfolio source') from None
-        customer_seed(original)
         setup_checkpoints(original)
-        # Populate actual worker graph checkpoints as well as business ledgers.
-        # The investigation graph pauses for review, then a separate execution
-        # job records the replacement after exact staff approval.
+        # Rehearse the same Lyon fixture and workers as the Compose demo.
+        with original.connect().execution_options(isolation_level='READ COMMITTED') as c, c.begin():
+            case_id = c.execute(select(schema.delivery_case_links.c.case_id).where(
+                schema.delivery_case_links.c.order_id == 'DEMO-LYON')).scalar_one()
+            case = show_case(c, case_id)
+            staff_investigations.enqueue(c, original, case_id, 'Customer reports nonreceipt',
+                                         'restore-rehearsal', case['generation'], 'mock-specialists')
+        if staff_investigations.work_once(original)['state'] != 'proposed':
+            raise RuntimeError('Mock specialist worker did not propose the Lyon replacement')
         with original.begin() as c:
-            case = open_case(c, AssessmentRequest('ORD-1042', 'SHIP-1042', {'shirt-blue-M': 1}))
-            investigation_job = jobs.enqueue(c, case['id'], 'investigate')
-        if work_once(original)['event'] != 'job_result':
-            raise RuntimeError('Synthetic investigation worker did not save graph progress')
-        with original.begin() as c:
-            case = show_case(c, case['id'])
+            case = show_case(c, case_id)
             proposal = case['proposal']
             if proposal is None:
                 raise RuntimeError('Synthetic restore fixture did not produce a proposal')
@@ -110,8 +104,13 @@ def main():
         with original.connect() as c:
             if reconcile(c, operation)['status'] != 'verified':
                 raise RuntimeError('Synthetic replacement did not reconcile before backup')
-        graph_before = {job['id']: inspect_graph(original, job['id']) for job in (investigation_job, execution_job)}
+        graph_before = inspect_graph(original, execution_job['id'])
+        if not graph_before['values']:
+            raise RuntimeError('Lyon execution did not save graph checkpoints')
         expected = snapshot(original)
+        specialist_schema, _ = multi_agent_workflow.checkpoint_url(original)
+        if not expected[f'{specialist_schema}.checkpoints']['rows']:
+            raise RuntimeError('Lyon investigation did not save specialist graph checkpoints')
         pg_env = dict(os.environ, PGHOST=url.host, PGPORT=str(url.port or 5432), PGUSER=url.username or '', PGDATABASE=source)
         if url.password:
             pg_env['PGPASSWORD'] = url.password
@@ -123,16 +122,16 @@ def main():
         actual = snapshot(restored)
         if expected != actual:
             raise RuntimeError('Restored table row counts/content hashes differ')
-        graph_after = {identity: inspect_graph(restored, identity) for identity in graph_before}
+        graph_after = inspect_graph(restored, execution_job['id'])
         if graph_before != graph_after:
             raise RuntimeError('Restored graph progress differs')
         with restored.connect() as c:
             validate_readiness(c)
             if reconcile(c, operation)['status'] != 'verified':
                 raise RuntimeError('Restored replacement does not reconcile')
-        summary = {'status': 'passed', 'revision': SUPPORTED_REVISION, 'databases': 'new disposable source and target only', 'tables': actual, 'replacement_reconciled': True, 'worker_graphs_restored': len(graph_after), 'operator_database_unchanged': True}
+        summary = {'status': 'passed', 'revision': SUPPORTED_REVISION, 'databases': 'new disposable source and target only', 'tables': actual, 'replacement_reconciled': True, 'worker_graphs_restored': 2, 'operator_database_unchanged': True}
         (directory / 'verification.json').write_text(json.dumps(summary, indent=2) + '\n')
-        print(json.dumps({'status': 'passed', 'revision': SUPPORTED_REVISION, 'tables_compared': len(actual), 'replacement_reconciled': True, 'worker_graphs_restored': len(graph_after), 'evidence': str(directory.relative_to(ROOT) / 'verification.json')}))
+        print(json.dumps({'status': 'passed', 'revision': SUPPORTED_REVISION, 'tables_compared': len(actual), 'replacement_reconciled': True, 'worker_graphs_restored': 2, 'evidence': str(directory.relative_to(ROOT) / 'verification.json')}))
     finally:
         for engine in engines:
             engine.dispose()
