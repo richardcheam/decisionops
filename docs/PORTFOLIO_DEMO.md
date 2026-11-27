@@ -53,3 +53,24 @@ seeds all three cases, starts the app and workers, and drives both browser sessi
 It checks in PostgreSQL for one Lyon replacement and one stock reservation, then
 removes its own schemas. The [deployment guide](PORTFOLIO_DEPLOYMENT.md) covers the
 container version of the checks.
+
+## Authorize a return
+
+Use the same quickstart and sign in as Camille and the staff approver in
+separate browser profiles.
+
+1. Open **DEMO-RETURN** in Camille’s orders and choose **Check return eligibility**.
+   Select **return-tote** under **Return item**, then choose **Start return**.
+   Keep the case reference. The other item is final sale.
+2. In the staff workspace, open the matching case under **Return cases** and
+   choose **Investigate return**. Show the delivery and policy checks. Choose
+   **Approve return**, then **Confirm return approval**. Next choose
+   **Authorize return**, then **Confirm return authorization**.
+3. Return to Camille's original conversation and find the authorization in
+   **Your case updates**. The recorded result authorizes one return. It makes
+   no refund and reserves no stock.
+
+For an ineligible case, check the tote in **DEMO-RETURN-EXPIRED**. Its delivery
+falls outside the 30-day window. For clarification, ask about **DEMO-RETURN**
+before choosing an item. The customer sees the choices and the app waits for
+an exact selection and an explicit request.

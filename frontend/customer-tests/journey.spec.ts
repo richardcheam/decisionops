@@ -90,7 +90,7 @@ test('customer Lyon report reaches the same staff case and original conversation
       await expect(queue).toContainText('DEMO-OVERDUE');
       await expect(queue).toContainText('DEMO-CONFLICT');
       const orders = customer.getByRole('region', { name: 'Your orders' });
-      await expect(orders.getByRole('button')).toHaveCount(2);
+      await expect(orders.getByRole('button', { name: 'Open order DEMO-RETURN', exact: true })).toBeVisible();
       await expect(orders.getByRole('button', { name: 'Open order DEMO-CONFLICT', exact: true })).toBeVisible();
     }
     await queue.getByRole('button').filter({ hasText: 'DEMO-LYON' }).click();
@@ -347,3 +347,52 @@ test('temporary conversation read failure keeps the saved conversation for retry
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByTestId('customer-conversation')).toHaveAttribute('data-conversation-id', original!);
 });
+
+if (compactDemo) {
+  test('a customer selects one return item and staff authorize the same case', async ({ browser }) => {
+    const customerContext = await browser.newContext();
+    const staffContext = await browser.newContext();
+    try {
+      const customer = await customerContext.newPage();
+      const staff = await staffContext.newPage();
+      await customerLogin(customer);
+      await customer.getByRole('button', { name: 'Open order DEMO-RETURN', exact: true }).click();
+      await customer.getByRole('button', { name: 'Check return eligibility' }).click();
+      const eligibility = customer.getByRole('region', { name: 'Return eligibility' });
+      await expect(eligibility).toContainText('Choose one item');
+      await expect(eligibility.getByRole('button', { name: 'Start return' })).toHaveCount(0);
+      await eligibility.getByLabel('Return item').selectOption('return-tote');
+      await expect(eligibility.getByRole('button', { name: 'Start return' })).toBeVisible();
+      const ambiguous = await customerAsk(customer, 'Can I return something from DEMO-RETURN and PARCEL-DEMO-LYON?');
+      expect(ambiguous.intent).toBe('clarify');
+      await expect(eligibility).toHaveCount(0);
+      await customer.getByRole('button', { name: 'Check return eligibility' }).click();
+      await eligibility.getByLabel('Return item').selectOption('return-tote');
+      await eligibility.getByRole('button', { name: 'Start return' }).click();
+      const updates = customer.getByRole('region', { name: 'Your case updates' });
+      const caseCard = updates.getByRole('article').filter({ hasText: 'DEMO-RETURN' });
+      await expect(caseCard).toBeVisible();
+      const reference = (await caseCard.getByRole('heading').innerText()).replace(/^Return /, '');
+
+      await staffLogin(staff);
+      await staff.getByRole('button', { name: 'Return cases', exact: true }).click();
+      await staff.getByRole('region', { name: 'Return cases' }).getByRole('button', { name: /DEMO-RETURN · return-tote/ }).click();
+      await expect(staff.getByRole('region', { name: 'Selected return' })).toContainText(reference);
+      await staff.getByRole('button', { name: 'Investigate return' }).click();
+      await staff.getByRole('button', { name: 'Approve return', exact: true }).click();
+      await staff.getByRole('dialog').getByRole('button', { name: /confirm return approval/i }).click();
+      await expect(caseCard.getByText(/^Authorization RETURN-AUTH-/)).toHaveCount(0);
+      await staff.getByRole('button', { name: 'Authorize return', exact: true }).click();
+      await staff.getByRole('dialog').getByRole('button', { name: /confirm return authorization/i }).click();
+      await expect(caseCard).toContainText('The shop authorized your return.');
+
+      await customer.getByRole('button', { name: 'Open order DEMO-RETURN-EXPIRED', exact: true }).click();
+      await customer.getByRole('button', { name: 'Check return eligibility' }).click();
+      await expect(eligibility).toContainText('The return window for this item has closed.');
+      await expect(eligibility.getByRole('button', { name: 'Start return' })).toHaveCount(0);
+    } finally {
+      await customerContext.close();
+      await staffContext.close();
+    }
+  });
+}

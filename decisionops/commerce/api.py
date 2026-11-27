@@ -342,11 +342,48 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
         result.pop('token',None)
         return result
 
+    from . import returns as return_service
+
+    class ReturnProposal(StrictBody):
+        proposal_hash: Annotated[str, Field(pattern=r'^[0-9a-f]{64}$')]
+
+    def return_transaction(fn, readonly=False):
+        try:
+            with transaction(readonly) as connection:
+                return fn(connection)
+        except LookupError:
+            raise HTTPException(404, 'Return case not found') from None
+
+    def return_clock():
+        return demo_clock() if demo_clock else None
+
+    @router.get('/returns')
+    def return_queue():
+        return return_transaction(lambda c: return_service.staff_queue(c, store_id), True)
+
+    @router.get('/returns/{case_id}')
+    def return_detail(case_id: str):
+        return return_transaction(lambda c: return_service.staff_case(c, store_id, case_id), True)
+
+    @router.post('/returns/{case_id}/investigate', dependencies=[Depends(mutation)])
+    def investigate_return(case_id: str, body: StrictBody):
+        return return_transaction(lambda c: return_service.investigate(c, store_id, case_id, return_clock()))
+
+    @router.post('/returns/{case_id}/approve', dependencies=[Depends(mutation)])
+    def approve_return(case_id: str, body: ReturnProposal, actor: str = Depends(approver)):
+        return return_transaction(lambda c: return_service.approve(c, store_id, case_id, body.proposal_hash,
+                                                                    actor, return_clock()))
+
+    @router.post('/returns/{case_id}/confirm', dependencies=[Depends(mutation)])
+    def confirm_return(case_id: str, body: ReturnProposal, actor: str = Depends(approver)):
+        return return_transaction(lambda c: return_service.confirm(c, store_id, case_id, body.proposal_hash,
+                                                                    actor, return_clock()))
+
     app.include_router(router)
     from .customer_api import install as install_customer_api
     install_customer_api(app,transaction=transaction,mutation=mutation,StrictBody=StrictBody,
         ConversationMessage=ConversationMessage,store_id=store_id,staff_names=set(accounts),
-        accounts=customer_accounts,router=customer_router)
+        accounts=customer_accounts,router=customer_router,demo_clock=demo_clock)
     web_dist=os.environ.get('COMMERCE_WEB_DIST')
     if web_dist:
         from fastapi.staticfiles import StaticFiles

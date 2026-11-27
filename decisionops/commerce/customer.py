@@ -114,9 +114,11 @@ def view(c,identity,customer,store):
     messages=[{'message':r['message'],'response':r['response']} for r in c.execute(sa.select(db.customer_messages).where(
         db.customer_messages.c.conversation_id==identity).order_by(db.customer_messages.c.created_at,db.customer_messages.c.request_id)).mappings()]
     references=c.execute(sa.select(db.customer_reports.c.case_id).where(db.customer_reports.c.conversation_id==identity).distinct()).scalars()
+    from .returns import conversation_cases
     return {'id':identity,'selected_order_id':conversation['selected_order_id'],
         'selected_shipment_id':conversation['selected_shipment_id'],'messages':messages,
-        'cases':[case(c,customer,store,i) for i in references]}
+        'cases':[case(c,customer,store,i) for i in references],
+        'returns':conversation_cases(c,customer,store,identity)}
 
 
 def create(c,customer,store):
@@ -170,6 +172,17 @@ def message(c,identity,customer,store,text,request_id,router=None):
         result={'intent':'clarify','text':'Which order and parcel do you mean? Please select one.'}
     elif default_action.kind in SHOP_GUIDANCE:
         result={'intent':default_action.kind,'text':SHOP_GUIDANCE[default_action.kind]}
+        if default_action.kind == 'returns_help':
+            parcel_order = (parcel(c,customer,store,explicit_parcels[0].upper())['order_id']
+                            if explicit_parcels else None)
+            return_order = references[0] if references else parcel_order or order_id
+            if references and parcel_order and references[0] != parcel_order:
+                result = {'intent': 'clarify', 'text': 'The order and parcel do not match. Which order should we check?'}
+            elif return_order:
+                result.update(return_order_id=return_order, text='Choose an item to check if it can be returned.')
+            else:
+                result['text'] += ' Select an order to check whether an item can be returned.'
+
     else:
         if references:
             if order_id!=references[0]:shipment_id=None

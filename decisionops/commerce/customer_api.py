@@ -5,10 +5,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import Field
-from . import customer
+from . import customer, returns
 
 
-def install(app,*,transaction,mutation,StrictBody,ConversationMessage,store_id,staff_names,accounts=None,router=None):
+def install(app,*,transaction,mutation,StrictBody,ConversationMessage,store_id,staff_names,accounts=None,router=None,demo_clock=None):
     configured=dict(accounts or {})
     for name in ('camille','alex'):
         password=os.environ.get('COMMERCE_CUSTOMER_'+name.upper()+'_PASSWORD')
@@ -29,6 +29,10 @@ def install(app,*,transaction,mutation,StrictBody,ConversationMessage,store_id,s
     class Selection(StrictBody):
         order_id: Annotated[str,Field(min_length=1,max_length=128)]
         shipment_id: Annotated[str,Field(min_length=1,max_length=128)]|None=None
+    class ReturnRequest(StrictBody):
+        order_id: Annotated[str,Field(min_length=1,max_length=128)]
+        variant_id: Annotated[str,Field(min_length=1,max_length=128)]
+
     def run(fn,readonly=False):
         try:
             with transaction(readonly) as c:return fn(c)
@@ -62,4 +66,14 @@ def install(app,*,transaction,mutation,StrictBody,ConversationMessage,store_id,s
     @api.post('/conversations/{conversation_id}/messages',dependencies=[Depends(mutation)])
     def message(conversation_id: str,body: ConversationMessage,identity: str=Depends(principal)):
         return run(lambda c:customer.message(c,conversation_id,identity,store_id,body.message,body.request_id,router))
+    @api.get('/returns/eligibility')
+    def return_eligibility(order_id: str, variant_id: str | None = None, identity: str=Depends(principal)):
+        return run(lambda c:returns.eligibility(c,identity,store_id,order_id,variant_id,
+                                               demo_clock() if demo_clock else None),True)
+
+    @api.post('/conversations/{conversation_id}/returns',dependencies=[Depends(mutation)])
+    def start_return(conversation_id: str,body: ReturnRequest,identity: str=Depends(principal)):
+        return run(lambda c:returns.start(c,identity,store_id,conversation_id,body.order_id,
+                                          body.variant_id,demo_clock() if demo_clock else None))
+
     app.include_router(api)

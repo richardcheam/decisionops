@@ -24,19 +24,19 @@ class APITests(unittest.TestCase):
         self.assertEqual(result.status_code,201,result.text)
         return result.json()
 
-    def test_health_accepts_current_0011_schema_without_migration(self):
-        with self.engine.connect() as c:self.assertEqual(c.exec_driver_sql('SELECT version_num FROM alembic_version').scalar_one(),'0011')
+    def test_health_accepts_current_0012_schema_without_migration(self):
+        with self.engine.connect() as c:self.assertEqual(c.exec_driver_sql('SELECT version_num FROM alembic_version').scalar_one(),'0012')
         response=self.client.get('/health');self.assertEqual(response.status_code,200,response.text)
         self.assertEqual(response.json()['mode'],'fictional_store_rules')
 
     def test_health_fails_closed_for_missing_old_new_and_multiple_revisions(self):
-        for versions in ([],['0005'],['0007'],['0008'],['0012'],['0008','0009']):
+        for versions in ([],['0005'],['0007'],['0008'],['0011'],['0013'],['0008','0009']):
             with self.subTest(versions=versions):
                 with self.engine.begin() as c:
                     c.exec_driver_sql('DELETE FROM alembic_version')
                     for version in versions:c.exec_driver_sql('INSERT INTO alembic_version VALUES (%s)',(version,))
                 response=self.client.get('/health');self.assertEqual(response.status_code,503,response.text)
-        with self.engine.begin() as c:c.exec_driver_sql("DELETE FROM alembic_version; INSERT INTO alembic_version VALUES ('0011')")
+        with self.engine.begin() as c:c.exec_driver_sql("DELETE FROM alembic_version; INSERT INTO alembic_version VALUES ('0012')")
 
     def test_health_rejects_missing_or_incompatible_required_schema(self):
         for change in ('ALTER TABLE commerce_cases RENAME COLUMN case_revision TO absent_revision',
