@@ -72,14 +72,14 @@
         "verified": true
       },
       {
-        "id": "mug-cream",
-        "sku": "MUG-CREAM",
+        "id": "mug-ivory",
+        "sku": "MUG-IVORY",
         "verified": true
       }
     ],
     "supplier": {
       "sku": "MUG-WHITE",
-      "image_id": "mug-cream",
+      "image_id": "mug-ivory",
       "verified": true
     }
   },
