@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './customer.css';
+import { returnCustomerUpdate, returnReason, type ReturnCase, type ReturnEligibility } from './return-data';
 
 type CustomerSession = { customer_id: string; display_name: string; store_id: string; role: 'customer' };
 type Parcel = { shipment_id: string; status?: string; promised_at?: string };
 type CustomerOrder = { id: string; parcels: Parcel[] };
-type CustomerReply = { intent: string; text: string; case_id?: string; parcels?: Parcel[] };
+type CustomerReply = { intent: string; text: string; case_id?: string; parcels?: Parcel[]; return_order_id?: string };
 type CaseUpdate = { case_id: string; order_id: string; shipment_id: string; status: string; text: string; replacement_created: boolean; shipped: boolean };
 type CustomerConversation = {
   id: string;
@@ -12,6 +13,7 @@ type CustomerConversation = {
   selected_shipment_id: string | null;
   messages: { message: string; response: CustomerReply }[];
   cases: CaseUpdate[];
+  returns?: ReturnCase[];
 };
 
 class CustomerRequestError extends Error {
@@ -29,6 +31,8 @@ export function CustomerPortal() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [returnCheck, setReturnCheck] = useState<{ result: ReturnEligibility; item: string | null } | null>(null);
   const currentLogin = useRef(0);
   const composer = useRef<HTMLInputElement>(null);
   const transcript = useRef<HTMLDivElement>(null);
@@ -119,7 +123,7 @@ export function CustomerPortal() {
   async function select(order: CustomerOrder, parcel: string | null) {
     if (!auth || !conversation || busy) return;
     const login = currentLogin.current;
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setReturnCheck(null);
     try {
       const next = await request<CustomerConversation>('/conversations/' + conversation.id + '/select', auth,
         { order_id: order.id, shipment_id: parcel });
@@ -133,20 +137,74 @@ export function CustomerPortal() {
     if (!auth || !conversation || busy || !message.trim()) return;
     const text = message.trim();
     const login = currentLogin.current;
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setReturnCheck(null);
     try {
-      await request<CustomerReply>('/conversations/' + conversation.id + '/messages', auth,
+      const reply = await request<CustomerReply>('/conversations/' + conversation.id + '/messages', auth,
         { message: text, request_id: crypto.randomUUID() });
       if (login !== currentLogin.current) return;
       const next = await request<CustomerConversation>('/conversations/' + conversation.id, auth);
-      if (login === currentLogin.current) { setMessage(''); setConversation(next); }
+      if (login !== currentLogin.current) return;
+      setMessage(''); setConversation(next);
+      const returnOrder = reply.return_order_id;
+      if (reply.intent === 'returns_help' && returnOrder) {
+        await loadReturnEligibility(returnOrder, null, auth, login);
+      }
     } catch (failure) { if (login === currentLogin.current) setError(failure instanceof Error ? failure.message : 'Message failed.'); }
     finally { if (login === currentLogin.current) setBusy(false); }
   }
 
+  async function loadReturnEligibility(orderId: string, variantId: string | null, credentials: string, login: number) {
+    const params = new URLSearchParams({ order_id: orderId });
+    if (variantId) params.set('variant_id', variantId);
+    const result = await request<ReturnEligibility>('/returns/eligibility?' + params, credentials);
+    const item = variantId ?? (result.items.length === 1 ? result.items[0].variant_id : null);
+    if (login === currentLogin.current) {
+      setReturnCheck(previous => ({
+        item,
+        result: variantId && previous?.result.order_id === orderId
+          ? { ...result, items: previous.result.items }
+          : result,
+      }));
+    }
+  }
+
+  async function checkReturn(orderId: string, variantId: string | null = null) {
+    if (!auth || busy) return;
+    const login = currentLogin.current;
+    setBusy(true); setError('');
+    try {
+      await loadReturnEligibility(orderId, variantId, auth, login);
+    } catch (failure) {
+      if (login === currentLogin.current) setError(failure instanceof Error ? failure.message : 'Eligibility check failed.');
+    } finally { if (login === currentLogin.current) setBusy(false); }
+  }
+
+  async function startReturn(orderId: string, item: string) {
+    if (!auth || !session || !conversation || busy) return;
+    const login = currentLogin.current;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const path = '/conversations/' + encodeURIComponent(conversation.id);
+      const saved = await request<ReturnCase>(path + '/returns', auth, { order_id: orderId, variant_id: item });
+      if (login !== currentLogin.current) return;
+      const original = saved.conversation_id ?? conversation.id;
+      const next = await request<CustomerConversation>('/conversations/' + encodeURIComponent(original), auth);
+      if (login === currentLogin.current) {
+        if (original !== conversation.id) {
+          localStorage.setItem('decisionops-customer:' + session.customer_id + ':conversation', original);
+          setNotice('Opened the original conversation for this return.');
+        }
+        setConversation(next);
+        setReturnCheck(null);
+      }
+    } catch (failure) {
+      if (login === currentLogin.current) setError(failure instanceof Error ? failure.message : 'Return request failed.');
+    } finally { if (login === currentLogin.current) setBusy(false); }
+  }
+
   function signOut() {
     ++currentLogin.current;
-    setAuth(null); setSession(null); setConversation(null); setOrders([]); setMessage(''); setPassword(''); setError(''); setBusy(false);
+    setAuth(null); setSession(null); setConversation(null); setOrders([]); setReturnCheck(null); setMessage(''); setPassword(''); setError(''); setNotice(''); setBusy(false);
   }
 
   const selected = orders.find(order => order.id === conversation?.selected_order_id);
@@ -159,6 +217,7 @@ export function CustomerPortal() {
     </header>
     <p className="customer-disclosure">Fictional store</p>
     {error && <p role="alert" className="customer-error">{error}</p>}
+    {notice && <p role="status">{notice}</p>}
     {!session ? <main className="customer-login card">
       <h2>Customer sign in</h2>
       <form onSubmit={event => void signIn(event)}>
@@ -197,6 +256,34 @@ export function CustomerPortal() {
               <button type="button" onClick={() => { setMessage('What is my delivery status?'); composer.current?.focus(); }} disabled={busy}>Check delivery status</button>
               <button type="button" onClick={() => { setMessage('My parcel never arrived. Please report it missing.'); composer.current?.focus(); }} disabled={busy}>Report a missing parcel</button>
             </div>}
+            {selected && <div className="customer-shortcuts">
+              <button type="button" disabled={busy} onClick={() => void checkReturn(selected.id)}>Check return eligibility</button>
+            </div>}
+            {returnCheck && <section className="customer-parcels" aria-label="Return eligibility">
+              <h3>Return eligibility</h3>
+              <p>{returnCheck.result.order_id}</p>
+              {returnCheck.result.items.length > 1 && <label>
+                Which item would you like to return?
+                <select aria-label="Return item" disabled={busy} value={returnCheck.item ?? ''}
+                  onChange={event => void checkReturn(returnCheck.result.order_id, event.target.value || null)}>
+                  <option value="">Choose an item</option>
+                  {returnCheck.result.items.map(item => <option key={item.variant_id} value={item.variant_id}>
+                    {item.variant_id}
+                  </option>)}
+                </select>
+              </label>}
+              {returnCheck.item && <p>One item · {returnCheck.item}</p>}
+              <p role="status">{returnReason(returnCheck.result.reason) ??
+                (returnCheck.result.status === 'eligible' ? 'This item is eligible for a return request.' :
+                 returnCheck.result.status === 'ineligible' ? 'This item does not qualify for a return under the shop policy.' :
+                 returnCheck.result.status === 'review' ? 'The shop needs to check the records for this item.' :
+                 'Choose one item to check.')}</p>
+              {returnCheck.item && (returnCheck.result.status === 'eligible' || returnCheck.result.status === 'review') &&
+                <button type="button" className="primary" disabled={busy}
+                  onClick={() => { if (returnCheck.item) void startReturn(returnCheck.result.order_id, returnCheck.item); }}>
+                  {returnCheck.result.status === 'review' ? 'Request return review' : 'Start return'}
+                </button>}
+            </section>}
             <form className="customer-composer" onSubmit={event => void send(event)}>
               <label>Your message<input ref={composer} value={message} onChange={event => setMessage(event.target.value)} maxLength={2000} required disabled={busy} autoComplete="off" /></label>
               <button className="primary" disabled={busy || !message.trim()} type="submit">Send message</button>
@@ -204,9 +291,14 @@ export function CustomerPortal() {
           </section>
           <section className="card" aria-label="Your case updates" aria-live="polite">
             <h2>Your case updates</h2>
-            {conversation?.cases.length === 0 && <p className="muted">No cases yet.</p>}
+            {conversation && conversation.cases.length === 0 && !conversation.returns?.length && <p className="muted">No cases yet.</p>}
             {conversation?.cases.map(update => <article className={"customer-case" + (update.replacement_created ? " done" : "")} key={update.case_id}>
               <h3>Case {update.case_id}</h3><p>{update.order_id} · {update.shipment_id}</p><p>{update.text}</p>
+            </article>)}
+            {conversation?.returns?.map(update => <article className={'customer-case' + (update.authorization_id ? ' done' : '')} key={update.id}>
+              <h3>Return {update.id}</h3><p>{update.order_id} · {update.variant_id}</p>
+              {update.authorization_id && <p>Authorization {update.authorization_id}</p>}
+              <p>{returnCustomerUpdate(update.status)}</p>
             </article>)}
           </section>
         </div>

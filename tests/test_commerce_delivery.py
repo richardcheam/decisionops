@@ -65,11 +65,13 @@ class DeliveryTests(unittest.TestCase):
             expected = {'DEMO-LYON', 'DEMO-OVERDUE', 'DEMO-CONFLICT'}
             self.assertEqual(len(cases), 3)
             self.assertEqual({row['order_id'] for row in cases}, expected)
-            self.assertEqual(set(c.execute(sa.select(db.orders.c.id)).scalars()), expected)
+            return_orders = {'DEMO-RETURN', 'DEMO-RETURN-EXPIRED'}
+            self.assertEqual(set(c.execute(sa.select(db.orders.c.id)).scalars()), expected | return_orders)
             owners = set(c.execute(sa.select(db.customer_orders.c.customer_id,
                                              db.customer_orders.c.order_id)))
             self.assertEqual(owners, {
                 ('camille', 'DEMO-LYON'), ('alex', 'DEMO-OVERDUE'), ('camille', 'DEMO-CONFLICT'),
+                ('camille', 'DEMO-RETURN'), ('camille', 'DEMO-RETURN-EXPIRED'),
             })
             decisions = {row['order_id']: read_assessment(c, AssessmentRequest(
                 row['order_id'], row['shipment_id'], {'demo-tote': 1}), NOW)['decision']['status']

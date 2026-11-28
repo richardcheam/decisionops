@@ -86,3 +86,23 @@ so a repeated confirmation cannot reserve stock a second time.
 | Model configuration and prompts | [Local model transport](../decisionops/commerce/local_llm.py) |
 
 [Maintainer and historical references](ARCHIVE.md)
+
+## Returns and missing parcels
+
+Both workflows use the same customer sign-in, owned-order access checks, staff
+workspace, and approver permissions. Customers see the outcome in the
+conversation where they asked for help. Staff review a proposal bound to the
+exact request. They approve and confirm separately.
+
+A missing-parcel case binds a parcel and uses shipment evidence, the specialist
+graph, replacement rules, and a worker that reserves stock. A return case binds
+one item from an owned order. It has its own queue, policy reads, proposal, and
+authorization record. Its rules check verified delivery, the 30-day window,
+item eligibility, and prior returns or refunds. Missing or conflicting evidence
+stays visible for staff review. The customer assistant can route a question to
+the eligibility check. Filing takes an explicit request with an exact item.
+
+At confirmation the return service rechecks the evidence and checks the saved
+approval inside a PostgreSQL transaction. The same case can produce one
+authorization. Returns in this phase stop at authorization. The shop handles
+refunds, shipping labels, pickup, warehouse receipt, and stock outside this flow.

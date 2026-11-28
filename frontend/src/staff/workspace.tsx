@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { DeliveryWorkspace, type ChatReply } from "../delivery-workspace";
 import { caseStatusLabels, formatCaseItems, formatCaseTime, type Case } from "./case-data";
 import { CasePanel } from "./case-panel";
+import { ReturnWorkspace } from "./return-workspace";
 
 type Order = {
   id: string;
@@ -27,6 +28,7 @@ class StaffRequestError extends Error {
 
 export function StaffWorkspace() {
   const [auth, setAuth] = useState("");
+  const [view, setView] = useState<"deliveries" | "returns">("deliveries");
   const [role, setRole] = useState<"staff" | "approver">("staff");
   const [conversationId, setConversationId] = useState("");
   const [staleEvidence, setStaleEvidence] = useState<{caseId:string;generation:number} | null>(null);
@@ -324,12 +326,17 @@ export function StaffWorkspace() {
         </div>
         <div className="header-right">
           {active?.shipment_investigation?.state === "active" && !active.shipment_investigation.historical && <span className="tag tag-live" role="status">Specialists running</span>}
+          <button type="button" className="quiet" disabled={busy || Boolean(confirm)}
+            onClick={() => setView(view === "deliveries" ? "returns" : "deliveries")}>
+            {view === "deliveries" ? "Return cases" : "Deliveries"}
+          </button>
           <a href="/customer">Customer help</a>
           <span className="badge">Demo store · {role === "approver" ? "Approver" : "Staff"}</span>
           <button
             className="quiet"
             onClick={() => {
               setAuth("");
+              setView("deliveries");
               setConversationId("");
               setRole("staff");
               setActive(null);
@@ -343,7 +350,10 @@ export function StaffWorkspace() {
           </button>
         </div>
       </header>
-      <main className="workspace delivery-dashboard">
+      {view === "returns" ? <main className="workspace">
+        <div className="pageintro"><h1>Returns</h1></div>
+        <ReturnWorkspace request={request} mayApprove={role === "approver"} />
+      </main> : <main className="workspace delivery-dashboard">
         <div className="pageintro"><h1>Deliveries</h1></div>
         {error && (
           <div role="alert" className="error workspace-error">
@@ -444,7 +454,7 @@ export function StaffWorkspace() {
               )}
             </section>
           </aside>
-      </main>
+      </main>}
       {confirm && active && (
         <div className="modal-backdrop">
           <section

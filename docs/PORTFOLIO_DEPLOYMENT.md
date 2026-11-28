@@ -85,9 +85,10 @@ work, not only an idle Pod restart. The existing recovery walkthroughs provide t
 separate direct-local checks; a cluster run is required to claim these on Kubernetes.
 
 Rollback is limited to application revisions compatible with the installed schema.
-The old 0010 release rejects an 0011 database at readiness; do not present reverting
-to that old image as a supported rollback. A schema downgrade requires its own
-reviewed data migration or a verified restore into a new environment.
+The previous release expects 0011 and fails readiness against 0012. Rehearse
+application rollback with images that both support the installed schema. A
+schema downgrade requires a reviewed migration or a verified restore into a
+new environment.
 
 ## Disposable database restore
 

@@ -513,3 +513,33 @@ customer_reports = sa.Table('commerce_customer_reports', metadata,
     sa.ForeignKeyConstraint(['store_id','shipment_id','order_id'],['commerce_delivery_parcels.store_id','commerce_delivery_parcels.shipment_id','commerce_delivery_parcels.order_id']),
     sa.UniqueConstraint('conversation_id','request_id'),
     sa.ForeignKeyConstraint(['conversation_id','customer_id'],['commerce_customer_conversations.id','commerce_customer_conversations.customer_id']))
+
+return_cases = sa.Table(
+    'commerce_return_cases', metadata,
+    sa.Column('id', sa.String, primary_key=True),
+    sa.Column('store_id', sa.String, nullable=False),
+    sa.Column('customer_id', sa.String(128), nullable=False),
+    sa.Column('order_id', sa.String, nullable=False),
+    sa.Column('variant_id', sa.String, nullable=False),
+    sa.Column('conversation_id', sa.String, nullable=False),
+    sa.Column('status', sa.String, nullable=False),
+    sa.Column('reason', sa.String, nullable=False),
+    sa.Column('evidence', JSONB, nullable=False),
+    sa.Column('proposal_hash', sa.String(64)),
+    sa.Column('approved_by', sa.String(128)),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.UniqueConstraint('order_id', 'variant_id'),
+    sa.ForeignKeyConstraint(['store_id', 'order_id'], ['orders.store_id', 'orders.id']),
+    sa.ForeignKeyConstraint(['customer_id', 'order_id'], ['commerce_customer_orders.customer_id', 'commerce_customer_orders.order_id']),
+    sa.ForeignKeyConstraint(['conversation_id', 'customer_id'], ['commerce_customer_conversations.id', 'commerce_customer_conversations.customer_id']),
+    sa.ForeignKeyConstraint(['order_id', 'variant_id'], ['order_lines.order_id', 'order_lines.variant_id']),
+)
+return_authorizations = sa.Table(
+    'commerce_return_authorizations', metadata,
+    sa.Column('id', sa.String, primary_key=True),
+    sa.Column('case_id', sa.String, sa.ForeignKey('commerce_return_cases.id'), nullable=False, unique=True),
+    sa.Column('proposal_hash', sa.String(64), nullable=False),
+    sa.Column('quantity', sa.Integer, nullable=False),
+    sa.Column('confirmed_by', sa.String(128), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+)
