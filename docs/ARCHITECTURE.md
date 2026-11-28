@@ -106,3 +106,16 @@ At confirmation the return service rechecks the evidence and checks the saved
 approval inside a PostgreSQL transaction. The same case can produce one
 authorization. Returns in this phase stop at authorization. The shop handles
 refunds, shipping labels, pickup, warehouse receipt, and stock outside this flow.
+
+## Catalog image cases
+
+Catalog uses the same staff sign-in and approver role. The workflow reads the
+listing, the images verified for its SKU, and the verified supplier record.
+It opens a proposal only when those records justify a same-SKU relink. Approval
+binds the exact old and new image IDs, listing version, and evidence. Separate
+confirmation rechecks the evidence and version, writes one relink and verifies
+the saved image ID. Conflicts leave the listing unchanged.
+
+The benchmark separates pixel descriptions and uncertainty from scoped catalog
+reads. The product uses deterministic authorization. Supplier evidence lives
+in the catalog database, so the workflow has no document retrieval step.

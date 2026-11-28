@@ -379,6 +379,41 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
         return return_transaction(lambda c: return_service.confirm(c, store_id, case_id, body.proposal_hash,
                                                                     actor, return_clock()))
 
+    from fastapi import Response
+    from . import catalog as catalog_service
+
+    def catalog_transaction(fn, readonly=False):
+        try:
+            with transaction(readonly) as connection:
+                return fn(connection)
+        except LookupError:
+            raise HTTPException(404, 'Catalog record not found') from None
+
+    @router.get('/catalog')
+    def catalog_queue():
+        return catalog_transaction(lambda c: catalog_service.queue(c, store_id), True)
+
+    @router.get('/catalog/{case_id}')
+    def catalog_detail(case_id: str):
+        return catalog_transaction(lambda c: catalog_service.detail(c, store_id, case_id), True)
+
+    @router.get('/catalog/{case_id}/images/{image_id}')
+    def catalog_image(case_id: str, image_id: str):
+        content = catalog_transaction(lambda c: catalog_service.image(c, store_id, case_id, image_id), True)
+        return Response(content, media_type='image/png')
+
+    @router.post('/catalog/{case_id}/investigate', dependencies=[Depends(mutation)])
+    def investigate_catalog(case_id: str, body: StrictBody):
+        return catalog_transaction(lambda c: catalog_service.investigate(c, store_id, case_id))
+
+    @router.post('/catalog/{case_id}/approve', dependencies=[Depends(mutation)])
+    def approve_catalog(case_id: str, body: ReturnProposal, actor: str = Depends(approver)):
+        return catalog_transaction(lambda c: catalog_service.approve(c, store_id, case_id, body.proposal_hash, actor))
+
+    @router.post('/catalog/{case_id}/confirm', dependencies=[Depends(mutation)])
+    def confirm_catalog(case_id: str, body: ReturnProposal, actor: str = Depends(approver)):
+        return catalog_transaction(lambda c: catalog_service.confirm(c, store_id, case_id, body.proposal_hash, actor))
+
     app.include_router(router)
     from .customer_api import install as install_customer_api
     install_customer_api(app,transaction=transaction,mutation=mutation,StrictBody=StrictBody,

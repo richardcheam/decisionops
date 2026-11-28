@@ -1,0 +1,26 @@
+{
+  "TOTE-BLUE": {
+    "action": "relink",
+    "image_id": "tote-blue"
+  },
+  "TOTE-SLATE": {
+    "action": "keep",
+    "image_id": null
+  },
+  "MUG-WHITE": {
+    "action": "review",
+    "image_id": null
+  },
+  "BOTTLE-GREEN": {
+    "action": "relink",
+    "image_id": "bottle-green"
+  },
+  "MUG-CREAM": {
+    "action": "keep",
+    "image_id": null
+  },
+  "BOTTLE-GRAY": {
+    "action": "review",
+    "image_id": null
+  }
+}

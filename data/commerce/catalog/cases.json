@@ -1,0 +1,170 @@
+[
+  {
+    "id": "TOTE-BLUE",
+    "split": "demo",
+    "sku": "TOTE-BLUE",
+    "title": "Blue canvas tote",
+    "visual_traits": [
+      "tote",
+      "blue"
+    ],
+    "current_image_id": "tote-red",
+    "images": [
+      {
+        "id": "tote-red",
+        "sku": "TOTE-RED",
+        "verified": true
+      },
+      {
+        "id": "tote-blue",
+        "sku": "TOTE-BLUE",
+        "verified": true
+      }
+    ],
+    "supplier": {
+      "sku": "TOTE-BLUE",
+      "image_id": "tote-blue",
+      "verified": true
+    }
+  },
+  {
+    "id": "TOTE-SLATE",
+    "split": "demo",
+    "sku": "TOTE-SLATE",
+    "title": "Slate canvas tote",
+    "visual_traits": [
+      "tote",
+      "muted blue-gray"
+    ],
+    "current_image_id": "tote-slate-alt",
+    "images": [
+      {
+        "id": "tote-slate-alt",
+        "sku": "TOTE-SLATE",
+        "verified": true
+      },
+      {
+        "id": "tote-slate",
+        "sku": "TOTE-SLATE",
+        "verified": true
+      }
+    ],
+    "supplier": {
+      "sku": "TOTE-SLATE",
+      "image_id": "tote-slate",
+      "verified": true
+    }
+  },
+  {
+    "id": "MUG-WHITE",
+    "split": "demo",
+    "sku": "MUG-WHITE",
+    "title": "White ceramic mug",
+    "visual_traits": [
+      "mug",
+      "white"
+    ],
+    "current_image_id": "mug-white",
+    "images": [
+      {
+        "id": "mug-white",
+        "sku": "MUG-WHITE",
+        "verified": true
+      },
+      {
+        "id": "mug-ivory",
+        "sku": "MUG-IVORY",
+        "verified": true
+      }
+    ],
+    "supplier": {
+      "sku": "MUG-WHITE",
+      "image_id": "mug-ivory",
+      "verified": true
+    }
+  },
+  {
+    "id": "BOTTLE-GREEN",
+    "split": "heldout",
+    "sku": "BOTTLE-GREEN",
+    "title": "Green drink bottle",
+    "visual_traits": [
+      "bottle",
+      "green"
+    ],
+    "current_image_id": "bottle-coral",
+    "images": [
+      {
+        "id": "bottle-coral",
+        "sku": "BOTTLE-CORAL",
+        "verified": true
+      },
+      {
+        "id": "bottle-green",
+        "sku": "BOTTLE-GREEN",
+        "verified": true
+      }
+    ],
+    "supplier": {
+      "sku": "BOTTLE-GREEN",
+      "image_id": "bottle-green",
+      "verified": true
+    }
+  },
+  {
+    "id": "MUG-CREAM",
+    "split": "heldout",
+    "sku": "MUG-CREAM",
+    "title": "Cream ceramic mug",
+    "visual_traits": [
+      "mug",
+      "pale cream"
+    ],
+    "current_image_id": "mug-cream-alt",
+    "images": [
+      {
+        "id": "mug-cream-alt",
+        "sku": "MUG-CREAM",
+        "verified": true
+      },
+      {
+        "id": "mug-cream",
+        "sku": "MUG-CREAM",
+        "verified": true
+      }
+    ],
+    "supplier": {
+      "sku": "MUG-CREAM",
+      "image_id": "mug-cream",
+      "verified": true
+    }
+  },
+  {
+    "id": "BOTTLE-GRAY",
+    "split": "heldout",
+    "sku": "BOTTLE-GRAY",
+    "title": "Gray drink bottle",
+    "visual_traits": [
+      "bottle",
+      "gray"
+    ],
+    "current_image_id": "bottle-gray",
+    "images": [
+      {
+        "id": "bottle-gray",
+        "sku": "BOTTLE-GRAY",
+        "verified": true
+      },
+      {
+        "id": "bottle-coral",
+        "sku": "BOTTLE-CORAL",
+        "verified": true
+      }
+    ],
+    "supplier": {
+      "sku": "BOTTLE-GRAY",
+      "image_id": "bottle-coral",
+      "verified": true
+    }
+  }
+]

@@ -74,3 +74,18 @@ For an ineligible case, check the tote in **DEMO-RETURN-EXPIRED**. Its delivery
 falls outside the 30-day window. For clarification, ask about **DEMO-RETURN**
 before choosing an item. The customer sees the choices and the app waits for
 an exact selection and an explicit request.
+
+## Verify a catalog image
+
+In the staff workspace, open **Catalog** and choose **TOTE-BLUE**. Select
+**Investigate image** to see the current red tote and the proposed blue image
+alongside the verified SKU records. Choose **Approve image change** and
+**Confirm approval**, then choose **Relink image** and **Confirm relink**.
+The saved result identifies `tote-blue`.
+
+Use **TOTE-SLATE** to show that an ambiguous-looking image can already be
+correct. Open **MUG-WHITE** to show a supplier disagreement. Staff see the dispute
+and the listing keeps its current image.
+
+The check runs as part of the same app. See the
+[catalog benchmark](CATALOG_BENCHMARK.md) for the comparison.

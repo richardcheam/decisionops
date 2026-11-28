@@ -73,6 +73,7 @@ The fresh demo has two other cases.
 | Follow the workflow and find the code | [Architecture](docs/ARCHITECTURE.md) |
 | Run and check a real local model | [Local Ollama setup](docs/LOCAL_MODEL.md) |
 | See how rules and Ollama performed | [Local model benchmark](docs/LOCAL_BENCHMARK.md) |
+| See the catalog image results | [Catalog benchmark](docs/CATALOG_BENCHMARK.md) |
 
 The demo’s browser tests check the replacement record and stock reservation in
 PostgreSQL. The [demo guide](docs/PORTFOLIO_DEMO.md#run-the-browser-smoke-test)

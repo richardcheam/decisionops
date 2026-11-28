@@ -396,3 +396,36 @@ if (compactDemo) {
     }
   });
 }
+
+if (compactDemo) {
+  test('staff approve and separately relink a verified catalog image', async ({ page, request }) => {
+    await staffLogin(page);
+    await page.getByRole('button', { name: 'Catalog', exact: true }).click();
+    const cases = page.getByRole('region', { name: 'Catalog cases' });
+    const selected = page.getByRole('region', { name: 'Selected catalog case' });
+    await cases.getByRole('button', { name: /TOTE-BLUE/ }).click();
+    await expect(selected.getByAltText('Current listing image')).toBeVisible();
+    await selected.getByRole('button', { name: 'Investigate image' }).click();
+    await expect(selected.getByAltText('Proposed listing image')).toBeVisible();
+    await selected.getByRole('button', { name: 'Approve image change' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('tote-red');
+    await expect(dialog).toContainText('tote-blue');
+    await dialog.getByRole('button', { name: 'Confirm approval' }).click();
+    const headers = auth(staffUsername, staffPassword);
+    const approved = await (await request.get('/api/catalog/TOTE-BLUE', { headers })).json();
+    expect(approved.current_image_id).toBe('tote-red');
+    await selected.getByRole('button', { name: 'Relink image' }).click();
+    await dialog.getByRole('button', { name: 'Confirm relink' }).click();
+    await expect(selected).toContainText('Verified saved image tote-blue');
+    const approvedBody = { proposal_hash: approved.proposal_hash };
+    const replay = await request.post('/api/catalog/TOTE-BLUE/confirm', { headers, data: approvedBody });
+    expect(replay.ok()).toBeTruthy();
+    expect((await replay.json()).receipt.saved_image_id).toBe('tote-blue');
+
+    await cases.getByRole('button', { name: /MUG-WHITE/ }).click();
+    await selected.getByRole('button', { name: 'Investigate image' }).click();
+    await expect(selected).toContainText(/conflict|disagree/i);
+    await expect(selected.getByRole('button', { name: 'Approve image change' })).toHaveCount(0);
+  });
+}

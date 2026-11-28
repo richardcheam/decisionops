@@ -1,6 +1,7 @@
 """Seed the three-case portfolio demo, preserving existing delivery fixtures."""
 import json
 
+from .catalog import seed as seed_catalog
 from .customer_seed import seed as seed_customers
 from .database import database_engine
 from .delivery_seed import COMPACT_ORDERS_BY_VERSION, seed as seed_deliveries
@@ -12,6 +13,7 @@ def seed(engine, now=None):
     order_ids = COMPACT_ORDERS_BY_VERSION.get(result['seed_version'])
     seed_customers(engine, order_ids=order_ids)
     seed_returns(engine, now)
+    seed_catalog(engine)
     return result
 
 
