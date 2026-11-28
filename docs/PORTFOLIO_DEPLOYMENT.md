@@ -170,7 +170,11 @@ API-only secret. Configure the external HTTPS ingress to forward `/pilot` and
 `/pilot-api/` to the existing web service. Keep callback query strings, cookie
 headers, and request bodies out of access logs, error reports, and traces.
 The app image disables Uvicorn access logging and the provided Nginx config
-disables logging in the pilot API location. Keep the token key available for
+disables logging in the pilot API location. At the public HTTPS ingress,
+rate-limit requests to `/pilot-api/login` and `/pilot-api/invites/accept` by
+trusted client address. Keep the upstream API private. The app limits attempts
+per account or invitation independently of the proxy address.
+Keep the token key available for
 restore. Losing it requires reconnecting the shop.
 
 1. Create a standalone app with custom distribution in Shopify Dev Dashboard.

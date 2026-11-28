@@ -136,3 +136,10 @@ class PilotIdentityTests(PilotIdentityFixture, TestCase):
                 "SELECT count(*) FROM commerce_pilot_memberships WHERE store_id='shop-a'"
             ).scalar_one()
         self.assertEqual(member_count, 2)
+
+    def test_shared_reverse_proxy_peer_does_not_lock_unrelated_accounts(self):
+        client = self.client()
+        for attempt in range(61):
+            response = self.login(client, {"email": f"unknown-{attempt}@example.test", "password": "short"})
+            self.assertEqual(response.status_code, 401)
+        self.assertEqual(self.login(self.client()).status_code, 200)

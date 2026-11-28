@@ -175,22 +175,20 @@ class Identity:
         return self._profile(connection, user)
 
     def _allow(self, request, kind, subject):
-        # Bind the browser's network budget to the trusted server peer. ASGI
-        # proxy headers are only honored when the deployment explicitly trusts them.
-        peer = request.client.host if request.client else 'unknown'
+        # The HTTPS ingress owns the network budget. The app owns the identity budget.
         limits = db.pilot_login_limits
         with self._write() as connection:
             window = int(clock(connection).timestamp()) // RATE_WINDOW
             connection.execute(limits.delete().where(limits.c.window_id < window - 1))
-            allowed = True
-            for category, value, cap in ((f'{kind}-ip', peer, 60), (f'{kind}-subject', subject, 10)):
-                operation = insert(limits).values(kind=category, subject_hash=digest(value), window_id=window, attempts=1)
-                hits = connection.execute(operation.on_conflict_do_update(
-                    index_elements=list(limits.primary_key.columns),
-                    set_={'attempts': sa.func.least(limits.c.attempts + 1, cap + 1)},
-                ).returning(limits.c.attempts)).scalar_one()
-                allowed = allowed and hits <= cap
-        if not allowed:
+            cap = 10
+            operation = insert(limits).values(
+                kind=f'{kind}-subject', subject_hash=digest(subject), window_id=window, attempts=1,
+            )
+            hits = connection.execute(operation.on_conflict_do_update(
+                index_elements=list(limits.primary_key.columns),
+                set_={'attempts': sa.func.least(limits.c.attempts + 1, cap + 1)},
+            ).returning(limits.c.attempts)).scalar_one()
+        if hits > cap:
             raise HTTPException(429, 'Too many attempts. Try again later.',
                                 headers={'Retry-After': str(RATE_WINDOW)})
 
