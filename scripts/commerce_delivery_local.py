@@ -31,7 +31,7 @@ def main():
     try:
         for command in ([sys.executable,'-B','-m','decisionops.commerce.worker','run'],
                         [sys.executable,'-B','-m','decisionops.commerce.staff_investigations','--step-delay','0.1'],
-                        [sys.executable,'-B','-m','uvicorn','decisionops.commerce.api:create_app','--factory','--host','127.0.0.1','--port',str(args.port)]):
+                        [sys.executable,'-B','-m','uvicorn','decisionops.commerce.api:create_app','--factory','--host','127.0.0.1','--port',str(args.port),'--no-access-log']):
             children.append(subprocess.Popen(command,cwd=ROOT,env=env))
         while all(child.poll() is None for child in children):
             try:children[-1].wait(timeout=.5)

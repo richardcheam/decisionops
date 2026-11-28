@@ -73,9 +73,12 @@ class ConversationMessage(StrictBody):
 
 def create_app(engine=None,*,password=None,username=None,store_id=None,origins=None,staff_investigation_mode=None,staff_accounts=None,demo_clock=None,conversation_router=None,customer_accounts=None,customer_router=None,action_adapter=None):
     from .staff_investigations import MODES
+    pilot_origin = os.environ.get('COMMERCE_PILOT_ORIGIN')
     staff_investigation_mode=staff_investigation_mode or os.environ.get('COMMERCE_STAFF_INVESTIGATION_MODE','rules')
     if staff_investigation_mode not in MODES:raise ValueError('Unknown staff investigation mode')
     model_name = None
+    if pilot_origin:
+        staff_investigation_mode = 'rules'
     if staff_investigation_mode == 'llm':
         if any(adapter is not None for adapter in (action_adapter, conversation_router, customer_router)):
             raise ValueError('LLM mode uses the configured local model')
@@ -86,12 +89,12 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
     if action_adapter is not None:
         if conversation_router is not None or customer_router is not None:raise ValueError('Configure one action adapter')
         conversation_router=action_adapter.staff();customer_router=action_adapter.customer()
-    session_mode = 'local_llm' if model_name else 'fictional_store_rules'
+    session_mode = 'shopify_development_pilot' if pilot_origin else ('local_llm' if model_name else 'fictional_store_rules')
     password=password if password is not None else os.environ.get('COMMERCE_STAFF_PASSWORD','')
     username=username or os.environ.get('COMMERCE_STAFF_USERNAME','operator')
     store_id=store_id or os.environ.get('COMMERCE_STORE_ID','demo-store')
     origins=origins if origins is not None else set(os.environ.get('COMMERCE_ORIGINS','http://127.0.0.1:8080,http://localhost:8080').split(','))
-    if len(password)<16 or not 1<=len(username)<=128:
+    if not pilot_origin and (len(password)<16 or not 1<=len(username)<=128):
         raise ValueError('Configure a staff password of at least 16 characters and a bounded username before startup')
     accounts={username:{'password':password,'role':'approver'}}
     staff_accounts=dict(staff_accounts or {})
@@ -414,16 +417,23 @@ def create_app(engine=None,*,password=None,username=None,store_id=None,origins=N
     def confirm_catalog(case_id: str, body: ReturnProposal, actor: str = Depends(approver)):
         return catalog_transaction(lambda c: catalog_service.confirm(c, store_id, case_id, body.proposal_hash, actor))
 
-    app.include_router(router)
-    from .customer_api import install as install_customer_api
-    install_customer_api(app,transaction=transaction,mutation=mutation,StrictBody=StrictBody,
-        ConversationMessage=ConversationMessage,store_id=store_id,staff_names=set(accounts),
-        accounts=customer_accounts,router=customer_router,demo_clock=demo_clock)
+    if pilot_origin:
+        from .pilot_identity import install_identity
+        from .shopify_api import install_shopify
+        identity = install_identity(app, engine, origin=pilot_origin)
+        install_shopify(app, engine, identity, origin=pilot_origin)
+    else:
+        app.include_router(router)
+        from .customer_api import install as install_customer_api
+        install_customer_api(app,transaction=transaction,mutation=mutation,StrictBody=StrictBody,
+            ConversationMessage=ConversationMessage,store_id=store_id,staff_names=set(accounts),
+            accounts=customer_accounts,router=customer_router,demo_clock=demo_clock)
     web_dist=os.environ.get('COMMERCE_WEB_DIST')
     if web_dist:
         from fastapi.staticfiles import StaticFiles
         from fastapi.responses import FileResponse
         from pathlib import Path
+        @app.get('/pilot',include_in_schema=False)
         @app.get('/customer',include_in_schema=False)
         @app.get('/staff',include_in_schema=False)
         def role_entry():return FileResponse(Path(web_dist)/'index.html')

@@ -11,4 +11,4 @@ COPY alembic.ini .python-version ./
 RUN useradd --uid 10001 --create-home commerce
 USER 10001:10001
 ENV PATH="/opt/commerce-venv/bin:$PATH"
-CMD ["python", "-B", "-m", "uvicorn", "decisionops.commerce.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]
+CMD ["python", "-B", "-m", "uvicorn", "decisionops.commerce.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers", "--no-access-log"]

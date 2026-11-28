@@ -6,9 +6,11 @@ import "@fontsource-variable/jetbrains-mono/wght.css";
 import "./tokens.css";
 import "./style.css";
 import { CustomerPortal } from "./customer";
+import { ShopifyWorkspace } from "./staff/shopify-workspace";
 import { StaffWorkspace } from "./staff/workspace";
 
 const path = window.location.pathname;
+const isPilot = path === "/pilot" || path === "/pilot/";
 const isCustomer = path.startsWith("/customer");
 const requestedTheme = new URLSearchParams(window.location.search).get("theme");
 
@@ -18,6 +20,6 @@ document.documentElement.dataset.theme =
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {isCustomer ? <CustomerPortal /> : <StaffWorkspace />}
+    {isPilot ? <ShopifyWorkspace /> : isCustomer ? <CustomerPortal /> : <StaffWorkspace />}
   </React.StrictMode>,
 );

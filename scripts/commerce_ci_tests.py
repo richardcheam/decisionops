@@ -9,6 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 DATABASE_MODULES = (
+    'test_pilot_identity', 'test_shopify_pilot',
     'test_commerce_catalog', 'test_commerce_returns', 'test_commerce_postgres', 'test_commerce_investigations',
     'test_commerce_execution', 'test_commerce_jobs', 'test_commerce_api',
     'test_commerce_provider_postgres', 'test_commerce_adaptive_postgres',

@@ -580,3 +580,96 @@ catalog_relinks = sa.Table(
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['store_id', 'case_id'], ['commerce_catalog_cases.store_id', 'commerce_catalog_cases.id']),
 )
+
+pilot_stores = sa.Table(
+    'commerce_pilot_stores', metadata,
+    sa.Column('id', sa.String, primary_key=True),
+    sa.Column('name', sa.String(120), nullable=False),
+)
+pilot_users = sa.Table(
+    'commerce_pilot_users', metadata,
+    sa.Column('id', sa.String, primary_key=True),
+    sa.Column('email', sa.String(254), nullable=False, unique=True),
+    sa.Column('password_hash', sa.String, nullable=False),
+)
+pilot_memberships = sa.Table(
+    'commerce_pilot_memberships', metadata,
+    sa.Column('store_id', sa.String, sa.ForeignKey('commerce_pilot_stores.id'), primary_key=True),
+    sa.Column('user_id', sa.String, sa.ForeignKey('commerce_pilot_users.id'), primary_key=True),
+    sa.Column('role', sa.String, nullable=False),
+    sa.CheckConstraint("role IN ('staff', 'approver')"),
+)
+pilot_sessions = sa.Table(
+    'commerce_pilot_sessions', metadata,
+    sa.Column('token_hash', sa.String(64), primary_key=True),
+    sa.Column('user_id', sa.String, sa.ForeignKey('commerce_pilot_users.id'), nullable=False),
+    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
+)
+pilot_invites = sa.Table(
+    'commerce_pilot_invites', metadata,
+    sa.Column('token_hash', sa.String(64), primary_key=True),
+    sa.Column('store_id', sa.String, sa.ForeignKey('commerce_pilot_stores.id'), nullable=False),
+    sa.Column('email', sa.String(254), nullable=False),
+    sa.Column('role', sa.String, nullable=False),
+    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('used_at', sa.DateTime(timezone=True)),
+    sa.CheckConstraint("role IN ('staff', 'approver')"),
+)
+pilot_login_limits = sa.Table(
+    'commerce_pilot_login_limits', metadata,
+    sa.Column('kind', sa.String(16), primary_key=True),
+    sa.Column('subject_hash', sa.String(64), primary_key=True),
+    sa.Column('window_id', sa.BigInteger, primary_key=True),
+    sa.Column('attempts', sa.Integer, nullable=False),
+    sa.CheckConstraint('attempts > 0'),
+)
+
+
+shopify_connections = sa.Table(
+    'commerce_shopify_connections', metadata,
+    sa.Column('store_id', sa.String, sa.ForeignKey('commerce_pilot_stores.id'), primary_key=True),
+    sa.Column('shop', sa.String, nullable=False, unique=True),
+    sa.Column('shop_gid', sa.String, nullable=False, unique=True),
+    sa.Column('sealed_token', sa.String, nullable=False),
+    sa.Column('status', sa.String, nullable=False),
+)
+shopify_oauth = sa.Table(
+    'commerce_shopify_oauth', metadata,
+    sa.Column('state_hash', sa.String(64), primary_key=True),
+    sa.Column('store_id', sa.String, sa.ForeignKey('commerce_pilot_stores.id'), nullable=False),
+    sa.Column('actor_id', sa.String, sa.ForeignKey('commerce_pilot_users.id'), nullable=False),
+    sa.Column('shop', sa.String, nullable=False),
+    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
+)
+shopify_orders = sa.Table(
+    'commerce_shopify_orders', metadata,
+    sa.Column('store_id', sa.String, sa.ForeignKey('commerce_shopify_connections.store_id'), primary_key=True),
+    sa.Column('order_id', sa.String, primary_key=True),
+    sa.Column('snapshot', JSONB, nullable=False),
+)
+shopify_cases = sa.Table(
+    'commerce_shopify_cases', metadata,
+    sa.Column('store_id', sa.String, sa.ForeignKey('commerce_shopify_connections.store_id'), primary_key=True),
+    sa.Column('id', sa.String, primary_key=True),
+    sa.Column('order_id', sa.String, nullable=False),
+    sa.Column('fulfillment_line_id', sa.String, nullable=False),
+    sa.Column('quantity', sa.Integer, nullable=False),
+    sa.Column('status', sa.String, nullable=False),
+    sa.Column('reason', sa.String, nullable=False),
+    sa.Column('evidence', JSONB),
+    sa.Column('proposal_hash', sa.String(64)),
+    sa.Column('approved_by', sa.String, sa.ForeignKey('commerce_pilot_users.id')),
+    sa.Column('confirmed_by', sa.String, sa.ForeignKey('commerce_pilot_users.id')),
+    sa.Column('dispatch_marker', sa.String, unique=True),
+    sa.Column('external_return_id', sa.String),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['store_id', 'order_id'], ['commerce_shopify_orders.store_id', 'commerce_shopify_orders.order_id']),
+    sa.UniqueConstraint('store_id', 'order_id', 'fulfillment_line_id'),
+    sa.UniqueConstraint('store_id', 'external_return_id'),
+)
+shopify_webhooks = sa.Table(
+    'commerce_shopify_webhooks', metadata,
+    sa.Column('store_id', sa.String, sa.ForeignKey('commerce_shopify_connections.store_id'), primary_key=True),
+    sa.Column('delivery_id', sa.String, primary_key=True),
+    sa.Column('body_digest', sa.String(64), nullable=False),
+)
