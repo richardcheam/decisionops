@@ -18,6 +18,8 @@ class CatalogEvaluationTests(unittest.TestCase):
                          {'BOTTLE-GREEN', 'MUG-CREAM', 'BOTTLE-GRAY'})
         rule = report['summary']['mapping_rule']
         self.assertEqual((rule['observed'], rule['exact_matches'], rule['missed_referrals']), (3, 2, 1))
+        policy = report['summary']['catalog_policy']
+        self.assertEqual((policy['observed'], policy['exact_matches'], policy['appropriate_referrals']), (3, 3, 1))
         for arm in ('single_vision', 'visual_and_catalog'):
             result = report['summary'][arm]
             self.assertEqual((result['observed'], result['unavailable']), (0, 3))
@@ -144,3 +146,23 @@ class CatalogEvaluationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'weights installed'):
                 LocalVision('renamed:latest')
         request.assert_called_once_with('GET', '/api/tags')
+
+    def test_difficult_pairs_require_only_the_visual_cue_and_score_all_attempts(self):
+        from decisionops.commerce.catalog_evaluation import compare_visual_pairs
+
+        answers = iter(('different', 'same', 'uncertain', 'different', None, 'same'))
+
+        def simulated_vision(prompt, paths, schema):
+            self.assertNotIn('pair-', prompt)
+            self.assertNotIn('SKU', prompt)
+            self.assertEqual(len(paths), 2)
+            self.assertEqual(schema, VISUAL_FORMAT)
+            choice = next(answers)
+            if choice is None:
+                return {}
+            return {'current': 'current cue', 'candidate': 'candidate cue', 'comparison': choice}
+
+        summary = compare_visual_pairs(vision=simulated_vision)['summary']
+        self.assertEqual((summary['cases'], summary['exact_matches']), (6, 2))
+        for metric in ('false_differences', 'false_matches', 'uncertain', 'invalid'):
+            self.assertEqual(summary[metric], 1, metric)

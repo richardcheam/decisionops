@@ -13,7 +13,7 @@ from time import perf_counter
 from .local_llm import LocalModel
 
 FIXTURES = Path(__file__).resolve().parents[2] / 'data' / 'commerce' / 'catalog'
-ARMS = ('mapping_rule', 'single_vision', 'visual_and_catalog')
+ARMS = ('mapping_rule', 'catalog_policy', 'single_vision', 'visual_and_catalog')
 ACTIONS = ('keep', 'relink', 'review')
 SINGLE_FORMAT = {
     'type': 'object',
@@ -197,6 +197,8 @@ def _asset_hashes(directory, cases, split):
 
 
 def compare(directory=FIXTURES, *, split='heldout', vision=None, unavailable_reason=None):
+    from .catalog_policy import assess
+
     raw_cases = (directory / 'cases.json').read_bytes()
     raw_labels = (directory / 'labels.json').read_bytes()
     cases, labels = json.loads(raw_cases), json.loads(raw_labels)
@@ -222,13 +224,15 @@ def compare(directory=FIXTURES, *, split='heldout', vision=None, unavailable_rea
             paths = [_asset(directory, case['current_image_id'])]
             if candidate:
                 paths.append(_asset(directory, candidate))
-            if arm != 'mapping_rule' and vision is None:
+            if arm in ('single_vision', 'visual_and_catalog') and vision is None:
                 row['reason'] = unavailable_reason or 'No local vision model selected'
             else:
                 start = perf_counter()
                 try:
                     if arm == 'mapping_rule':
                         row['action'], row['image_id'] = mapping_rule(case)
+                    elif arm == 'catalog_policy':
+                        row['action'], row['image_id'], row['reason'] = assess(case)
                     else:
                         action, target, evidence = _vision_result(arm, case, paths, candidate, vision)
                         row.update(action=action, image_id=target, **evidence)
@@ -276,9 +280,70 @@ def compare(directory=FIXTURES, *, split='heldout', vision=None, unavailable_rea
             'summary': summary, 'rows': rows}
 
 
+def compare_visual_pairs(directory=FIXTURES / 'visual_pairs', *, vision=None):
+    """Score an isolated visual cue with no catalog records in the prompt."""
+    raw_cases = (directory / 'cases.json').read_bytes()
+    raw_labels = (directory / 'labels.json').read_bytes()
+    cases, labels = json.loads(raw_cases), json.loads(raw_labels)
+    identities = {case['id'] for case in cases}
+    if not cases or len(identities) != len(cases) or set(labels) != identities:
+        raise ValueError('Visual pair IDs and labels must match one-to-one')
+    if any(value not in ('same', 'different') for value in labels.values()):
+        raise ValueError('Each visual label must be same or different')
+    asset_hashes = {}
+    rows = []
+    for case in cases:
+        if len(case['images']) != 2:
+            raise ValueError('Each visual case needs two PNGs')
+        paths = [_asset(directory, identity) for identity in case['images']]
+        for identity, path in zip(case['images'], paths):
+            asset_hashes[identity] = hashlib.sha256(path.read_bytes()).hexdigest()
+        row = {'case': case['id'], 'expected': labels[case['id']], 'comparison': None,
+               'status': 'unavailable', 'elapsed_ms': None}
+        if vision is not None:
+            started = perf_counter()
+            try:
+                result = vision(
+                    'Compare exactly this visible product cue: ' + case['cue'] + '. '
+                    'Ignore the background. Describe the cue in the first image as current '
+                    'and the cue in the second image as candidate. Answer same, different, '
+                    'or uncertain if you cannot reliably see the cue. Compare the two supplied images.',
+                    paths, VISUAL_FORMAT,
+                )
+                if (not isinstance(result, dict) or set(result) != {'current', 'candidate', 'comparison'}
+                        or result['comparison'] not in ('same', 'different', 'uncertain')
+                        or any(not isinstance(result[key], str) or not 1 <= len(result[key]) <= 300
+                               for key in ('current', 'candidate'))):
+                    raise ValueError('Invalid visual cue response')
+                row.update(result, status='observed')
+            except VisionUnavailable as error:
+                row['reason'] = str(error)
+            except (ValueError, TypeError, KeyError) as error:
+                row.update(status='invalid', reason=type(error).__name__)
+            finally:
+                row['elapsed_ms'] = round((perf_counter() - started) * 1000, 3)
+        rows.append(row)
+    timings = [row['elapsed_ms'] for row in rows if row['elapsed_ms'] is not None]
+    return {
+        'split': 'difficult', 'cases_sha256': hashlib.sha256(raw_cases).hexdigest(),
+        'labels_sha256': hashlib.sha256(raw_labels).hexdigest(), 'assets_sha256': asset_hashes,
+        'rows': rows,
+        'summary': {
+            'cases': len(rows),
+            'exact_matches': sum(row['comparison'] == row['expected'] for row in rows),
+            'false_differences': sum(row['comparison'] == 'different' and row['expected'] == 'same' for row in rows),
+            'false_matches': sum(row['comparison'] == 'same' and row['expected'] == 'different' for row in rows),
+            'uncertain': sum(row['comparison'] == 'uncertain' for row in rows),
+            'invalid': sum(row['status'] == 'invalid' for row in rows),
+            'unavailable': sum(row['status'] == 'unavailable' for row in rows),
+            'median_attempt_ms': median(timings) if timings else None,
+        },
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--split', choices=('demo', 'heldout'), default='heldout')
+    parser.add_argument('--split', choices=('demo', 'heldout', 'difficult'), default='heldout')
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--model', help='Exact installed Ollama vision tag')
     modes.add_argument('--unavailable-reason', help='Document an independently verified capability blocker')
@@ -286,7 +351,8 @@ def main():
     args = parser.parse_args()
     try:
         vision = LocalVision(args.model, args.endpoint) if args.model else None
-        report = compare(split=args.split, vision=vision, unavailable_reason=args.unavailable_reason)
+        report = (compare_visual_pairs(vision=vision) if args.split == 'difficult'
+                  else compare(split=args.split, vision=vision, unavailable_reason=args.unavailable_reason))
     except (ValueError, VisionUnavailable) as error:
         parser.error(str(error))
     print(json.dumps(report | {'model': args.model}, indent=2))
