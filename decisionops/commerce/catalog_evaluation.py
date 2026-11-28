@@ -33,6 +33,15 @@ VISUAL_FORMAT = {
 }
 
 
+PAIR_FORMAT = {
+    **VISUAL_FORMAT,
+    'properties': {
+        **VISUAL_FORMAT['properties'],
+        'comparison': {'enum': ['same', 'different', 'uncertain']},
+    },
+}
+
+
 class VisionUnavailable(RuntimeError):
     """An attempted request could not return a vision result."""
 
@@ -308,7 +317,7 @@ def compare_visual_pairs(directory=FIXTURES / 'visual_pairs', *, vision=None):
                     'Ignore the background. Describe the cue in the first image as current '
                     'and the cue in the second image as candidate. Answer same, different, '
                     'or uncertain if you cannot reliably see the cue. Compare the two supplied images.',
-                    paths, VISUAL_FORMAT,
+                    paths, PAIR_FORMAT,
                 )
                 if (not isinstance(result, dict) or set(result) != {'current', 'candidate', 'comparison'}
                         or result['comparison'] not in ('same', 'different', 'uncertain')

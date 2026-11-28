@@ -148,7 +148,7 @@ class CatalogEvaluationTests(unittest.TestCase):
         request.assert_called_once_with('GET', '/api/tags')
 
     def test_difficult_pairs_require_only_the_visual_cue_and_score_all_attempts(self):
-        from decisionops.commerce.catalog_evaluation import compare_visual_pairs
+        from decisionops.commerce.catalog_evaluation import PAIR_FORMAT, compare_visual_pairs
 
         answers = iter(('different', 'same', 'uncertain', 'different', None, 'same'))
 
@@ -156,7 +156,7 @@ class CatalogEvaluationTests(unittest.TestCase):
             self.assertNotIn('pair-', prompt)
             self.assertNotIn('SKU', prompt)
             self.assertEqual(len(paths), 2)
-            self.assertEqual(schema, VISUAL_FORMAT)
+            self.assertEqual(schema, PAIR_FORMAT)
             choice = next(answers)
             if choice is None:
                 return {}
