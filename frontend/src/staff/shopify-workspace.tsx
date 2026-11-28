@@ -104,16 +104,16 @@ function ShopifyStore({ store }: { store: Store }) {
     <section className="card" aria-label="Shopify connection">
       <h2>Development store connection</h2>
       <p>{connection?.connected ? connection.shop + " is connected" : "No development store connected."}</p>
-      {manager && !connection?.connected && <form onSubmit={event => {
+      {manager && <form onSubmit={event => {
         event.preventDefault();
         void perform(async () => {
-          const result = await pilot<{ url: string }>(path + "/connect", { shop });
+          const result = await pilot<{ url: string }>(path + "/connect", { shop: connection?.shop || shop });
           window.location.assign(result.url);
         });
       }}>
-        <label>Shopify domain<input value={shop} onChange={e => setShop(e.target.value)}
-          placeholder="your-store.myshopify.com" required /></label>
-        <button className="primary" disabled={busy}>Connect Shopify</button>
+        {!connection?.shop && <label>Shopify domain<input value={shop} onChange={e => setShop(e.target.value)}
+          placeholder="your-store.myshopify.com" required /></label>}
+        <button className="primary" disabled={busy}>{connection?.shop ? "Reconnect Shopify" : "Connect Shopify"}</button>
       </form>}
       {connection?.connected && <button disabled={busy} onClick={() => void perform(async () => {
         setOrders(await pilot<Order[]>(path + "/resync", {}));

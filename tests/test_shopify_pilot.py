@@ -165,7 +165,7 @@ class ShopifyPilotTests(PilotIdentityFixture, TestCase):
         import base64
         import json
 
-        from decisionops.commerce.shopify_transport import ShopifyUnauthorized
+        from decisionops.commerce.shopify_transport import ShopifyUnauthorized, ShopifyUnavailable
 
         manager, _, _ = self.connected()
         payload = json.dumps({"id": 1, "myshopify_domain": SHOP}).encode()
@@ -183,12 +183,19 @@ class ShopifyPilotTests(PilotIdentityFixture, TestCase):
         self.assertEqual(manager.post(webhook, content=payload, headers=headers).status_code, 204)
         self.assertTrue(manager.get(status).json()["connected"])
 
+        def unavailable(remote):
+            raise ShopifyUnavailable("Simulated transient outage")
+
+        retry_headers = {**headers, "x-shopify-webhook-id": "current-grant"}
+        self.remote.shop_identity = unavailable
+        self.assertEqual(manager.post(webhook, content=payload, headers=retry_headers).status_code, 503)
+        self.assertTrue(manager.get(status).json()["connected"])
+
         def rejected(remote):
             raise ShopifyUnauthorized("Simulated revoked credential")
 
         self.remote.shop_identity = rejected
         self.assertEqual(manager.post(webhook, content=payload, headers=headers).status_code, 204)
         self.assertTrue(manager.get(status).json()["connected"])
-        self.assertEqual(manager.post(webhook, content=payload, headers={
-            **headers, "x-shopify-webhook-id": "current-grant"}).status_code, 204)
+        self.assertEqual(manager.post(webhook, content=payload, headers=retry_headers).status_code, 204)
         self.assertFalse(manager.get(status).json()["connected"])

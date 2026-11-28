@@ -81,7 +81,10 @@ def install_shopify(app, engine, identity, *, origin, adapter=None):
             shop_gid = gid(f'gid://shopify/Shop/{value["id"]}', "Shop")
         except (KeyError, TypeError, ValueError):
             raise HTTPException(400, "Invalid Shopify webhook shop identity") from None
-        await run_in_threadpool(service.uninstall, shop, shop_gid, delivery, bytes(raw))
+        try:
+            await run_in_threadpool(service.uninstall, shop, shop_gid, delivery, bytes(raw))
+        except ShopifyUnavailable:
+            raise HTTPException(503, "Shopify uninstall could not be verified") from None
         return Response(status_code=204)
 
     @router.get("/{store_id}")

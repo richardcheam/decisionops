@@ -490,12 +490,10 @@ class ShopifyPilot:
             # A delayed uninstall can belong to an earlier grant. Check the current grant.
             token = self._unseal(row)
             if token["expires_at"] <= self.now().timestamp():
-                return
+                raise ShopifyUnavailable("Reconnect before the uninstall can be verified")
             try:
                 self.gateway.shop_identity(Remote(shop, token["access"]))
             except ShopifyUnauthorized:
                 connection.execute(db.shopify_connections.update().where(
                     db.shopify_connections.c.store_id == row["store_id"],
                 ).values(status="revoked", sealed_token=""))
-            except ShopifyUnavailable:
-                return

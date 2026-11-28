@@ -10,8 +10,8 @@ API_VERSION = "2026-10"
 SCOPES = ("read_orders", "read_returns", "write_returns")
 SHOP = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.myshopify\.com")
 ORDER_LIMIT = 10
-LINE_LIMIT = 25
-RETURN_LIMIT = 50
+LINE_LIMIT = 8
+RETURN_LIMIT = 10
 
 SHOP_QUERY = "query PilotShop { shop { id myshopifyDomain } }"
 ORDER_FIELDS = f"""
@@ -27,7 +27,7 @@ ORDER_FIELDS = f"""
 ORDER_LIST = f"""
 query PilotOrders {{
     orders(first: {ORDER_LIMIT}, reverse: true, query: "test:true") {{
-        nodes {{ {ORDER_FIELDS} }}
+        nodes {{ id test }}
     }}
 }}
 """
@@ -186,7 +186,9 @@ class ShopifyGateway:
 
     def orders(self, remote):
         data = self.graphql(remote, ORDER_LIST)
-        return [item for item in nodes(data.get("orders"), complete=False) if item.get("test") is True]
+        for item in nodes(data.get("orders"), complete=False):
+            if item.get("test") is True:
+                yield self.order(remote, gid(item.get("id"), "Order"))
 
     def order(self, remote, order_id):
         data = self.graphql(remote, ORDER_QUERY, {"id": gid(order_id, "Order")}).get("order")
