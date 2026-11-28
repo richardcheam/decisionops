@@ -89,3 +89,17 @@ and the listing keeps its current image.
 
 The check runs as part of the same app. See the
 [catalog benchmark](CATALOG_BENCHMARK.md) for the comparison.
+
+## Shopify development-store returns
+
+Once the [hosted pilot](PORTFOLIO_DEPLOYMENT.md#hosted-shopify-development-pilot)
+is configured, open its `/pilot` URL. As approver, connect the designated
+Shopify development shop, resync its fictional delivered orders, and create a
+support-agent invitation. Share the one-time link privately.
+
+In a separate support-agent session, accept the invitation, open a case for an
+exact fulfillment line, and submit its return proposal. Back in the approver
+session, approve that proposal and separately confirm creation. A verified
+state includes the Shopify return reference. Match it to the order and return
+in Shopify Admin. If the write outcome is uncertain, use **Check Shopify for a
+saved return**. That action reads Shopify and does not issue another creation.

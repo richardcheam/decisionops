@@ -148,3 +148,59 @@ after its lease expires. After execution and a repeated confirmation, the probe
 compares the committed call IDs and checks the replacement and reservation counts
 in PostgreSQL. CI logs contain the resulting counts and the tested SHA. Browser
 traces and database dumps are excluded from uploads.
+
+## Hosted Shopify development pilot
+
+Use the existing app and web images with one HTTPS origin and persistent
+PostgreSQL. Start with a dedicated database and designate the public URL
+`https://<pilot-host>/pilot`. Hosted pilot mode serves merchant sessions under
+`/pilot-api/`. The local customer/staff demo uses its own routes when the pilot
+origin is unset.
+
+| Setting | Purpose |
+|---|---|
+| `COMMERCE_DATABASE_URL` | PostgreSQL DSN available to the app and migration job |
+| `COMMERCE_PILOT_ORIGIN` | Exact public HTTPS origin with no path |
+| `COMMERCE_SHOPIFY_DEV_SHOPS` | Comma-separated approved development shop domains |
+| `COMMERCE_SHOPIFY_CLIENT_ID` and `COMMERCE_SHOPIFY_CLIENT_SECRET` | Shopify Dev Dashboard app credentials |
+| `COMMERCE_SHOPIFY_TOKEN_KEY` | URL-safe base64 encoding of 32 random bytes for encrypting stored OAuth tokens |
+
+Supply credentials through the host secret manager. In Kubernetes use an
+API-only secret. Configure the external HTTPS ingress to forward `/pilot` and
+`/pilot-api/` to the existing web service. Keep callback query strings, cookie
+headers, and request bodies out of access logs, error reports, and traces.
+The app image disables Uvicorn access logging and the provided Nginx config
+disables logging in the pilot API location. Keep the token key available for
+restore. Losing it requires reconnecting the shop.
+
+1. Create a standalone app with custom distribution in Shopify Dev Dashboard.
+   Use the chosen development shop, set the callback to the pilot origin plus
+   `/pilot-api/shopify/callback`, and configure `read_orders`, `read_returns`
+   and `write_returns`. DecisionOps pins Admin GraphQL to `2026-10` and requests
+   expiring offline access. [Shopify standalone installation](https://shopify.dev/docs/apps/build/authentication-authorization/authenticate-standalone-apps) · [Expiring offline tokens](https://shopify.dev/docs/apps/build/security/credentials-and-data/use-expiring-offline-access-tokens)
+2. Use the same app image and database credentials to run `alembic upgrade head`
+   before replacing application pods. The old app expects revision `0013`;
+   the pilot expects `0015`. Preserve a tested backup and the token key before
+   rollout. Roll back only to an image compatible with the installed schema,
+   or restore the known-good backup to a separate database before switching over.
+   A restore may roll durable dispatch claims back in time. Reconcile Shopify
+   returns against the restored cases before enabling any writes.
+3. In a private operator session on the migrated database, bootstrap the
+   first approver. The command prompts for the password.
+
+   ```bash
+   python -m decisionops.commerce.pilot_identity bootstrap \
+     --store-id training-shop --store-name 'Training shop' --email manager@example.test
+   ```
+
+4. Use a Shopify test-payment order, fulfill it, then mark it delivered in
+   Shopify Admin. DecisionOps accepts only test orders. Configure the verified
+   `app/uninstalled` webhook at `/pilot-api/shopify/webhooks/uninstalled` if
+   managing subscriptions through Shopify app configuration. Orders are imported
+   on manual resync. Proposal and confirmation read source records directly.
+   [Shopify development test orders](https://help.shopify.com/en/manual/intro-to-shopify/initial-setup/setup-prepare-for-launch) · [Mark an order delivered](https://help.shopify.com/en/manual/fulfillment/fulfilling-orders/single-fulfillment#mark-an-order-as-delivered)
+
+For acceptance, use separate clean browser sessions for the approver and
+support agent. Match the verified reference in DecisionOps to the same return
+in Shopify Admin. Mocked tests and the fictional demo cannot establish that
+result.

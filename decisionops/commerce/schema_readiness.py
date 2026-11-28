@@ -7,7 +7,7 @@ import sqlalchemy as sa
 from sqlalchemy.exc import SQLAlchemyError
 from .schema import metadata
 
-SUPPORTED_REVISION='0013'
+SUPPORTED_REVISION='0015'
 class SchemaNotReady(RuntimeError):pass
 
 GUARDS={
