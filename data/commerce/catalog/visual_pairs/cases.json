@@ -1,0 +1,50 @@
+[
+  {
+    "id": "pair-01",
+    "cue": "cap stripe color",
+    "images": [
+      "pair-01-a",
+      "pair-01-b"
+    ]
+  },
+  {
+    "id": "pair-02",
+    "cue": "small mark shape on the front",
+    "images": [
+      "pair-02-a",
+      "pair-02-b"
+    ]
+  },
+  {
+    "id": "pair-03",
+    "cue": "vertical position of the front mark",
+    "images": [
+      "pair-03-a",
+      "pair-03-b"
+    ]
+  },
+  {
+    "id": "pair-04",
+    "cue": "cap stripe color",
+    "images": [
+      "pair-04-a",
+      "pair-04-b"
+    ]
+  },
+  {
+    "id": "pair-05",
+    "cue": "small mark shape on the front",
+    "images": [
+      "pair-05-a",
+      "pair-05-b"
+    ]
+  },
+  {
+    "id": "pair-06",
+    "cue": "vertical position of the front mark",
+    "images": [
+      "pair-06-a",
+      "pair-06-b"
+    ]
+  }
+]
