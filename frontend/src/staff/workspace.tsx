@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { DeliveryWorkspace, type ChatReply } from "../delivery-workspace";
 import { caseStatusLabels, formatCaseItems, formatCaseTime, type Case } from "./case-data";
 import { CasePanel } from "./case-panel";
+import { CatalogWorkspace } from "./catalog-workspace";
 import { ReturnWorkspace } from "./return-workspace";
 
 type Order = {
@@ -28,7 +29,7 @@ class StaffRequestError extends Error {
 
 export function StaffWorkspace() {
   const [auth, setAuth] = useState("");
-  const [view, setView] = useState<"deliveries" | "returns">("deliveries");
+  const [view, setView] = useState<"deliveries" | "returns" | "catalog">("deliveries");
   const [role, setRole] = useState<"staff" | "approver">("staff");
   const [conversationId, setConversationId] = useState("");
   const [staleEvidence, setStaleEvidence] = useState<{caseId:string;generation:number} | null>(null);
@@ -327,8 +328,12 @@ export function StaffWorkspace() {
         <div className="header-right">
           {active?.shipment_investigation?.state === "active" && !active.shipment_investigation.historical && <span className="tag tag-live" role="status">Specialists running</span>}
           <button type="button" className="quiet" disabled={busy || Boolean(confirm)}
-            onClick={() => setView(view === "deliveries" ? "returns" : "deliveries")}>
-            {view === "deliveries" ? "Return cases" : "Deliveries"}
+            onClick={() => setView(view === "returns" ? "deliveries" : "returns")}>
+            {view === "returns" ? "Deliveries" : "Return cases"}
+          </button>
+          <button type="button" className="quiet" disabled={busy || Boolean(confirm)}
+            onClick={() => setView(view === "catalog" ? "deliveries" : "catalog")}>
+            {view === "catalog" ? "Deliveries" : "Catalog"}
           </button>
           <a href="/customer">Customer help</a>
           <span className="badge">Demo store · {role === "approver" ? "Approver" : "Staff"}</span>
@@ -350,7 +355,10 @@ export function StaffWorkspace() {
           </button>
         </div>
       </header>
-      {view === "returns" ? <main className="workspace">
+      {view === "catalog" ? <main className="workspace">
+        <div className="pageintro"><h1>Catalog</h1></div>
+        <CatalogWorkspace request={request} auth={auth} mayApprove={role === "approver"} />
+      </main> : view === "returns" ? <main className="workspace">
         <div className="pageintro"><h1>Returns</h1></div>
         <ReturnWorkspace request={request} mayApprove={role === "approver"} />
       </main> : <main className="workspace delivery-dashboard">

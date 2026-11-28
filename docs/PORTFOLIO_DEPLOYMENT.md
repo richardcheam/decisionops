@@ -85,7 +85,7 @@ work, not only an idle Pod restart. The existing recovery walkthroughs provide t
 separate direct-local checks; a cluster run is required to claim these on Kubernetes.
 
 Rollback is limited to application revisions compatible with the installed schema.
-The previous release expects 0011 and fails readiness against 0012. Rehearse
+The previous release expects 0012 and fails readiness against 0013. Rehearse
 application rollback with images that both support the installed schema. A
 schema downgrade requires a reviewed migration or a verified restore into a
 new environment.

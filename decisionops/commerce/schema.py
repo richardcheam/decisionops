@@ -543,3 +543,40 @@ return_authorizations = sa.Table(
     sa.Column('confirmed_by', sa.String(128), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
 )
+
+catalog_listings = sa.Table(
+    'commerce_catalog_listings', metadata,
+    sa.Column('store_id', sa.String, primary_key=True),
+    sa.Column('sku', sa.String, primary_key=True),
+    sa.Column('title', sa.String, nullable=False),
+    sa.Column('current_image_id', sa.String, nullable=False),
+    sa.Column('version', sa.Integer, nullable=False),
+    sa.Column('image_mappings', JSONB, nullable=False),
+    sa.Column('supplier_record', JSONB, nullable=False),
+)
+catalog_cases = sa.Table(
+    'commerce_catalog_cases', metadata,
+    sa.Column('store_id', sa.String, primary_key=True),
+    sa.Column('id', sa.String, primary_key=True),
+    sa.Column('sku', sa.String, nullable=False),
+    sa.Column('status', sa.String, nullable=False),
+    sa.Column('reason', sa.String, nullable=False),
+    sa.Column('proposal', JSONB),
+    sa.Column('proposal_hash', sa.String(64)),
+    sa.Column('approved_by', sa.String(128)),
+    sa.ForeignKeyConstraint(['store_id', 'sku'], ['commerce_catalog_listings.store_id', 'commerce_catalog_listings.sku']),
+    sa.UniqueConstraint('store_id', 'sku'),
+)
+catalog_relinks = sa.Table(
+    'commerce_catalog_relinks', metadata,
+    sa.Column('store_id', sa.String, primary_key=True),
+    sa.Column('case_id', sa.String, primary_key=True),
+    sa.Column('proposal_hash', sa.String(64), nullable=False),
+    sa.Column('previous_image_id', sa.String, nullable=False),
+    sa.Column('saved_image_id', sa.String, nullable=False),
+    sa.Column('listing_version', sa.Integer, nullable=False),
+    sa.Column('approved_by', sa.String(128), nullable=False),
+    sa.Column('confirmed_by', sa.String(128), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['store_id', 'case_id'], ['commerce_catalog_cases.store_id', 'commerce_catalog_cases.id']),
+)

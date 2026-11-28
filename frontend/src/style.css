@@ -450,3 +450,14 @@ body { margin: 0; }
 @media (max-width: 720px) {
   .return-workspace { grid-template-columns: 1fr; }
 }
+
+.catalog-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: var(--space-4);
+  margin-block: var(--space-4);
+}
+.catalog-images figure { margin: 0; overflow-wrap: anywhere; }
+.catalog-images img { display: block; width: 100%; height: 180px; object-fit: contain; }
+.catalog-images figcaption { margin-top: var(--space-2); }
+.catalog-evidence-row { display: contents; }
